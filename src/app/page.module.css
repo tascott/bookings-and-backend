@@ -166,3 +166,49 @@ a.secondary {
     filter: invert();
   }
 }
+
+/* Add styles for the user list */
+.userList {
+  margin-top: 2rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  overflow: hidden; /* Ensures children respect border radius */
+}
+
+.userCard {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* Adjust columns as needed */
+  gap: 1rem;
+  padding: 1rem;
+  border-bottom: 1px solid #eee;
+}
+
+.userCard:last-child {
+  border-bottom: none;
+}
+
+.userCardHeader {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr); /* Match userCard columns */
+  gap: 1rem;
+  padding: 1rem;
+  background-color: #f9f9f9;
+  font-weight: bold;
+  border-bottom: 1px solid #ccc;
+}
+
+.userCard div, .userCardHeader div {
+  word-break: break-word; /* Prevent long emails/IDs from breaking layout */
+  font-size: 0.9rem;
+}
+
+.userCard button {
+  padding: 0.3rem 0.6rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* Style for the user card action column */
+.userAction {
+  text-align: center; /* Center the button */
+}

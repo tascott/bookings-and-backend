@@ -1,0 +1,59 @@
+# App Requirements & Tech Stack
+
+Overall Goal: Build a booking and multi-site management platform for doggy daycare and related services, allowing clients to easily reserve times, staff to coordinate events, and admins to oversee operations. It should be flexible enough to expand into other types of field rentals or classes, with streamlined payments and role-specific dashboards.
+
+Purpose: A doggy daycare booking and multi-site management platform.
+
+## Overview
+- Monorepo structure.
+- Client-facing mobile (React Native) and web (Next.js) apps.
+- Admin/Staff dashboard (Next.js web) with role-based access.
+- Backend-as-a-Service (BaaS) for data storage, authentication, real-time updates.
+- Payment integrations.
+
+## Tech Stack
+1. **Next.js** (for web frontend & admin)
+2. **React Native** (for iOS/Android)
+3. **Turborepo** (or Nx) for monorepo organization.
+4. **Supabase** (or Firebase) as the BaaS.
+5. **Serverless Functions** (if needed for advanced logic/payment webhooks).
+6. **Git** for version control.
+
+## Requirements
+- Users can create and manage bookings.
+- Staff can assign themselves to bookings, handle capacity.
+- Roles (client, staff, admin) each see data relevant to them.
+- Payment flow supports multiple services (daycare, rentals, classes, etc.).
+- Minimal overhead for a solo developer (simple deployment/config).
+
+## Steps to Complete
+1. **Initialize Monorepo**
+   - Create a Turborepo project.
+   - Define sub-projects: `apps/web`, `apps/mobile`, shared config.
+2. **Set Up BaaS**
+   - Configure Supabase project (or Firebase) for auth, data.
+   - Create or import DB tables (SQL is separate).
+   - Implement row-level security or rules for roles.
+3. **Implement Next.js Web**
+   - Admin/staff dashboards for booking oversight.
+   - Role-based routing and data fetches from BaaS.
+4. **Implement React Native App**
+   - Client-facing features: sign up, view/book fields, pay.
+   - Possibly staff login if combined.
+5. **Integrate Payments**
+   - Use Stripe or direct BaaS payment APIs.
+   - Handle transaction status updates.
+6. **Role-Based Access**
+   - Align user roles in BaaS with front-end.
+   - Show/hide fields based on user type.
+7. **Testing & Deployment**
+   - CI/CD pipeline for monorepo.
+   - Deploy web via Vercel (or Netlify).
+   - Use Expo for mobile builds.
+8. **Enhancements** (Optional)
+   - Map integration.
+   - Calendar UI for booking.
+   - Notifications via push or email.
+
+_Refer to the existing SQL schema (not included here) for data definitions._
+

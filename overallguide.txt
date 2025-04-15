@@ -19,8 +19,6 @@ name (e.g., "Downtown Site", "Uptown Branch")
 
 address (human-readable address for convenience)
 
-latitude / longitude (for map displays)
-
 is_active (boolean to mark if a site is operational)
 
 Relationships:
@@ -44,7 +42,6 @@ capacity (how many people/dogs can safely be in this field)
 
 field_type (if you want to categorize it: “dog daycare,” “fitness class,” “general rental,” etc.)
 
-lat / lng (optional if each Field needs precise location distinct from the Site)
 
 Relationships:
 
@@ -162,7 +159,6 @@ created_at
 8. Map View Implications
 Site or Field:
 
-Store latitude and longitude for each site or field.
 
 Your front end (Next.js or React Native) can plot those coordinates on a map component (e.g., using React Leaflet on web, or MapView in React Native).
 

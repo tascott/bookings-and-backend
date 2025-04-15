@@ -1,0 +1,10 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+# Your rule content
+
+- Keep code as minimal as possible to achieve the task, do not add more than absolutely necessary
+- Do not delete more than a line or two of code without asking first
