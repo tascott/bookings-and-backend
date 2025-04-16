@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createClient } from '@/utils/supabase/client';
 // Remove Auth UI imports
 // import { Auth } from '@supabase/auth-ui-react';
@@ -9,6 +9,23 @@ import type { User } from '@supabase/supabase-js';
 import styles from "./page.module.css";
 // Import server actions
 import { login, signup } from './actions';
+
+// Define types for Site and Field based on schema
+type Site = {
+  id: number;
+  name: string;
+  address: string | null;
+  is_active: boolean;
+  fields?: Field[]; // Optional: for nesting fields under sites in state
+}
+
+type Field = {
+  id: number;
+  site_id: number;
+  name: string | null;
+  capacity: number | null;
+  field_type: string | null;
+}
 
 // Define a type for the user data we expect from the API
 type UserWithRole = {
@@ -29,7 +46,15 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   // State to track which user row is being updated
   const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
+  // Add state for sites and fields
+  const [sites, setSites] = useState<Site[]>([]);
+  const [fields, setFields] = useState<Field[]>([]);
+  const [isLoadingSites, setIsLoadingSites] = useState(false);
+  const [isLoadingFields, setIsLoadingFields] = useState(false);
   const supabase = createClient();
+
+  // Create a ref for the Add Site form
+  const addSiteFormRef = useRef<HTMLFormElement>(null);
 
   const fetchUserRole = async (userId: string) => {
     setIsLoadingRole(true);
@@ -139,6 +164,118 @@ export default function Home() {
     }
   }, [role]);
 
+  // --- Site/Field Management Functions ---
+  const fetchSites = async () => {
+    setIsLoadingSites(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/sites');
+      if (!response.ok) throw new Error('Failed to fetch sites');
+      const data: Site[] = await response.json();
+      setSites(data);
+    } catch (e) {
+       setError(e instanceof Error ? e.message : 'Failed to load sites');
+       setSites([]);
+    } finally {
+      setIsLoadingSites(false);
+    }
+  };
+
+  const fetchFields = async () => {
+    setIsLoadingFields(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/fields'); // Fetch all fields initially
+      if (!response.ok) throw new Error('Failed to fetch fields');
+      const data: Field[] = await response.json();
+      setFields(data);
+    } catch (e) {
+       setError(e instanceof Error ? e.message : 'Failed to load fields');
+       setFields([]);
+    } finally {
+      setIsLoadingFields(false);
+    }
+  };
+
+  const handleAddSite = async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      setError(null);
+      // Use the ref to get form data if needed, or keep using event.currentTarget for this part
+      const formData = new FormData(event.currentTarget);
+      const name = formData.get('siteName') as string;
+      const address = formData.get('siteAddress') as string;
+
+      if (!name) {
+          setError('Site name is required.');
+          return;
+      }
+
+      try {
+          const response = await fetch('/api/sites', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ name, address }),
+          });
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Failed to add site');
+          }
+          const newSite: Site = await response.json();
+          setSites(prevSites => [...prevSites, newSite]);
+          // Reset the form using the ref (with optional chaining)
+          addSiteFormRef.current?.reset();
+      } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to add site');
+      }
+  };
+
+  const handleAddField = async (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault();
+      setError(null);
+      const formData = new FormData(event.currentTarget);
+      const site_id = formData.get('fieldSiteId') as string;
+      const name = formData.get('fieldName') as string;
+      const capacity = formData.get('fieldCapacity') as string;
+      const field_type = formData.get('fieldType') as string;
+
+      if (!site_id) {
+          setError('Site ID is required to add a field.');
+          return;
+      }
+
+       try {
+          const response = await fetch('/api/fields', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ site_id, name, capacity, field_type }),
+          });
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Failed to add field');
+          }
+          const newField: Field = await response.json();
+          setFields(prevFields => [...prevFields, newField]);
+          // Remove the reset call for the dynamic field forms
+          // event.currentTarget.reset();
+      } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to add field');
+      }
+  };
+  // ---------------------------------------
+
+  // Effect 4: Fetch Sites & Fields when Role becomes 'admin'
+  useEffect(() => {
+    if (role === 'admin') {
+      fetchSites();
+      fetchFields();
+    } else {
+      // Clear site/field data if user is not admin
+      setSites([]);
+      setFields([]);
+    }
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [role]);
+
   const handleLogout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
@@ -190,6 +327,12 @@ export default function Home() {
   if (isLoadingInitial) {
     return <div>Loading...</div>;
   }
+
+  // --- Helper to group fields by site_id ---
+  const getFieldsForSite = (siteId: number): Field[] => {
+      return fields.filter(f => f.site_id === siteId);
+  }
+  // ----------------------------------------
 
   return (
     <div className={styles.page}>
@@ -298,6 +441,81 @@ export default function Home() {
           {!isLoadingRole && role && role !== 'admin' && (
             <p>You do not have permission to view user management.</p>
           )}
+
+          {/* --- Site & Field Management Section (Admin Only) --- */}
+          {!isLoadingRole && role === 'admin' && (
+            <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
+              <h2>Site & Field Management (Admin)</h2>
+
+              {/* Add New Site Form - Attach the ref */}
+              <form ref={addSiteFormRef} onSubmit={handleAddSite} style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px'}}>
+                 <h3>Add New Site</h3>
+                 <div>
+                    <label htmlFor="siteName">Site Name:</label>
+                    <input type="text" id="siteName" name="siteName" required />
+                 </div>
+                 <div style={{marginTop: '0.5rem'}}>
+                    <label htmlFor="siteAddress">Address:</label>
+                    <input type="text" id="siteAddress" name="siteAddress" />
+                 </div>
+                 <button type="submit" style={{marginTop: '1rem'}}>Add Site</button>
+              </form>
+
+               {/* Display Existing Sites and Fields */}
+               <h3>Existing Sites & Fields</h3>
+               {isLoadingSites || isLoadingFields ? (
+                   <p>Loading sites and fields...</p>
+               ) : sites.length === 0 ? (
+                   <p>No sites created yet.</p>
+               ) : (
+                 <div className={styles.siteList}> {/* Use a class for potential styling */}
+                   {sites.map(site => (
+                     <div key={site.id} className={styles.siteCard} style={{border: '1px solid #ccc', padding: '1rem', marginBottom: '1rem', borderRadius: '4px'}}>
+                       <h4>{site.name} {site.is_active ? '(Active)' : '(Inactive)'}</h4>
+                       <p>{site.address || 'No address provided'}</p>
+
+                       <h5>Fields at this site:</h5>
+                       {getFieldsForSite(site.id).length === 0 ? (
+                           <p>No fields added to this site yet.</p>
+                       ) : (
+                          <ul style={{ listStyle: 'disc', marginLeft: '2rem' }}>
+                             {getFieldsForSite(site.id).map(field => (
+                               <li key={field.id}>
+                                  {field.name || 'Unnamed Field'} (ID: {field.id}) -
+                                  Capacity: {field.capacity ?? 'N/A'},
+                                  Type: {field.field_type || 'N/A'}
+                               </li>
+                             ))}
+                          </ul>
+                       )}
+
+                        {/* Add New Field Form (for this site) */}
+                        <form onSubmit={handleAddField} style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #eee' }}>
+                          <h5>Add Field to {site.name}</h5>
+                          {/* Hidden input to associate with the current site */}
+                          <input type="hidden" name="fieldSiteId" value={site.id} />
+                          <div>
+                             <label htmlFor={`fieldName-${site.id}`}>Field Name:</label>
+                             <input type="text" id={`fieldName-${site.id}`} name="fieldName" />
+                          </div>
+                          <div style={{marginTop: '0.5rem'}}>
+                             <label htmlFor={`fieldCapacity-${site.id}`}>Capacity:</label>
+                             <input type="number" id={`fieldCapacity-${site.id}`} name="fieldCapacity" min="0" />
+                          </div>
+                          <div style={{marginTop: '0.5rem'}}>
+                             <label htmlFor={`fieldType-${site.id}`}>Field Type:</label>
+                             <input type="text" id={`fieldType-${site.id}`} name="fieldType" placeholder="e.g., dog daycare, fitness" />
+                          </div>
+                          <button type="submit" style={{marginTop: '1rem'}}>Add Field</button>
+                        </form>
+                     </div>
+                   ))}
+                 </div>
+               )}
+            </section>
+          )}
+          {/* ----------------------------------------------- */}
+
         </main>
       )}
     </div>

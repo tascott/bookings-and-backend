@@ -1,5 +1,7 @@
 Below is an English-language outline of how your data tables and relationships might work, keeping in mind you want to:
 
+Keep the software as simple as possible, to be able to sell it as a solution in future to other pet businesses.
+
 Represent Locations (multiple sites), their Fields, and who’s managing them.
 
 Handle Bookings with start/end times (for a calendar view) and show them on a map (using location data).
