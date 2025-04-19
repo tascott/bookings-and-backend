@@ -2,7 +2,7 @@ Below is an English-language outline of how your data tables and relationships m
 
 Keep the software as simple as possible, to be able to sell it as a solution in future to other pet businesses.
 
-Represent Locations (multiple sites), their Fields, and who’s managing them.
+Represent Locations (multiple sites), their Fields, and who's managing them.
 
 Handle Bookings with start/end times (for a calendar view) and show them on a map (using location data).
 
@@ -30,7 +30,7 @@ One Site can have many Fields.
 Example: Site #1 is your current dog park facility with three fields. If you expand in the future, you can add another site record.
 
 2. Field
-Purpose: A sub-location within a Site—e.g., “Field A,” “Field B,” or “Yoga Lawn.”
+Purpose: A sub-location within a Site—e.g., "Field A," "Field B," or "Yoga Lawn."
 
 Key Fields:
 
@@ -42,7 +42,7 @@ name (e.g., "Small Dog Area", "Bootcamp Field")
 
 capacity (how many people/dogs can safely be in this field)
 
-field_type (if you want to categorize it: “dog daycare,” “fitness class,” “general rental,” etc.)
+field_type (if you want to categorize it: "dog daycare," "fitness class," "general rental," etc.)
 
 
 Relationships:
@@ -54,40 +54,33 @@ One Field → Many Bookings (since multiple time slots can exist in the same fie
 Example: For your three dog park fields, each might have a separate entry with its capacity. They all share the same site_id.
 
 3. Booking
-Purpose: Captures each scheduled “session” or “time slot” when the field is used (for dog daycare session, yoga class, private rental, etc.).
+Purpose: Captures each scheduled "session" or "time slot" when the field is used (for dog daycare session, yoga class, private rental, etc.). **Currently, these are created manually by admin/staff in the UI.**
 
 Key Fields:
 
 id (primary key)
-
-field_id (foreign key → Field.id)
-
+field_id (foreign key → Field.id) **Note: Client bookings will likely be based on *service availability* rather than directly on fields.**
 start_time (date-time)
-
 end_time (date-time)
-
-service_type (what is this slot for? "dog daycare," "fitness," "private rental," etc.)
-
-status (e.g., “open,” “booked,” “cancelled,” or “closed”)
-
-max_capacity (optional if it differs from the field’s total capacity; used for a specific booking that’s capped at a smaller number)
+service_type (what is this slot for? "dog daycare," "fitness," "private rental," etc.) **Ideally, this should link to the `services` table in future.**
+status (e.g., "open," "booked," "cancelled," or "closed")
+max_capacity (optional if it differs from the field's total capacity; used for a specific booking that's capped at a smaller number)
 
 Relationships:
 
-A Booking belongs to exactly one Field.
-
+A Booking belongs to exactly one Field (**under the current manual creation flow**).
 Potentially, a Booking can have multiple Clients (e.g., group class) or just one (private rental) depending on your business logic. That implies:
 
-Many-to-many: A booking might have multiple clients or dogs attached.
+Many-to-many: A booking might have multiple clients or dogs attached (via `booking_clients` table).
 
-Example: A booking for “March 10, 9am–12pm” in Field A with a “dog daycare” service. Status changes to “booked” once a certain threshold is reached.
+Example: A manually created booking for "March 10, 9am–12pm" in Field A with a "dog daycare" service.
 
 4. Client & Pet (If Applicable)
-Client: The person who’s booking or paying for services.
+Client: The person who's booking or paying for services.
 
 id
 
-user_id (links to your authentication system, if you’re using a BaaS or custom auth)
+user_id (links to your authentication system, if you're using a BaaS or custom auth)
 
 name, email, etc.
 
@@ -137,7 +130,7 @@ phone_number, notes
 
 Relationships:
 
-Similar to clients, staff can “log in” from the web or mobile.
+Similar to clients, staff can "log in" from the web or mobile.
 
 You might have a booking_staff join table if multiple staff members can be assigned to a single booking.
 
@@ -154,7 +147,7 @@ booking_id (if a payment is tied to a specific session)
 
 amount, currency
 
-status (“paid,” “refunded,” “pending”)
+status ("paid," "refunded," "pending")
 
 created_at
 
@@ -164,12 +157,12 @@ Site or Field:
 
 Your front end (Next.js or React Native) can plot those coordinates on a map component (e.g., using React Leaflet on web, or MapView in React Native).
 
-If staff or vehicles are also tracked in real time, you’d store their lat/lng in a separate table or ephemeral state, but that might be an advanced feature.
+If staff or vehicles are also tracked in real time, you'd store their lat/lng in a separate table or ephemeral state, but that might be an advanced feature.
 
 9. Calendar View Implications
 You have start_time and end_time in Booking.
 
-On the front end, you can query all bookings for a certain timeframe and display them in a calendar interface.
+On the front end, you can query all bookings for a certain timeframe and display them in a calendar interface. **For *client* booking views, you'll need to generate available slots based on `service_availability` rules, considering existing `bookings`.**
 
 If you want staff to see all future bookings at a glance, you could:
 
@@ -185,11 +178,19 @@ Each site has one or more fields.
 
 Field (1–N) → Booking:
 
-Each field can have multiple bookings over time.
+Each field can have multiple bookings over time (**currently created manually**).
+
+**Service (1-N) → ServiceAvailability (N-N) → Field:**
+
+**A Service defines what is offered. A ServiceAvailability rule links one Service to *one or more* Fields, defining *when* it's available (times, recurrence/date).**
+
+**ServiceAvailability Rules + Existing Bookings → Actual Client Availability:**
+
+**The *actual* open slots for clients are derived by taking the rules from `service_availability` and subtracting any conflicting `bookings`.**
 
 Booking (N–N) → Client:
 
-Many bookings can have many clients (i.e., group sessions). Typically via a join table called booking_clients.
+Many bookings can have many clients (i.e., group sessions). Typically via a join table called `booking_clients`.
 
 Client (1–N) → Pet:
 
@@ -199,7 +200,7 @@ Staff:
 
 Similar to clients in that they have user_id for login, but different roles/permissions.
 
-If staff are assigned to bookings, that’s also (N–N) → a join table like booking_staff.
+If staff are assigned to bookings, that's also (N–N) → a join table like booking_staff.
 
 Payments:
 
@@ -222,8 +223,8 @@ Later, add details for advanced features (like staff schedules, route management
 
 Front-End Integration
 
-In your Next.js admin or staff view, you’ll do queries to list bookings, show them in a calendar, or place them on a map if needed.
+In your Next.js admin or staff view, you'll do queries to list bookings, show them in a calendar, or place them on a map if needed. **You also manage Sites, Fields, Services, and ServiceAvailability rules.**
 
-In your React Native client app, you’ll show open bookings (like available slots) or the user’s booked sessions.
+In your React Native client app, you'll show open bookings (**derived from `service_availability` and `bookings**) or the user's booked sessions.
 
-This ensures you have enough of a schema to support a calendar view (thanks to start/end times in bookings) and a map view (thanks to lat/long in sites or fields). As your needs grow—like adding payment tracking or advanced staff route assignments—these core tables should still provide a stable foundation.
+This ensures you have enough of a schema to support a calendar view (thanks to start/end times in bookings) and a map view (thanks to lat/long in sites or fields). As your needs grow—like adding payment tracking or advanced staff route assignments—these core tables should still provide a stable foundation. **The service-centric availability model provides better flexibility for managing complex schedules.**
