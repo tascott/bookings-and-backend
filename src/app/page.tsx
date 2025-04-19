@@ -60,6 +60,14 @@ type ServiceAvailability = {
   created_at: string;
 }
 
+// Type for the calculated slots returned by the API/DB function
+type CalculatedSlot = {
+    slot_field_id: number;
+    slot_start_time: string; // ISO String from TIMESTAMPTZ
+    slot_end_time: string;   // ISO String from TIMESTAMPTZ
+    slot_remaining_capacity: number;
+}
+
 // Define a type for the user data we expect from the API
 type UserWithRole = {
   id: string;
@@ -92,6 +100,18 @@ export default function Home() {
   const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [serviceAvailability, setServiceAvailability] = useState<ServiceAvailability[]>([]);
   const [isLoadingServiceAvailability, setIsLoadingServiceAvailability] = useState(false);
+  // State for slot search inputs
+  const today = new Date().toISOString().split('T')[0]; // Get today in YYYY-MM-DD format
+  const nextWeekDate = new Date();
+  nextWeekDate.setDate(nextWeekDate.getDate() + 7);
+  const nextWeek = nextWeekDate.toISOString().split('T')[0]; // Get date 7 days from now
+  const [selectedServiceId, setSelectedServiceId] = useState<string>(''); // Store as string for select value
+  const [selectedStartDate, setSelectedStartDate] = useState<string>(today);
+  const [selectedEndDate, setSelectedEndDate] = useState<string>(nextWeek);
+  // State for the calculated slots
+  const [calculatedSlots, setCalculatedSlots] = useState<CalculatedSlot[]>([]);
+  const [isLoadingCalculatedSlots, setIsLoadingCalculatedSlots] = useState(false);
+
   const supabase = createClient();
 
   // Create refs for forms that need resetting after async ops
@@ -564,6 +584,96 @@ export default function Home() {
   };
   // --------------------------------------------
 
+  // --- Handler to toggle Service Availability Active state ---
+  const handleToggleServiceAvailabilityActive = async (ruleId: number, currentStatus: boolean) => {
+    setError(null);
+    const newStatus = !currentStatus;
+
+    try {
+      const response = await fetch('/api/service-availability', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: ruleId, is_active: newStatus }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to update rule ${ruleId}`);
+      }
+
+      const updatedRule: ServiceAvailability = await response.json();
+
+      // Update the local state
+      setServiceAvailability(prevRules =>
+        prevRules.map(rule => (rule.id === ruleId ? updatedRule : rule))
+      );
+
+    } catch (e) {
+      setError(e instanceof Error ? e.message : `Failed to update rule ${ruleId}`);
+      // Optionally revert optimistic UI update here if you implemented one
+    }
+  };
+  // --------------------------------------------------------
+
+  // --- Fetch Calculated Slots from API ---
+  const fetchCalculatedSlots = async () => {
+    if (!selectedServiceId || !selectedStartDate || !selectedEndDate) {
+        setError('Please select a service and date range.');
+        return;
+    }
+    setIsLoadingCalculatedSlots(true);
+    setCalculatedSlots([]); // Clear previous results
+    setError(null);
+
+    try {
+        const queryParams = new URLSearchParams({
+            service_id: selectedServiceId,
+            start_date: selectedStartDate,
+            end_date: selectedEndDate,
+        });
+        const response = await fetch(`/api/available-slots?${queryParams.toString()}`);
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Failed to fetch slots (HTTP ${response.status})`);
+        }
+
+        const data: CalculatedSlot[] = await response.json();
+        setCalculatedSlots(data);
+
+    } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : 'Failed to load available slots.';
+        setError(errorMessage);
+        setCalculatedSlots([]); // Ensure slots are cleared on error
+    } finally {
+        setIsLoadingCalculatedSlots(false);
+    }
+  };
+  // -------------------------------------
+
+  // --- Helper Functions for Name Lookup ---
+  // Add helper for single field name lookup
+  const getFieldName = (fieldId: number): string => {
+    return fields.find(f => f.id === fieldId)?.name || `Field ID ${fieldId}`;
+  }
+  // -----------------------------------------
+
+  // Fetch client availability rules when user logs in (or role changes, though any role can see this for now)
+  useEffect(() => {
+    if (user) {
+        // Fetch sites/fields/services needed for name lookups if not already loaded by admin/staff role check
+        if (role !== 'admin' && role !== 'staff') {
+            fetchSites();
+            fetchFields();
+            fetchServices();
+        }
+    } else {
+        // Clear on logout
+        setServiceAvailability([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, role]); // Re-run if user or role changes
+
   if (isLoadingInitial) {
     return <div>Loading...</div>;
   }
@@ -972,7 +1082,16 @@ export default function Home() {
                                {/* Find service name - ideally join in API later */}
                                <strong>Service ID:</strong> {rule.service_id} |
                                <strong>Fields:</strong> {rule.field_ids.join(', ')} |
-                               <strong>Active:</strong> {rule.is_active ? 'Yes' : 'No'}
+                               <label htmlFor={`active-toggle-${rule.id}`} style={{ marginLeft: '0.5rem', cursor: 'pointer' }}>
+                                   <input
+                                       type="checkbox"
+                                       id={`active-toggle-${rule.id}`}
+                                       checked={rule.is_active}
+                                       onChange={() => handleToggleServiceAvailabilityActive(rule.id, rule.is_active)}
+                                       style={{ marginRight: '0.3rem' }}
+                                   />
+                                   {rule.is_active ? 'Yes' : 'No'}
+                               </label>
                             </p>
                              <p>
                                <strong>Time:</strong> {rule.start_time} - {rule.end_time} |
@@ -988,6 +1107,97 @@ export default function Home() {
              </section>
            )}
            {/* ------------------------------------------------ */}
+
+          {/* --- Client Booking View Section (Visible to all logged-in users for now) --- */}
+          <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
+              <h2>Available Services & Times</h2>
+
+              {/* Slot Search Form */}
+              <div style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px'}}>
+                  <h3>Find Available Slots</h3>
+                  {services.length === 0 ? (
+                      <p>Loading services...</p> // Or handle case where no services exist
+                  ) : (
+                      <div>
+                          <label htmlFor="clientServiceSelect">Service:</label>
+                          <select
+                              id="clientServiceSelect"
+                              value={selectedServiceId}
+                              onChange={(e) => setSelectedServiceId(e.target.value)}
+                              required
+                              style={{ marginRight: '1rem' }}
+                          >
+                              <option value="">-- Select a Service --</option>
+                              {services.map(service => (
+                                  <option key={service.id} value={service.id}>{service.name}</option>
+                              ))}
+                          </select>
+                      </div>
+                  )}
+                  <div style={{ marginTop: '0.5rem' }}>
+                      <label htmlFor="clientStartDate">From:</label>
+                      <input
+                          type="date"
+                          id="clientStartDate"
+                          value={selectedStartDate}
+                          onChange={(e) => setSelectedStartDate(e.target.value)}
+                          min={today} // Prevent selecting past dates
+                          required
+                          style={{ marginRight: '1rem' }}
+                      />
+                      <label htmlFor="clientEndDate">To:</label>
+                      <input
+                          type="date"
+                          id="clientEndDate"
+                          value={selectedEndDate}
+                          onChange={(e) => setSelectedEndDate(e.target.value)}
+                          min={selectedStartDate} // Prevent end date being before start date
+                          required
+                          style={{ marginRight: '1rem' }}
+                      />
+                  </div>
+                  <button
+                      onClick={fetchCalculatedSlots} // Connect button
+                      disabled={!selectedServiceId || !selectedStartDate || !selectedEndDate || isLoadingCalculatedSlots} // Disable if inputs missing or loading
+                      style={{ marginTop: '1rem' }}
+                  >
+                      {isLoadingCalculatedSlots ? 'Finding Slots...' : 'Find Slots'} {/* Update button text */}
+                  </button>
+              </div>
+
+              {/* Display Area - Shows calculated slots */}
+              <div className={styles.slotResultsArea}>
+                  <h3>Available Slots</h3>
+                  {isLoadingCalculatedSlots ? (
+                      <p>Loading slots...</p>
+                  ) : error ? (
+                      <p style={{ color: 'red' }}>Error: {error}</p>
+                  ) : calculatedSlots.length === 0 ? (
+                      <p>No available slots found for the selected criteria. Try different dates or services.</p>
+                  ) : (
+                      <div className={styles.calculatedSlotsList}> {/* Use a specific class */}
+                          {calculatedSlots.map((slot, index) => (
+                              <div key={`${slot.slot_field_id}-${slot.slot_start_time}-${index}`} className={styles.calculatedSlotCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
+                                  <p><strong>Field:</strong> {getFieldName(slot.slot_field_id)}</p>
+                                  <p>
+                                      <strong>Start:</strong> {new Date(slot.slot_start_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} |
+                                      <strong> End:</strong> {new Date(slot.slot_end_time).toLocaleString([], { timeStyle: 'short' })}
+                                  </p>
+                                  <p><strong>Remaining Capacity:</strong> {slot.slot_remaining_capacity}</p>
+                                  {/* Enable book button - action still pending */}
+                                  <button
+                                    // onClick={() => handleBookSlot(slot)} // Add booking handler later
+                                    style={{marginTop: '0.5rem'}}
+                                  >
+                                      Book Now
+                                  </button>
+                              </div>
+                          ))}
+                      </div>
+                  )}
+               </div>
+          </section>
+          {/* ------------------------------------------------------------------------------ */}
 
         </main>
       )}

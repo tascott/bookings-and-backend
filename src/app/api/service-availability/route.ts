@@ -8,6 +8,7 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url)
   const serviceId = searchParams.get('service_id')
   const fieldId = searchParams.get('field_id') // For checking if a field is included
+  const isActiveParam = searchParams.get('is_active') // New parameter
 
   // Check auth
   const { data: { user }, error: authError } = await supabase.auth.getUser()
@@ -34,6 +35,11 @@ export async function GET(request: Request) {
   if (fieldId) {
     // Use array contains operator '@>'
     query = query.contains('field_ids', [fieldId])
+  }
+  // Add filtering based on the is_active parameter
+  if (isActiveParam !== null) {
+    const isActive = isActiveParam.toLowerCase() === 'true';
+    query = query.eq('is_active', isActive);
   }
 
   const { data: availability, error } = await query.order('id') // Order by creation or service_id?
@@ -146,4 +152,63 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(newAvailability, { status: 201 })
+}
+
+// PATCH an existing service availability rule (Admin only) - Specifically for toggling is_active
+export async function PATCH(request: Request) {
+  const supabase = await createServerClient()
+  const supabaseAdmin = await createAdminClient()
+
+   // Check auth & admin role
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) {
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+  }
+  const { data: staffData, error: staffError } = await supabase
+    .from('staff')
+    .select('role')
+    .eq('user_id', user.id)
+    .single()
+  if (staffError || !staffData || staffData.role !== 'admin') {
+    return NextResponse.json({ error: 'Forbidden: Requires admin role' }, { status: 403 })
+  }
+
+  // Parse request body for ID and new active status
+  let updateData: {
+    id: number;
+    is_active: boolean;
+  };
+
+  try {
+    const body = await request.json();
+    if (typeof body.id !== 'number' || typeof body.is_active !== 'boolean') {
+      throw new Error('Missing or invalid required fields: id (number), is_active (boolean)');
+    }
+    updateData = {
+      id: body.id,
+      is_active: body.is_active,
+    };
+  } catch (e) {
+    const errorMessage = e instanceof Error ? e.message : 'Invalid request body';
+    return NextResponse.json({ error: errorMessage }, { status: 400 })
+  }
+
+  // Update the rule
+  const { data: updatedRule, error: updateError } = await supabaseAdmin
+    .from('service_availability')
+    .update({ is_active: updateData.is_active })
+    .eq('id', updateData.id)
+    .select()
+    .single();
+
+  if (updateError) {
+    console.error('Error updating service availability rule:', updateError)
+    return NextResponse.json({ error: `Failed to update rule ${updateData.id}: ${updateError.message}` }, { status: 500 })
+  }
+
+  if (!updatedRule) {
+      return NextResponse.json({ error: `Service availability rule with ID ${updateData.id} not found.` }, { status: 404 });
+  }
+
+  return NextResponse.json(updatedRule)
 }
