@@ -63,6 +63,7 @@ type ServiceAvailability = {
 // Type for the calculated slots returned by the API/DB function
 type CalculatedSlot = {
     slot_field_id: number;
+    slot_field_name: string; // Added field name
     slot_start_time: string; // ISO String from TIMESTAMPTZ
     slot_end_time: string;   // ISO String from TIMESTAMPTZ
     slot_remaining_capacity: number;
@@ -651,25 +652,28 @@ export default function Home() {
   };
   // -------------------------------------
 
-  // --- Helper Functions for Name Lookup ---
-  // Add helper for single field name lookup
-  const getFieldName = (fieldId: number): string => {
-    return fields.find(f => f.id === fieldId)?.name || `Field ID ${fieldId}`;
-  }
-  // -----------------------------------------
-
-  // Fetch client availability rules when user logs in (or role changes, though any role can see this for now)
+  // Fetch data on login/role change
   useEffect(() => {
     if (user) {
         // Fetch sites/fields/services needed for name lookups if not already loaded by admin/staff role check
         if (role !== 'admin' && role !== 'staff') {
+            // Clients only need services for the dropdown, not all sites/fields
+            // fetchSites(); // REMOVED for clients
+            // fetchFields(); // REMOVED for clients
+            fetchServices();
+        } else {
+            // Admin/Staff still need sites/fields for their management sections
             fetchSites();
             fetchFields();
-            fetchServices();
+            fetchServices(); // Ensure services are fetched for admin/staff too
         }
     } else {
-        // Clear on logout
-        setServiceAvailability([]);
+        // Clear data on logout
+        setSites([]);
+        setFields([]);
+        setServices([]);
+        setCalculatedSlots([]); // Clear calculated slots too
+        setServiceAvailability([]); // Clear admin availability rules
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, role]); // Re-run if user or role changes
@@ -1178,7 +1182,8 @@ export default function Home() {
                       <div className={styles.calculatedSlotsList}> {/* Use a specific class */}
                           {calculatedSlots.map((slot, index) => (
                               <div key={`${slot.slot_field_id}-${slot.slot_start_time}-${index}`} className={styles.calculatedSlotCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
-                                  <p><strong>Field:</strong> {getFieldName(slot.slot_field_id)}</p>
+                                  {/* Use slot_field_name directly from API response */}
+                                  <p><strong>Field:</strong> {slot.slot_field_name || `ID: ${slot.slot_field_id}`}</p>
                                   <p>
                                       <strong>Start:</strong> {new Date(slot.slot_start_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} |
                                       <strong> End:</strong> {new Date(slot.slot_end_time).toLocaleString([], { timeStyle: 'short' })}
