@@ -9,6 +9,14 @@ import type { User } from '@supabase/supabase-js';
 import styles from "./page.module.css";
 // Import server actions
 import { login, signup } from './actions';
+// Import the new component
+import ClientBooking from '@/components/client/ClientBooking';
+import UserManagement from '@/components/admin/UserManagement'; // Import UserManagement
+import SiteFieldManagement from '@/components/admin/SiteFieldManagement'; // Import SiteFieldManagement
+import BookingManagement from '@/components/admin/BookingManagement'; // Import BookingManagement
+import ServiceManagement from '@/components/admin/ServiceManagement'; // Import ServiceManagement
+import ServiceAvailabilityManagement from '@/components/admin/ServiceAvailabilityManagement'; // Import ServiceAvailabilityManagement
+import AuthForm from '@/components/AuthForm'; // Import AuthForm
 
 // Define types for Site and Field based on schema
 type Site = {
@@ -60,7 +68,8 @@ type ServiceAvailability = {
   created_at: string;
 }
 
-// Type for the calculated slots returned by the API/DB function
+// Type for the calculated slots returned by the API/DB function - MOVED to ClientBooking.tsx
+/*
 type CalculatedSlot = {
     slot_field_id: number;
     slot_field_name: string; // Added field name
@@ -68,6 +77,7 @@ type CalculatedSlot = {
     slot_end_time: string;   // ISO String from TIMESTAMPTZ
     slot_remaining_capacity: number;
 }
+*/
 
 // Define a type for the user data we expect from the API
 type UserWithRole = {
@@ -101,7 +111,8 @@ export default function Home() {
   const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [serviceAvailability, setServiceAvailability] = useState<ServiceAvailability[]>([]);
   const [isLoadingServiceAvailability, setIsLoadingServiceAvailability] = useState(false);
-  // State for slot search inputs
+  // State for slot search inputs - MOVED to ClientBooking.tsx
+  /*
   const today = new Date().toISOString().split('T')[0]; // Get today in YYYY-MM-DD format
   const nextWeekDate = new Date();
   nextWeekDate.setDate(nextWeekDate.getDate() + 7);
@@ -109,9 +120,12 @@ export default function Home() {
   const [selectedServiceId, setSelectedServiceId] = useState<string>(''); // Store as string for select value
   const [selectedStartDate, setSelectedStartDate] = useState<string>(today);
   const [selectedEndDate, setSelectedEndDate] = useState<string>(nextWeek);
-  // State for the calculated slots
+  */
+  // State for the calculated slots - MOVED to ClientBooking.tsx
+  /*
   const [calculatedSlots, setCalculatedSlots] = useState<CalculatedSlot[]>([]);
   const [isLoadingCalculatedSlots, setIsLoadingCalculatedSlots] = useState(false);
+  */
 
   const supabase = createClient();
 
@@ -616,42 +630,6 @@ export default function Home() {
   };
   // --------------------------------------------------------
 
-  // --- Fetch Calculated Slots from API ---
-  const fetchCalculatedSlots = async () => {
-    if (!selectedServiceId || !selectedStartDate || !selectedEndDate) {
-        setError('Please select a service and date range.');
-        return;
-    }
-    setIsLoadingCalculatedSlots(true);
-    setCalculatedSlots([]); // Clear previous results
-    setError(null);
-
-    try {
-        const queryParams = new URLSearchParams({
-            service_id: selectedServiceId,
-            start_date: selectedStartDate,
-            end_date: selectedEndDate,
-        });
-        const response = await fetch(`/api/available-slots?${queryParams.toString()}`);
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Failed to fetch slots (HTTP ${response.status})`);
-        }
-
-        const data: CalculatedSlot[] = await response.json();
-        setCalculatedSlots(data);
-
-    } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : 'Failed to load available slots.';
-        setError(errorMessage);
-        setCalculatedSlots([]); // Ensure slots are cleared on error
-    } finally {
-        setIsLoadingCalculatedSlots(false);
-    }
-  };
-  // -------------------------------------
-
   // Fetch data on login/role change
   useEffect(() => {
     if (user) {
@@ -672,7 +650,7 @@ export default function Home() {
         setSites([]);
         setFields([]);
         setServices([]);
-        setCalculatedSlots([]); // Clear calculated slots too
+        // setCalculatedSlots([]); // State moved to ClientBooking
         setServiceAvailability([]); // Clear admin availability rules
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -709,87 +687,23 @@ export default function Home() {
         )}
       </header>
       {!user && (
-        <div style={{ maxWidth: '400px', margin: '50px auto', border: '1px solid #ccc', padding: '2rem', borderRadius: '8px' }}>
-          <form className={styles.authForm}>
-            <h2>Login or Sign Up</h2>
-
-            <div>
-              <label htmlFor="name">Name:</label>
-              <input id="name" name="name" type="text" placeholder="Your Name (for signup)"/>
-            </div>
-
-            <div>
-              <label htmlFor="email">Email:</label>
-              <input id="email" name="email" type="email" required placeholder="your@email.com" />
-            </div>
-
-            <div>
-              <label htmlFor="password">Password:</label>
-              <input id="password" name="password" type="password" required placeholder="••••••••"/>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem'}}>
-              <button type="submit" formAction={login}>Log in</button>
-              <button type="submit" formAction={signup}>Sign up</button>
-            </div>
-          </form>
-        </div>
+        // Render the AuthForm component, passing server actions
+        <AuthForm login={login} signup={signup} />
       )}
       {user && (
         <main>
           <p>This is the main content area for logged-in users.</p>
 
           {!isLoadingRole && role === 'admin' && (
-            <section>
-              <h2>User Management (Admin)</h2>
-              {isLoadingUsers && <p>Loading users...</p>}
-              {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-              {!isLoadingUsers && !error && users.length > 0 && (
-                <div className={styles.userList}>
-                  <div className={styles.userCardHeader}>
-                    <div>Email</div>
-                    <div>Current Role</div>
-                    <div>Created At</div>
-                    <div>Last Sign In</div>
-                    <div className={styles.userAction}>Actions</div>
-                  </div>
-                  {users.map((u) => (
-                    <div key={u.id} className={`${styles.userCard} ${updatingUserId === u.id ? styles.updating : ''}`}>
-                      <div>{u.email ?? 'N/A'}</div>
-                      <div>{u.role}</div>
-                      <div>{u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A'}</div>
-                      <div>{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : 'N/A'}</div>
-                      <div className={styles.userAction}>
-                        {updatingUserId === u.id ? (
-                          <span>Updating...</span>
-                        ) : (
-                          <>
-                            {/* Conditionally render buttons based on current role */}
-                            {/* Prevent changing own role or if role is already target */}
-                            {u.id !== user.id && u.role !== 'client' && (
-                              <button onClick={() => handleAssignRole(u.id, 'client')}>Make Client</button>
-                            )}
-                            {u.id !== user.id && u.role !== 'staff' && (
-                              <button onClick={() => handleAssignRole(u.id, 'staff')}>Make Staff</button>
-                            )}
-                            {u.id !== user.id && u.role !== 'admin' && (
-                              <button onClick={() => handleAssignRole(u.id, 'admin')}>Make Admin</button>
-                            )}
-                            {/* Show current role if it's the admin's own row */}
-                            {u.id === user.id && (
-                               <span>(Your Role)</span>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {!isLoadingUsers && !error && users.length === 0 && (
-                 <p>No users found.</p>
-               )}
-            </section>
+            // Render the UserManagement component
+            <UserManagement
+              users={users}
+              isLoadingUsers={isLoadingUsers}
+              error={error} // Pass the global error state
+              currentUser={user}
+              updatingUserId={updatingUserId}
+              handleAssignRole={handleAssignRole}
+            />
           )}
           {isLoadingRole && <p>Verifying user role...</p>}
           {!isLoadingRole && role && role !== 'admin' && (
@@ -798,412 +712,72 @@ export default function Home() {
 
           {/* --- Site & Field Management Section (Admin Only) --- */}
           {!isLoadingRole && role === 'admin' && (
-            <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
-              <h2>Site & Field Management (Admin)</h2>
-
-              {/* Add New Site Form - Attach the ref */}
-              <form ref={addSiteFormRef} onSubmit={handleAddSite} style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px'}}>
-                 <h3>Add New Site</h3>
-                 <div>
-                    <label htmlFor="siteName">Site Name:</label>
-                    <input type="text" id="siteName" name="siteName" required />
-                 </div>
-                 <div style={{marginTop: '0.5rem'}}>
-                    <label htmlFor="siteAddress">Address:</label>
-                    <input type="text" id="siteAddress" name="siteAddress" />
-                 </div>
-                 <button type="submit" style={{marginTop: '1rem'}}>Add Site</button>
-              </form>
-
-               {/* Display Existing Sites and Fields */}
-               <h3>Existing Sites & Fields</h3>
-               {isLoadingSites || isLoadingFields ? (
-                   <p>Loading sites and fields...</p>
-               ) : sites.length === 0 ? (
-                   <p>No sites created yet.</p>
-               ) : (
-                 <div className={styles.siteList}> {/* Use a class for potential styling */}
-                   {sites.map(site => (
-                     <div key={site.id} className={styles.siteCard} style={{border: '1px solid #ccc', padding: '1rem', marginBottom: '1rem', borderRadius: '4px'}}>
-                       <h4>{site.name} {site.is_active ? '(Active)' : '(Inactive)'}</h4>
-                       <p>{site.address || 'No address provided'}</p>
-
-                       <h5>Fields at this site:</h5>
-                       {getFieldsForSite(site.id).length === 0 ? (
-                           <p>No fields added to this site yet.</p>
-                       ) : (
-                          <ul style={{ listStyle: 'disc', marginLeft: '2rem' }}>
-                             {getFieldsForSite(site.id).map(field => (
-                               <li key={field.id}>
-                                  {field.name || 'Unnamed Field'} (ID: {field.id}) -
-                                  Capacity: {field.capacity ?? 'N/A'},
-                                  Type: {field.field_type || 'N/A'}
-                               </li>
-                             ))}
-                          </ul>
-                       )}
-
-                        {/* Add New Field Form (for this site) */}
-                        <form onSubmit={handleAddField} style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px dashed #eee' }}>
-                          <h5>Add Field to {site.name}</h5>
-                          {/* Hidden input to associate with the current site */}
-                          <input type="hidden" name="fieldSiteId" value={site.id} />
-                          <div>
-                             <label htmlFor={`fieldName-${site.id}`}>Field Name:</label>
-                             <input type="text" id={`fieldName-${site.id}`} name="fieldName" />
-                          </div>
-                          <div style={{marginTop: '0.5rem'}}>
-                             <label htmlFor={`fieldCapacity-${site.id}`}>Capacity:</label>
-                             <input type="number" id={`fieldCapacity-${site.id}`} name="fieldCapacity" min="0" />
-                          </div>
-                          <div style={{marginTop: '0.5rem'}}>
-                             <label htmlFor={`fieldType-${site.id}`}>Field Type:</label>
-                             <input type="text" id={`fieldType-${site.id}`} name="fieldType" placeholder="e.g., dog daycare, fitness" />
-                          </div>
-                          <button type="submit" style={{marginTop: '1rem'}}>Add Field</button>
-                        </form>
-                     </div>
-                   ))}
-                 </div>
-               )}
-            </section>
+            // Render the SiteFieldManagement component
+            <SiteFieldManagement
+              sites={sites}
+              fields={fields}
+              isLoadingSites={isLoadingSites}
+              isLoadingFields={isLoadingFields}
+              error={error} // Pass global error
+              handleAddSite={handleAddSite}
+              handleAddField={handleAddField}
+              getFieldsForSite={getFieldsForSite}
+              addSiteFormRef={addSiteFormRef}
+            />
           )}
           {/* ----------------------------------------------- */}
 
           {/* --- Booking Management Section (Admin/Staff) --- */}
           {!isLoadingRole && (role === 'admin' || role === 'staff') && (
-            <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
-               <h2>Booking Management ({role})</h2>
-               {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-
-               {/* Add New Booking Form */}
-               <form ref={addBookingFormRef} onSubmit={handleAddBooking} style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px'}}>
-                 <h3>Add New Booking</h3>
-                 {fields.length === 0 ? (
-                    <p>No fields available. Please add fields via Site Management.</p>
-                 ) : (
-                   <>
-                     <div>
-                       <label htmlFor="bookingFieldId">Field:</label>
-                       <select id="bookingFieldId" name="bookingFieldId" required>
-                          <option value="">-- Select a Field --</option>
-                          {/* Group fields by site for better UX */}
-                          {sites.map(site => (
-                             <optgroup key={site.id} label={site.name}>
-                                {getFieldsForSite(site.id).map(field => (
-                                   <option key={field.id} value={field.id}>
-                                      {field.name || `Field ID ${field.id}`}
-                                   </option>
-                                ))}
-                             </optgroup>
-                          ))}
-                       </select>
-                     </div>
-                     <div style={{marginTop: '0.5rem'}}>
-                        <label htmlFor="bookingStartTime">Start Time:</label>
-                        <input type="datetime-local" id="bookingStartTime" name="bookingStartTime" required />
-                     </div>
-                     <div style={{marginTop: '0.5rem'}}>
-                        <label htmlFor="bookingEndTime">End Time:</label>
-                        <input type="datetime-local" id="bookingEndTime" name="bookingEndTime" required />
-                     </div>
-                     <div style={{marginTop: '0.5rem'}}>
-                        <label htmlFor="bookingServiceType">Service Type:</label>
-                        <input type="text" id="bookingServiceType" name="bookingServiceType" placeholder="e.g., dog daycare, private rental" />
-                     </div>
-                     <div style={{marginTop: '0.5rem'}}>
-                        <label htmlFor="bookingMaxCapacity">Max Capacity (Optional):</label>
-                        <input type="number" id="bookingMaxCapacity" name="bookingMaxCapacity" min="0" />
-                     </div>
-                     <button type="submit" style={{marginTop: '1rem'}}>Add Booking</button>
-                   </>
-                 )}
-               </form>
-
-                {/* Display Existing Bookings */}
-               <h3>Existing Bookings</h3>
-                {isLoadingBookings ? (
-                   <p>Loading bookings...</p>
-                ) : bookings.length === 0 ? (
-                   <p>No bookings found.</p>
-                ) : (
-                   <div className={styles.bookingList}> {/* Use a class for styling */}
-                      {bookings.map(booking => (
-                         <div key={booking.id} className={styles.bookingCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
-                           <p>
-                              <strong>Field ID:</strong> {booking.field_id} |
-                              <strong>Service:</strong> {booking.service_type || 'N/A'} |
-                              <strong>Status:</strong> {booking.status}
-                           </p>
-                           <p>
-                              <strong>From:</strong> {new Date(booking.start_time).toLocaleString()} |
-                              <strong>To:</strong> {new Date(booking.end_time).toLocaleString()}
-                           </p>
-                           {booking.max_capacity !== null && (
-                              <p><strong>Max Capacity:</strong> {booking.max_capacity}</p>
-                           )}
-                           {/* Add buttons for Edit/Cancel later? */}
-                         </div>
-                      ))}
-                   </div>
-                )}
-            </section>
+            // Render the BookingManagement component
+            <BookingManagement
+                role={role}
+                bookings={bookings}
+                isLoadingBookings={isLoadingBookings}
+                sites={sites}
+                fields={fields}
+                error={error}
+                handleAddBooking={handleAddBooking}
+                addBookingFormRef={addBookingFormRef}
+                getFieldsForSite={getFieldsForSite}
+             />
           )}
            {/* ----------------------------------------- */}
 
           {/* --- Service Management (Admin Only) --- */}
           {!isLoadingRole && role === 'admin' && (
-             <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
-               <h2>Service Management (Admin)</h2>
-                {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-
-                {/* Add New Service Form */}
-                <form ref={addServiceFormRef} onSubmit={handleAddService} style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px'}}>
-                   <h3>Add New Service</h3>
-                   <div>
-                      <label htmlFor="serviceName">Service Name:</label>
-                      <input type="text" id="serviceName" name="serviceName" required placeholder="e.g., Doggy Daycare AM, Full Day Field Hire" />
-                   </div>
-                   <div style={{marginTop: '0.5rem'}}>
-                      <label htmlFor="serviceDescription">Description:</label>
-                      <textarea id="serviceDescription" name="serviceDescription" rows={3}></textarea>
-                   </div>
-                   <button type="submit" style={{marginTop: '1rem'}}>Add Service</button>
-                </form>
-
-                 {/* Display Existing Services */}
-                <h3>Existing Services</h3>
-                {isLoadingServices ? (
-                   <p>Loading services...</p>
-                ) : services.length === 0 ? (
-                   <p>No services defined yet.</p>
-                ) : (
-                   <ul style={{ listStyle: 'none', padding: 0 }}>
-                      {services.map(service => (
-                         <li key={service.id} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.5rem', borderRadius: '4px' }}>
-                            <strong>{service.name}</strong> (ID: {service.id})
-                            <p style={{ margin: '0.3rem 0 0 0', fontSize: '0.9em', color: '#555' }}>
-                               {service.description || 'No description'}
-                            </p>
-                            {/* Add Edit/Delete later */}
-                         </li>
-                      ))}
-                   </ul>
-                )}
-             </section>
-           )}
+            // Render the ServiceManagement component
+            <ServiceManagement
+                services={services}
+                isLoadingServices={isLoadingServices}
+                error={error}
+                handleAddService={handleAddService}
+                addServiceFormRef={addServiceFormRef}
+            />
+          )}
            {/* ----------------------------------------- */}
 
            {/* --- Service Availability Management (Admin Only) --- */}
            {!isLoadingRole && role === 'admin' && (
-             <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
-                <h2>Service Availability Rules (Admin)</h2>
-                 {error && <p style={{ color: 'red' }}>Error: {error}</p>}
-
-                 {/* Add New Availability Rule Form */}
-                 <form ref={addServiceAvailabilityFormRef} onSubmit={handleAddServiceAvailability} style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px'}}>
-                   <h3>Add New Availability Rule</h3>
-                   {(services.length === 0 || fields.length === 0) ? (
-                     <p>Please add Services and Fields before defining availability.</p>
-                   ) : (
-                     <>
-                       <div>
-                         <label htmlFor="availabilityServiceId">Service:</label>
-                         <select id="availabilityServiceId" name="availabilityServiceId" required>
-                            <option value="">-- Select Service --</option>
-                            {services.map(service => (
-                               <option key={service.id} value={service.id}>{service.name}</option>
-                            ))}
-                         </select>
-                       </div>
-                       {/* Multi-Field Selection */}
-                       <div style={{marginTop: '0.5rem'}}>
-                         <label>Applies to Field(s):</label>
-                         {sites.map(site => (
-                           <div key={`avail-site-group-${site.id}`} style={{ marginLeft: '1rem', marginBottom: '0.5rem' }}>
-                             <strong>{site.name}</strong>
-                             {getFieldsForSite(site.id).map(field => (
-                               <div key={`avail-field-chk-${field.id}`} style={{ marginLeft: '1rem' }}>
-                                 <input type="checkbox" id={`availField-${field.id}`} name="availabilityFieldIds" value={field.id} />
-                                 <label htmlFor={`availField-${field.id}`}>{field.name || `Field ID ${field.id}`}</label>
-                               </div>
-                             ))}
-                           </div>
-                         ))}
-                       </div>
-                       {/* Time, Recurrence, Capacity, Active Inputs */}
-                       <div style={{marginTop: '0.5rem'}}>
-                         <label htmlFor="availabilityStartTime">Start Time:</label>
-                         <input type="time" id="availabilityStartTime" name="availabilityStartTime" required />
-                       </div>
-                       <div style={{marginTop: '0.5rem'}}>
-                         <label htmlFor="availabilityEndTime">End Time:</label>
-                         <input type="time" id="availabilityEndTime" name="availabilityEndTime" required />
-                       </div>
-                        <div style={{marginTop: '0.5rem'}}>
-                         <label htmlFor="availabilityBaseCapacity">Base Capacity (Optional):</label>
-                         <input type="number" id="availabilityBaseCapacity" name="availabilityBaseCapacity" min="0" placeholder="Defaults to field capacity" />
-                       </div>
-                       <div style={{marginTop: '0.5rem'}}>
-                           <label>Recurring Days (Mon-Sun):</label>
-                           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginLeft: '1rem' }}>
-                              {[
-                                 { label: 'Mon', value: 1 }, { label: 'Tue', value: 2 }, { label: 'Wed', value: 3 },
-                                 { label: 'Thu', value: 4 }, { label: 'Fri', value: 5 }, { label: 'Sat', value: 6 },
-                                 { label: 'Sun', value: 7 },
-                              ].map(day => (
-                                 <div key={`avail-day-${day.value}`}>
-                                    <input type="checkbox" id={`availabilityDayOfWeek-${day.value}`} name={`availabilityDayOfWeek-${day.value}`} />
-                                    <label htmlFor={`availabilityDayOfWeek-${day.value}`}>{day.label}</label>
-                                 </div>
-                              ))}
-                           </div>
-                       </div>
-                       <div style={{marginTop: '0.5rem'}}>
-                           <label htmlFor="availabilitySpecificDate">Specific Date (Optional):</label>
-                           <input type="date" id="availabilitySpecificDate" name="availabilitySpecificDate" placeholder="Leave blank if recurring" />
-                       </div>
-                       <div style={{marginTop: '0.5rem'}}>
-                         <label htmlFor="availabilityIsActive">Is Active:</label>
-                         <input type="checkbox" id="availabilityIsActive" name="availabilityIsActive" defaultChecked />
-                       </div>
-                       <button type="submit" style={{marginTop: '1rem'}}>Add Availability Rule</button>
-                     </>
-                   )}
-                 </form>
-
-                {/* Display Existing Availability Rules */}
-                <h3>Existing Availability Rules</h3>
-                {isLoadingServiceAvailability ? (
-                   <p>Loading availability rules...</p>
-                ) : serviceAvailability.length === 0 ? (
-                   <p>No availability rules defined yet.</p>
-                ) : (
-                   <div className={styles.availabilityList}>
-                      {serviceAvailability.map(rule => (
-                         <div key={rule.id} className={styles.availabilityCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
-                            <p>
-                               {/* Find service name - ideally join in API later */}
-                               <strong>Service ID:</strong> {rule.service_id} |
-                               <strong>Fields:</strong> {rule.field_ids.join(', ')} |
-                               <label htmlFor={`active-toggle-${rule.id}`} style={{ marginLeft: '0.5rem', cursor: 'pointer' }}>
-                                   <input
-                                       type="checkbox"
-                                       id={`active-toggle-${rule.id}`}
-                                       checked={rule.is_active}
-                                       onChange={() => handleToggleServiceAvailabilityActive(rule.id, rule.is_active)}
-                                       style={{ marginRight: '0.3rem' }}
-                                   />
-                                   {rule.is_active ? 'Yes' : 'No'}
-                               </label>
-                            </p>
-                             <p>
-                               <strong>Time:</strong> {rule.start_time} - {rule.end_time} |
-                               <strong>Recurrence:</strong>
-                               {rule.days_of_week && rule.days_of_week.length > 0 ? `Days: ${rule.days_of_week.join(', ')} (Mon=1)` : rule.specific_date ? `${rule.specific_date}` : 'None specified'}
-                            </p>
-                             <p><strong>Base Capacity:</strong> {rule.base_capacity ?? 'Field Default'}</p>
-                           {/* Add Edit/Delete later */}
-                         </div>
-                      ))}
-                   </div>
-                )}
-             </section>
+             // Render the ServiceAvailabilityManagement component
+             <ServiceAvailabilityManagement
+                serviceAvailability={serviceAvailability}
+                isLoadingServiceAvailability={isLoadingServiceAvailability}
+                services={services}
+                sites={sites}
+                fields={fields}
+                error={error}
+                handleAddServiceAvailability={handleAddServiceAvailability}
+                handleToggleServiceAvailabilityActive={handleToggleServiceAvailabilityActive}
+                addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
+                getFieldsForSite={getFieldsForSite}
+             />
            )}
            {/* ------------------------------------------------ */}
 
           {/* --- Client Booking View Section (Visible to all logged-in users for now) --- */}
-          <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
-              <h2>Available Services & Times</h2>
-
-              {/* Slot Search Form */}
-              <div style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px'}}>
-                  <h3>Find Available Slots</h3>
-                  {services.length === 0 ? (
-                      <p>Loading services...</p> // Or handle case where no services exist
-                  ) : (
-                      <div>
-                          <label htmlFor="clientServiceSelect">Service:</label>
-                          <select
-                              id="clientServiceSelect"
-                              value={selectedServiceId}
-                              onChange={(e) => setSelectedServiceId(e.target.value)}
-                              required
-                              style={{ marginRight: '1rem' }}
-                          >
-                              <option value="">-- Select a Service --</option>
-                              {services.map(service => (
-                                  <option key={service.id} value={service.id}>{service.name}</option>
-                              ))}
-                          </select>
-                      </div>
-                  )}
-                  <div style={{ marginTop: '0.5rem' }}>
-                      <label htmlFor="clientStartDate">From:</label>
-                      <input
-                          type="date"
-                          id="clientStartDate"
-                          value={selectedStartDate}
-                          onChange={(e) => setSelectedStartDate(e.target.value)}
-                          min={today} // Prevent selecting past dates
-                          required
-                          style={{ marginRight: '1rem' }}
-                      />
-                      <label htmlFor="clientEndDate">To:</label>
-                      <input
-                          type="date"
-                          id="clientEndDate"
-                          value={selectedEndDate}
-                          onChange={(e) => setSelectedEndDate(e.target.value)}
-                          min={selectedStartDate} // Prevent end date being before start date
-                          required
-                          style={{ marginRight: '1rem' }}
-                      />
-                  </div>
-                  <button
-                      onClick={fetchCalculatedSlots} // Connect button
-                      disabled={!selectedServiceId || !selectedStartDate || !selectedEndDate || isLoadingCalculatedSlots} // Disable if inputs missing or loading
-                      style={{ marginTop: '1rem' }}
-                  >
-                      {isLoadingCalculatedSlots ? 'Finding Slots...' : 'Find Slots'} {/* Update button text */}
-                  </button>
-              </div>
-
-              {/* Display Area - Shows calculated slots */}
-              <div className={styles.slotResultsArea}>
-                  <h3>Available Slots</h3>
-                  {isLoadingCalculatedSlots ? (
-                      <p>Loading slots...</p>
-                  ) : error ? (
-                      <p style={{ color: 'red' }}>Error: {error}</p>
-                  ) : calculatedSlots.length === 0 ? (
-                      <p>No available slots found for the selected criteria. Try different dates or services.</p>
-                  ) : (
-                      <div className={styles.calculatedSlotsList}> {/* Use a specific class */}
-                          {calculatedSlots.map((slot, index) => (
-                              <div key={`${slot.slot_field_id}-${slot.slot_start_time}-${index}`} className={styles.calculatedSlotCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
-                                  {/* Use slot_field_name directly from API response */}
-                                  <p><strong>Field:</strong> {slot.slot_field_name || `ID: ${slot.slot_field_id}`}</p>
-                                  <p>
-                                      <strong>Start:</strong> {new Date(slot.slot_start_time).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })} |
-                                      <strong> End:</strong> {new Date(slot.slot_end_time).toLocaleString([], { timeStyle: 'short' })}
-                                  </p>
-                                  <p><strong>Remaining Capacity:</strong> {slot.slot_remaining_capacity}</p>
-                                  {/* Enable book button - action still pending */}
-                                  <button
-                                    // onClick={() => handleBookSlot(slot)} // Add booking handler later
-                                    style={{marginTop: '0.5rem'}}
-                                  >
-                                      Book Now
-                                  </button>
-                              </div>
-                          ))}
-                      </div>
-                  )}
-               </div>
-          </section>
-          {/* ------------------------------------------------------------------------------ */}
-
+          {/* Render the ClientBooking component, passing services */}
+          <ClientBooking services={services} />
         </main>
       )}
     </div>
