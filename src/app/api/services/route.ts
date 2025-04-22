@@ -16,7 +16,7 @@ export async function GET() {
   const supabaseAdmin = await createAdminClient()
   const { data: services, error } = await supabaseAdmin
     .from('services')
-    .select('*')
+    .select('id, name, description, created_at, requires_field_selection')
     .order('name')
 
   if (error) {

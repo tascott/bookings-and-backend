@@ -52,6 +52,7 @@ type Service = {
   name: string;
   description: string | null;
   created_at: string;
+  requires_field_selection: boolean;
 }
 
 // Define ServiceAvailability Type
@@ -111,22 +112,6 @@ export default function Home() {
   const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [serviceAvailability, setServiceAvailability] = useState<ServiceAvailability[]>([]);
   const [isLoadingServiceAvailability, setIsLoadingServiceAvailability] = useState(false);
-  // State for slot search inputs - MOVED to ClientBooking.tsx
-  /*
-  const today = new Date().toISOString().split('T')[0]; // Get today in YYYY-MM-DD format
-  const nextWeekDate = new Date();
-  nextWeekDate.setDate(nextWeekDate.getDate() + 7);
-  const nextWeek = nextWeekDate.toISOString().split('T')[0]; // Get date 7 days from now
-  const [selectedServiceId, setSelectedServiceId] = useState<string>(''); // Store as string for select value
-  const [selectedStartDate, setSelectedStartDate] = useState<string>(today);
-  const [selectedEndDate, setSelectedEndDate] = useState<string>(nextWeek);
-  */
-  // State for the calculated slots - MOVED to ClientBooking.tsx
-  /*
-  const [calculatedSlots, setCalculatedSlots] = useState<CalculatedSlot[]>([]);
-  const [isLoadingCalculatedSlots, setIsLoadingCalculatedSlots] = useState(false);
-  */
-
   const supabase = createClient();
 
   // Create refs for forms that need resetting after async ops

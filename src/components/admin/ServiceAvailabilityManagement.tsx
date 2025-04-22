@@ -59,7 +59,10 @@ export default function ServiceAvailabilityManagement({
     getFieldsForSite
 }: ServiceAvailabilityManagementProps) {
 
-    // No local state needed currently
+    // Helper to get service name from the services prop
+    const getServiceName = (serviceId: number): string => {
+        return services.find(s => s.id === serviceId)?.name || `ID ${serviceId}`;
+    }
 
     return (
         <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
@@ -152,8 +155,8 @@ export default function ServiceAvailabilityManagement({
                     {serviceAvailability.map(rule => (
                         <div key={rule.id} className={styles.availabilityCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
                             <p>
-                                {/* Find service name - ideally join in API later */}
-                                <strong>Service ID:</strong> {rule.service_id} |
+                                {/* Display Service Name (ID: X) */}
+                                <strong>Service:</strong> {getServiceName(rule.service_id)} (ID: {rule.service_id}) |
                                 <strong>Fields:</strong> {rule.field_ids.join(', ')} |
                                 <label htmlFor={`active-toggle-${rule.id}`} style={{ marginLeft: '0.5rem', cursor: 'pointer' }}>
                                     <input
