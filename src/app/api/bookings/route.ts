@@ -2,46 +2,88 @@ import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 
-// GET all bookings
+// GET all bookings, enriching with client names
 export async function GET() {
   const supabase = await createServerClient()
-  // const { searchParams } = new URL(request.url) // Keep commented
-  // Potential future query params: field_id, start_date, end_date
+  const supabaseAdmin = await createAdminClient()
 
-  // Check auth
+  // Check auth & role (Admin/Staff)
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
     return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
   }
-
-  // Allow staff+admin to view bookings
-   const { data: staffData, error: staffError } = await supabase
+  const { data: staffData, error: staffError } = await supabase
     .from('staff')
     .select('role')
     .eq('user_id', user.id)
     .single()
 
   if (staffError || !staffData || !['admin', 'staff'].includes(staffData.role || '')) {
-    return NextResponse.json({ error: 'Forbidden: Requires admin or staff role to view bookings' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden: Requires admin or staff role' }, { status: 403 })
   }
 
-  // Build query (fetch all for now)
-  const supabaseAdmin = await createAdminClient()
-  // Use const since query is not reassigned here
-  const query = supabaseAdmin.from('bookings').select('*')
-  // TODO: Add filtering based on searchParams later if needed
+  try {
+    // 1. Fetch all relevant bookings
+    // TODO: Add pagination/date filtering later
+    const { data: bookingsData, error: bookingsError } = await supabaseAdmin
+      .from('bookings')
+      .select('*')
+      .order('start_time', { ascending: false });
 
-  const { data: bookings, error } = await query.order('start_time', { ascending: true })
+    if (bookingsError) throw bookingsError;
+    if (!bookingsData) throw new Error('Failed to fetch bookings.');
 
-  if (error) {
-    console.error('Error fetching bookings:', error)
-    return NextResponse.json({ error: error.message }, { status: 500 })
+    // Extract booking IDs to fetch relevant client links
+    const bookingIds = bookingsData.map(b => b.id);
+
+    // 2. Fetch relevant booking_client links and associated client names
+    const clientLinksMap = new Map<number, { clientId: number; clientName: string | null }>();
+
+    if (bookingIds.length > 0) {
+      const { data: clientLinksData, error: clientLinksError } = await supabaseAdmin
+        .from('booking_clients')
+        .select(`
+          booking_id,
+          client_id,
+          clients ( id, name )
+        `)
+        .in('booking_id', bookingIds);
+
+      if (clientLinksError) throw clientLinksError;
+
+      // 3. Create a map for easy lookup: booking_id -> client info
+      clientLinksData?.forEach(link => {
+          // Linter might still infer clients as array, handle it
+          const clientInfo = Array.isArray(link.clients) ? link.clients[0] : link.clients;
+          if (link.booking_id) {
+              clientLinksMap.set(link.booking_id, {
+                  clientId: link.client_id,
+                  clientName: clientInfo?.name ?? null
+              });
+          }
+      });
+    }
+
+    // 4. Merge client info into bookings data
+    const processedBookings = bookingsData.map(booking => {
+      const clientInfo = clientLinksMap.get(booking.id);
+      return {
+        ...booking,
+        client_id: clientInfo?.clientId,
+        client_name: clientInfo?.clientName,
+      };
+    });
+
+    return NextResponse.json(processedBookings);
+
+  } catch (error: unknown) {
+      console.error('Error fetching enriched bookings:', error);
+      const message = error instanceof Error ? error.message : 'Failed to fetch bookings';
+      return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  return NextResponse.json(bookings)
 }
 
-// POST a new booking (Admin/Staff only)
+// POST a new booking (Admin/Staff Manual Creation)
 export async function POST(request: Request) {
   const supabase = await createServerClient()
   const supabaseAdmin = await createAdminClient()

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import styles from "@/app/page.module.css"; // Adjust path as needed
 
 // Define required types directly or import from a shared types file later
@@ -31,6 +31,14 @@ type AggregatedSlot = {
     // contributingSlots: CalculatedSlot[];
 }
 
+// Type for the payload sent to the booking API
+interface BookingPayload {
+    service_id: number;
+    start_time: string;
+    end_time: string;
+    field_id?: number;
+}
+
 // Define props for the component
 interface ClientBookingProps {
     services: Service[];
@@ -54,6 +62,9 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     // State for the aggregated slots for display
     const [aggregatedSlots, setAggregatedSlots] = useState<AggregatedSlot[]>([]);
     const [isLoadingCalculatedSlots, setIsLoadingCalculatedSlots] = useState(false);
+
+    // State for booking status
+    const [bookingStatus, setBookingStatus] = useState<{ loading: boolean; success: string | null; error: string | null; targetSlotKey: string | null }>({ loading: false, success: null, error: null, targetSlotKey: null });
 
     // Define helper here to be accessible throughout the component
     const getServiceName = (id: number) => services.find(s => s.id === id)?.name || `Service ID ${id}`;
@@ -92,6 +103,47 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             totalRemainingCapacity: group.totalCapacity,
         }));
     };
+
+    // --- Booking Handlers ---
+    const handleBookSlot = useCallback(async (slotData: AggregatedSlot | CalculatedSlot, isAggregated: boolean) => {
+        const slotKey = isAggregated ? `${(slotData as AggregatedSlot).serviceId}-${(slotData as AggregatedSlot).startTime}` : `${(slotData as CalculatedSlot).slot_field_id}-${(slotData as CalculatedSlot).slot_start_time}`;
+        setBookingStatus({ loading: true, success: null, error: null, targetSlotKey: slotKey });
+
+        // Use the specific payload type
+        const payload: BookingPayload = {
+            service_id: isAggregated ? (slotData as AggregatedSlot).serviceId : parseInt(selectedServiceId, 10),
+            start_time: isAggregated ? (slotData as AggregatedSlot).startTime : (slotData as CalculatedSlot).slot_start_time,
+            end_time: isAggregated ? (slotData as AggregatedSlot).endTime : (slotData as CalculatedSlot).slot_end_time,
+        };
+
+        if (!isAggregated) {
+            payload.field_id = (slotData as CalculatedSlot).slot_field_id;
+        }
+
+        try {
+            const response = await fetch('/api/client-booking', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || `Booking failed (HTTP ${response.status})`);
+            }
+
+            setBookingStatus({ loading: false, success: `Successfully booked! (ID: ${result.bookingId})`, error: null, targetSlotKey: null });
+            // Optionally: Refresh available slots or clear the list after successful booking
+            setAggregatedSlots([]);
+            setRawCalculatedSlots([]);
+
+        } catch (e) {
+            const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred during booking.';
+            console.error("Booking Error:", e);
+            setBookingStatus({ loading: false, success: null, error: errorMessage, targetSlotKey: null });
+        }
+    }, [selectedServiceId]); // Add dependencies if needed
 
     // --- Fetch Calculated Slots from API ---
     const fetchCalculatedSlots = async () => {
@@ -147,9 +199,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         }
     };
     // -------------------------------------
-
-    // TODO: Implement booking handler
-    // const handleBookSlot = async (slot: CalculatedSlot) => { ... }
 
     return (
         <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
@@ -235,26 +284,32 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                             <div className={styles.calculatedSlotsList}>
                                 {showAggregated
                                     ? /* Render Aggregated Slots */
-                                      aggregatedSlots.map((aggSlot, index) => (
-                                        <div key={`agg-${aggSlot.serviceId}-${aggSlot.startTime}-${index}`} className={styles.calculatedSlotCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
-                                            <p><strong>Service:</strong> {aggSlot.serviceName}</p>
-                                            <p>
-                                                <strong>Start:</strong> {new Date(aggSlot.startTime).toLocaleString([], { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' })} |
-                                                <strong> End:</strong> {new Date(aggSlot.endTime).toLocaleString([], { timeZone: 'UTC', timeStyle: 'short' })}
-                                            </p>
-                                            <p><strong>Total Remaining Capacity:</strong> {aggSlot.totalRemainingCapacity}</p>
-                                            <button
-                                                // onClick={() => handleBookSlotAggregated(aggSlot)} // Need specific booking handler
-                                                style={{ marginTop: '0.5rem' }}
-                                            >
-                                                Book Now
-                                            </button>
-                                        </div>
-                                    ))
+                                      aggregatedSlots.map((aggSlot, index) => {
+                                        const slotKey = `${aggSlot.serviceId}-${aggSlot.startTime}`;
+                                        const isLoadingThisSlot = bookingStatus.loading && bookingStatus.targetSlotKey === slotKey;
+                                        return (
+                                            <div key={`agg-${slotKey}-${index}`} className={styles.calculatedSlotCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
+                                                <p><strong>Service:</strong> {aggSlot.serviceName}</p>
+                                                <p>
+                                                    <strong>Start:</strong> {new Date(aggSlot.startTime).toLocaleString([], { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' })} |
+                                                    <strong> End:</strong> {new Date(aggSlot.endTime).toLocaleString([], { timeZone: 'UTC', timeStyle: 'short' })}
+                                                </p>
+                                                <p><strong>Total Remaining Capacity:</strong> {aggSlot.totalRemainingCapacity}</p>
+                                                <button
+                                                    onClick={() => handleBookSlot(aggSlot, true)} // Pass aggregated slot and flag
+                                                    disabled={isLoadingThisSlot || bookingStatus.loading}
+                                                    style={{ marginTop: '0.5rem' }}
+                                                >
+                                                    {isLoadingThisSlot ? 'Booking...' : 'Book Now'}
+                                                </button>
+                                            </div>
+                                        )
+                                      })
                                     : /* Render Per-Field Slots */
                                       rawCalculatedSlots.map((slot, index) => {
+                                        const slotKey = `${slot.slot_field_id}-${slot.slot_start_time}`;
+                                        const isLoadingThisSlot = bookingStatus.loading && bookingStatus.targetSlotKey === slotKey;
                                         // Find the service name for this slot's service ID (needed if mixing results)
-                                        // Although in this logic branch, all slots *should* belong to the selectedServiceId
                                         const serviceName = getServiceName(parseInt(selectedServiceId, 10)) || `Service ID ${selectedServiceId}`;
                                         return (
                                             <div key={`field-${slot.slot_field_id}-${slot.slot_start_time}-${index}`} className={styles.calculatedSlotCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
@@ -269,10 +324,11 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                                 {/* Show individual field capacity */}
                                                 <p><strong>Remaining Capacity:</strong> {slot.slot_remaining_capacity}</p>
                                                 <button
-                                                    // onClick={() => handleBookSlotField(slot)} // Need specific booking handler
+                                                    onClick={() => handleBookSlot(slot, false)} // Pass field slot and flag
+                                                    disabled={isLoadingThisSlot || bookingStatus.loading}
                                                     style={{ marginTop: '0.5rem' }}
                                                 >
-                                                    Book This Field
+                                                    {isLoadingThisSlot ? 'Booking...' : 'Book This Field'}
                                                 </button>
                                             </div>
                                         );
@@ -283,6 +339,9 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                     })()
                 )}
             </div>
+            {/* Display Booking Status Messages */}
+            {bookingStatus.error && <p style={{ color: 'red', marginTop: '1rem' }}>Booking Error: {bookingStatus.error}</p>}
+            {bookingStatus.success && <p style={{ color: 'green', marginTop: '1rem' }}>{bookingStatus.success}</p>}
         </section>
     );
 }

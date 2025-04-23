@@ -1,5 +1,7 @@
 'use client';
 
+import { useState } from 'react'; // Import useState
+import { useSearchParams } from 'next/navigation'; // Import hook
 import styles from "@/app/page.module.css"; // Adjust path as needed
 
 // Define props for the component
@@ -12,31 +14,84 @@ interface AuthFormProps {
 }
 
 export default function AuthForm({ login, signup }: AuthFormProps) {
+    // Get search params
+    const searchParams = useSearchParams();
+    const message = searchParams.get('message');
+    // State to control the mode: 'login' or 'signup'
+    const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+
+    // Toggle function
+    const toggleMode = () => {
+        setAuthMode(prevMode => prevMode === 'login' ? 'signup' : 'login');
+    };
 
     return (
         <div style={{ maxWidth: '400px', margin: '50px auto', border: '1px solid #ccc', padding: '2rem', borderRadius: '8px' }}>
-            <form className={styles.authForm}>
-                <h2>Login or Sign Up</h2>
+            {/* Update the form action based on the mode */}
+            <form className={styles.authForm} action={authMode === 'login' ? login : signup}>
+                <h2>{authMode === 'login' ? 'Log In' : 'Sign Up'}</h2>
 
-                <div>
-                    <label htmlFor="name">Name:</label>
-                    <input id="name" name="name" type="text" placeholder="Your Name (for signup)" />
-                </div>
+                {/* Display message if present in URL */}
+                {message && (
+                    <p style={{ color: 'red', border: '1px solid red', padding: '0.5rem', borderRadius: '4px', marginBottom: '1rem' }}>
+                        {message}
+                    </p>
+                )}
 
-                <div>
+                {/* Conditionally render Sign Up fields */}
+                {authMode === 'signup' && (
+                    <>
+                        <div style={{ display: 'flex', gap: '1rem' }}>
+                            <div style={{ flex: 1 }}>
+                                <label htmlFor="firstName">First Name:</label>
+                                {/* Add required attribute only for signup */}
+                                <input id="firstName" name="firstName" type="text" required placeholder="First Name" />
+                            </div>
+                            <div style={{ flex: 1 }}>
+                                <label htmlFor="lastName">Last Name:</label>
+                                {/* Add required attribute only for signup */}
+                                <input id="lastName" name="lastName" type="text" required placeholder="Last Name" />
+                            </div>
+                        </div>
+
+                        <div style={{ marginTop: '1rem' }}> {/* Added margin for spacing */}
+                            <label htmlFor="phone">Phone Number:</label>
+                            {/* Add required attribute only for signup */}
+                            <input id="phone" name="phone" type="tel" required placeholder="(xxx) xxx-xxxx" />
+                        </div>
+
+                        <div style={{ marginTop: '1rem' }}> {/* Added margin for spacing */}
+                            <label htmlFor="petName">Pet&apos;s Name (Optional):</label>
+                            <input id="petName" name="petName" type="text" placeholder="Fido" />
+                        </div>
+                    </>
+                )}
+
+                {/* Email and Password are always required */}
+                <div style={{ marginTop: '1rem' }}> {/* Added margin for spacing */}
                     <label htmlFor="email">Email:</label>
                     <input id="email" name="email" type="email" required placeholder="your@email.com" />
                 </div>
 
-                <div>
+                <div style={{ marginTop: '1rem' }}> {/* Added margin for spacing */}
                     <label htmlFor="password">Password:</label>
                     <input id="password" name="password" type="password" required placeholder="••••••••" />
                 </div>
 
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '1rem' }}>
-                    {/* Use the passed server actions */}
-                    <button type="submit" formAction={login}>Log in</button>
-                    <button type="submit" formAction={signup}>Sign up</button>
+                {/* Buttons Section */}
+                <div style={{ marginTop: '1.5rem' }}> {/* Adjusted margin */}
+                    {/* Display the correct submit button based on mode */}
+                    <button type="submit" style={{ width: '100%', padding: '0.75rem' }}>
+                        {authMode === 'login' ? 'Log In' : 'Sign Up'}
+                    </button>
+
+                    {/* Link to toggle mode */}
+                    <p style={{ textAlign: 'center', marginTop: '1rem', fontSize: '0.9em' }}>
+                        {authMode === 'login' ? "Don't have an account? " : "Already have an account? "}
+                        <button type="button" onClick={toggleMode} style={{ background: 'none', border: 'none', color: 'blue', textDecoration: 'underline', cursor: 'pointer', padding: 0 }}>
+                            {authMode === 'login' ? 'Sign Up' : 'Log In'}
+                        </button>
+                    </p>
                 </div>
                 {/* Optionally display authentication errors passed via props */}
                 {/* {authError && <p style={{ color: 'red', marginTop: '1rem' }}>{authError}</p>} */}

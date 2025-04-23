@@ -2,6 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { headers } from 'next/headers'
 
 // Use the server client
 import { createClient } from '@/utils/supabase/server'
@@ -29,54 +30,56 @@ export async function login(formData: FormData) {
 }
 
 export async function signup(formData: FormData) {
+  const origin = (await headers()).get('origin')
+  const email = formData.get('email') as string
+  const password = formData.get('password') as string
+  // Get new required fields
+  const firstName = formData.get('firstName') as string
+  const lastName = formData.get('lastName') as string
+  const phone = formData.get('phone') as string
+  // Get optional pet name
+  // const petName = formData.get('petName') as string | null
+
   const supabase = await createClient()
 
-  // Extract email and password for signup
-  const email = formData.get('email') as string;
-  const password = formData.get('password') as string;
-  // Extract name for profile update later
-  const name = formData.get('name') as string;
-
-  // Validate inputs (basic example)
-  if (!email || !password) {
-     console.error('Signup Error: Email and password are required.');
-     return redirect('/error?message=Email+and+password+required'); // Or redirect back to form with error
+  // Basic server-side validation
+  if (!email || !password || !firstName || !lastName || !phone) {
+    // Redirect back to signup with an error message
+    // Consider a more specific error message
+    return redirect('/?message=Missing required fields for signup.')
   }
 
-  // Perform the signup
-  const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-    email: email,
-    password: password,
-  });
-
-  if (signUpError) {
-    console.error('Signup Auth Error:', signUpError.message);
-    // Consider more specific error redirects based on signUpError.code
-    return redirect('/error?message=' + encodeURIComponent(signUpError.message));
+  // Prepare metadata object - IMPORTANT: keys must match what the trigger expects
+  const metadata = {
+    first_name: firstName,
+    last_name: lastName,
+    phone: phone,
+    // Include pet_name only if provided and the trigger handles it
+    // pet_name: petName && petName.trim() !== '' ? petName.trim() : undefined
   }
 
-  // Signup successful, user exists in auth.users
-  // The trigger should have created the basic client profile.
-  // Now update the client profile with the name.
-  if (signUpData.user && name) { // Check if user object exists and name was provided
-    const { error: updateError } = await supabase
-      .from('clients')
-      .update({ name: name })
-      .eq('user_id', signUpData.user.id); // Match the user_id created by the trigger
+  const { error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: `${origin}/auth/confirm`,
+      // Pass the required fields in the 'data' field (referred to as raw_user_meta_data in trigger)
+      data: metadata,
+    },
+  })
 
-    if (updateError) {
-      console.error('Signup Profile Update Error:', updateError.message);
-      // Log this error, but don't necessarily block the user
-      // Redirecting home anyway as auth succeeded
+  if (error) {
+    console.error('Signup Auth Error:', error.message);
+    // Check for specific error indicating user already exists
+    if (error.message.includes('User already registered') || error.message.includes('already exists')) {
+        // Redirect back to the signup page with a specific message
+        return redirect('/?message=Email+already+in+use.+Please+log+in+or+use+a+different+email.');
     }
-  } else if (signUpData.user && !name) {
-     console.warn('Signup completed, but no name provided to update profile.');
-  } else if (!signUpData.user) {
-      console.error('Signup succeeded but no user data returned from signUp.');
-      // This is unexpected, redirect to error
-      return redirect('/error?message=Signup+failed+unexpectedly');
+    // For other errors, redirect to the generic error page
+    return redirect('/error?message=' + encodeURIComponent(error.message));
   }
 
+  // Redirect to a page indicating verification email was sent, or just home
   revalidatePath('/', 'layout');
-  redirect('/');
+  redirect('/?message=Check email to continue sign in process');
 }

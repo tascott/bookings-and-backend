@@ -11,6 +11,9 @@ type Booking = {
   service_type: string | null;
   status: string;
   max_capacity: number | null;
+  // Add fields returned by the updated API
+  client_id?: number | null;
+  client_name?: string | null;
 }
 
 type Site = {
@@ -116,6 +119,8 @@ export default function BookingManagement({
                     {bookings.map(booking => (
                         <div key={booking.id} className={styles.bookingCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
                             <p>
+                                {/* Display Client Name if available */}
+                                <strong>Client:</strong> {booking.client_name || 'N/A'} (ID: {booking.client_id || 'N/A'}) |
                                 <strong>Field ID:</strong> {booking.field_id} |
                                 <strong>Service:</strong> {booking.service_type || 'N/A'} |
                                 <strong>Status:</strong> {booking.status}
