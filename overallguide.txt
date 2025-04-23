@@ -1,230 +1,81 @@
-Below is an English-language outline of how your data tables and relationships might work, keeping in mind you want to:
-
-Keep the software as simple as possible, to be able to sell it as a solution in future to other pet businesses.
-
-Represent Locations (multiple sites), their Fields, and who's managing them.
-
-Handle Bookings with start/end times (for a calendar view) and show them on a map (using location data).
-
-Organize Staff and Clients in a way that can be extended to handle roles, assignments, or routes later on.
-
-Eventually accommodate multiple uses—like doggy daycare, bootcamps, etc.—with capacity tracking.
-
-1. Site (Location)
-Purpose: Represents each physical location, e.g., a main site or future expansion sites.
-
-Key Fields:
-
-id (primary key)
-
-name (e.g., "Downtown Site", "Uptown Branch")
-
-address (human-readable address for convenience)
-
-is_active (boolean to mark if a site is operational)
-
-Relationships:
-
-One Site can have many Fields.
-
-Example: Site #1 is your current dog park facility with three fields. If you expand in the future, you can add another site record.
-
-2. Field
-Purpose: A sub-location within a Site—e.g., "Field A," "Field B," or "Yoga Lawn."
-
-Key Fields:
-
-id (primary key)
-
-site_id (foreign key → Site.id)
-
-name (e.g., "Small Dog Area", "Bootcamp Field")
-
-capacity (how many people/dogs can safely be in this field)
-
-field_type (if you want to categorize it: "dog daycare," "fitness class," "general rental," etc.)
-
-
-Relationships:
-
-One Site → Many Fields.
-
-One Field → Many Bookings (since multiple time slots can exist in the same field).
-
-Example: For your three dog park fields, each might have a separate entry with its capacity. They all share the same site_id.
-
-3. Booking
-Purpose: Captures each scheduled "session" or "time slot" when the field is used (for dog daycare session, yoga class, private rental, etc.). **Currently, these are created manually by admin/staff in the UI.**
-
-Key Fields:
-
-id (primary key)
-field_id (foreign key → Field.id) **Note: Client bookings will likely be based on *service availability* rather than directly on fields.**
-start_time (date-time)
-end_time (date-time)
-service_type (what is this slot for? "dog daycare," "fitness," "private rental," etc.) **Ideally, this should link to the `services` table in future.**
-status (e.g., "open," "booked," "cancelled," or "closed")
-max_capacity (optional if it differs from the field's total capacity; used for a specific booking that's capped at a smaller number)
-
-Relationships:
-
-A Booking belongs to exactly one Field (**under the current manual creation flow**).
-Potentially, a Booking can have multiple Clients (e.g., group class) or just one (private rental) depending on your business logic. That implies:
-
-Many-to-many: A booking might have multiple clients or dogs attached (via `booking_clients` table).
-
-Example: A manually created booking for "March 10, 9am–12pm" in Field A with a "dog daycare" service.
-
-4. Client & Pet (If Applicable)
-Client: The person who's booking or paying for services.
-
-id
-
-user_id (links to your authentication system, if you're using a BaaS or custom auth)
-
-name, email, etc.
-
-Pet: A dog or other animal that belongs to a Client.
-
-id
-
-client_id (foreign key → Client.id)
-
-name, breed, size, etc.
-
-Relationships:
-
-One Client → Many Pets.
-
-Each Booking could be linked to many Clients (and their pets), especially if group bookings are allowed. This is typically done via a join table—for instance, booking_clients.
-
-5. Booking-Clients (Join Table)
-Purpose: For group sessions, we need a table to connect one booking to multiple clients.
-
-Key Fields:
-
-id (primary key)
-
-booking_id (fk → Booking.id)
-
-client_id (fk → Client.id)
-
-Possibly pet_id if each booking is tied to a specific pet. (Or a separate booking_pets table if one client can bring multiple pets.)
-
-Relationships:
-
-A Booking can have many clients; a Client can appear in many bookings → many-to-many.
-
-6. Staff
-Purpose: Represents employees or admin users who manage bookings, handle operations, or do on-site tasks.
-
-Key Fields:
-
-id
-
-user_id (again, references your auth table, potentially)
-
-name, role (admin, staff, driver, etc.)
-
-phone_number, notes
-
-Relationships:
-
-Similar to clients, staff can "log in" from the web or mobile.
-
-You might have a booking_staff join table if multiple staff members can be assigned to a single booking.
-
-7. Payments / Transactions (Optional Initially)
-Purpose: Track each payment (method, amount, booking reference, etc.).
-
-Key Fields:
-
-id
-
-client_id
-
-booking_id (if a payment is tied to a specific session)
-
-amount, currency
-
-status ("paid," "refunded," "pending")
-
-created_at
-
-8. Map View Implications
-Site or Field:
-
-
-Your front end (Next.js or React Native) can plot those coordinates on a map component (e.g., using React Leaflet on web, or MapView in React Native).
-
-If staff or vehicles are also tracked in real time, you'd store their lat/lng in a separate table or ephemeral state, but that might be an advanced feature.
-
-9. Calendar View Implications
-You have start_time and end_time in Booking.
-
-On the front end, you can query all bookings for a certain timeframe and display them in a calendar interface. **For *client* booking views, you'll need to generate available slots based on `service_availability` rules, considering existing `bookings`.**
-
-If you want staff to see all future bookings at a glance, you could:
-
-Filter by field, site, or staff assignment.
-
-Group them by day, by location, or by staff.
-
-Putting It All Together
-High-Level ERD (in words)
-Site (1–N) → Field:
-
-Each site has one or more fields.
-
-Field (1–N) → Booking:
-
-Each field can have multiple bookings over time (**currently created manually**).
-
-**Service (1-N) → ServiceAvailability (N-N) → Field:**
-
-**A Service defines what is offered. A ServiceAvailability rule links one Service to *one or more* Fields, defining *when* it's available (times, recurrence/date).**
-
-**ServiceAvailability Rules + Existing Bookings → Actual Client Availability:**
-
-**The *actual* open slots for clients are derived by taking the rules from `service_availability` and subtracting any conflicting `bookings`.**
-
-Booking (N–N) → Client:
-
-Many bookings can have many clients (i.e., group sessions). Typically via a join table called `booking_clients`.
-
-Client (1–N) → Pet:
-
-One client can own multiple pets.
-
-Staff:
-
-Similar to clients in that they have user_id for login, but different roles/permissions.
-
-If staff are assigned to bookings, that's also (N–N) → a join table like booking_staff.
-
-Payments:
-
-Ties back to the client and (optionally) a booking.
-
-Next Steps
-Once you have this conceptual map, you can:
-
-Create Your BaaS or Database
-
-For example, in Supabase, make tables named sites, fields, bookings, clients, pets, booking_clients, staff, etc.
-
-Add foreign keys, relationships, and any row-level security rules for role-based access.
-
-Add Minimal Columns First
-
-Keep it simple with just the absolutely necessary columns (ID, name, start_time, etc.).
-
-Later, add details for advanced features (like staff schedules, route management, or custom constraints).
-
-Front-End Integration
-
-In your Next.js admin or staff view, you'll do queries to list bookings, show them in a calendar, or place them on a map if needed. **You also manage Sites, Fields, Services, and ServiceAvailability rules.**
-
-In your React Native client app, you'll show open bookings (**derived from `service_availability` and `bookings**) or the user's booked sessions.
-
-This ensures you have enough of a schema to support a calendar view (thanks to start/end times in bookings) and a map view (thanks to lat/long in sites or fields). As your needs grow—like adding payment tracking or advanced staff route assignments—these core tables should still provide a stable foundation. **The service-centric availability model provides better flexibility for managing complex schedules.**
+Project Summary for AI Assistant (booking-and-accounts)
+
+**Overall Goal:** Build a booking and multi-site management platform, initially for doggy daycare services, designed to be adaptable for other pet businesses.
+
+**Current Status:** Core foundation is built using Next.js, Supabase (Auth & PostgreSQL), and React. Admin/Staff UI provides management capabilities, and a basic client booking interface exists.
+
+**Key Implemented Features:**
+
+1.  **Authentication:**
+    *   Supabase Auth handles user sign-up and login.
+    *   Sign-up/Login form (`src/components/AuthForm.tsx`) now has distinct modes, only showing necessary fields (Email/Password for Login; Name/Phone etc. for Sign Up).
+    *   Role-based access is implemented:
+        *   `clients` table stores client-specific info (first_name, last_name, phone), linked to `auth.users` via ID (UUID). **No role column here.**
+        *   `staff` table stores staff info (name, role, phone_number), linked to `auth.users` via `user_id`. **Admin/Staff roles are defined here.**
+    *   `README.md` includes instructions for creating the first admin user by inserting a record into the `staff` table.
+
+2.  **Admin/Staff UI (within `src/app/page.tsx` using components in `src/components/admin/`):**
+    *   **User Management:** View users, assign roles (client/staff/admin) via API call.
+    *   **Site & Field Management:** Create/view sites and their associated fields (name, capacity, type).
+    *   **Service Management:** Create/view services (name, description, requires_field_selection flag).
+    *   **Service Availability Management:** Create/view rules defining when a service is available (linked to service, fields, times, days/date, capacity, active status).
+    *   **Booking Management:** Manually create bookings (linking to field, times, service type, capacity), view existing bookings (including client name fetched via `booking_clients`).
+
+3.  **Client UI (within `src/app/page.tsx` using `src/components/client/ClientBooking.tsx`):**
+    *   Select service and date range.
+    *   View available slots calculated by the backend (`/api/available-slots`).
+    *   Slots are aggregated if `requires_field_selection` is false for the service, otherwise shown per field.
+    *   **Same-day booking prevention:** The `/api/available-slots` route now filters out slots starting on the current date (UTC).
+    *   Basic "Book Now" functionality exists, calling `/api/client-booking`.
+
+**Database Schema Summary (Implemented Tables):**
+
+*   `auth.users`: Managed by Supabase Auth (standard user data).
+*   `public.sites`: Stores physical locations (id, name, address, is_active).
+*   `public.fields`: Sub-locations within sites (id, site_id -> sites.id, name, capacity, field_type).
+*   `public.services`: Defines offered services (id, name, description, created_at, requires_field_selection).
+*   `public.service_availability`: Rules linking services to fields and times (id, service_id -> services.id, field_ids (array), start_time, end_time, days_of_week, specific_date, base_capacity, is_active, created_at).
+*   `public.bookings`: Individual booking instances (id, field_id -> fields.id, start_time, end_time, service_type, status, max_capacity). *Client bookings are created via `/api/client-booking`, Admin bookings via `/api/bookings` POST.*
+*   `public.clients`: Client user profiles (id -> auth.users.id, email, first_name, last_name, phone). **No role here.**
+*   `public.staff`: Staff user profiles and roles (id, user_id -> auth.users.id, name, role, phone_number, notes). **Admin/Staff roles determined here.**
+*   `public.booking_clients`: **Junction table** linking bookings to clients (id, booking_id -> bookings.id, client_id -> clients.id). Enables many-to-many relationship.
+*   `public.pets`: Stores pet information (id, client_id -> clients.id, name, breed, etc.). *Currently captured during sign-up but full management UI not implemented.*
+*   `public.payments`: Exists but likely not fully integrated yet (id, client_id, booking_id, amount, currency, status, created_at).
+
+**File Structure Overview:**
+
+*   `src/app/`: Next.js App Router structure.
+    *   `page.tsx`: Main entry point, renders different views based on auth/role.
+    *   `actions.ts`: Server actions for login/signup.
+    *   `api/`: API route handlers (e.g., `users/route.ts`, `bookings/route.ts`, `available-slots/route.ts`).
+*   `src/components/`: Reusable React components.
+    *   `AuthForm.tsx`: Handles login/signup UI.
+    *   `admin/`: Components for admin-specific UI sections.
+    *   `client/`: Components for client-facing UI sections (`ClientBooking.tsx`).
+*   `src/utils/`: Utility functions and Supabase client configurations.
+    *   `supabase/client.ts`, `server.ts`, `admin.ts`: Supabase client initializers.
+*   `README.md`: Project setup and instructions (including admin creation).
+*   `overallguide.txt`: This file.
+*   `supabasedbschema.png`: Image of the database schema.
+
+**Known Issues / Recent Fixes:**
+
+*   Admin booking view: Fixed duplicate error messages. Addressed 500 error fetching bookings by refactoring client data fetching in the API route (avoiding potentially problematic embedded select).
+*   Client booking: Prevented booking slots on the current date by filtering in `/api/available-slots`.
+*   Auth form: Separated Login and Sign Up views within the same component.
+
+**Potential Next Steps / Areas for Development:**
+
+1.  **Refine Client Booking:**
+    *   Improve UI/UX for selecting services/dates/slots.
+    *   Handle booking confirmation/feedback more robustly.
+    *   Integrate pet selection if necessary for bookings.
+    *   Consider adding a "My Bookings" view for clients.
+2.  **Payments:** Implement payment processing (e.g., Stripe integration) linked to bookings via the `payments` table.
+3.  **Staff Features:** Enhance staff capabilities (e.g., assigning staff to bookings, viewing specific schedules).
+4.  **Calendar View:** Implement a more visual calendar display for bookings (admin/staff).
+5.  **Error Handling:** Improve global vs. local error handling/display throughout the UI.
+6.  **Pet Management:** Add UI for clients/admin to manage pet details beyond the initial signup field.
+7.  **Testing:** Add automated tests.
+
+This guide provides context on the current architecture, implementation, and potential future directions.
