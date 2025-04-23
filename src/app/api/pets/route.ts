@@ -97,7 +97,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Parse request body
-    let petData: { name: string; breed?: string; size?: string /* Add other fields as needed */ };
+    let petData: { name: string; breed?: string; size?: string; is_confirmed?: boolean /* Add other fields as needed */ };
     try {
         const body = await request.json();
         if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
@@ -107,6 +107,7 @@ export async function POST(request: Request) {
             name: body.name.trim(),
             breed: typeof body.breed === 'string' ? body.breed.trim() : undefined,
             size: typeof body.size === 'string' ? body.size.trim() : undefined,
+            is_confirmed: false, // Set default value to false for new pets
             // Add other fields from body here...
         };
     } catch (e) {

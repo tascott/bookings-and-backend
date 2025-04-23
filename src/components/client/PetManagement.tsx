@@ -11,6 +11,7 @@ type Pet = {
     breed?: string | null;
     size?: string | null;
     created_at?: string;
+    is_confirmed?: boolean;
     // Add other pet fields as needed
 }
 
@@ -272,6 +273,29 @@ export default function PetManagement() {
                                     <p><strong>Name:</strong> {pet.name}</p>
                                     {pet.breed && <p><strong>Breed:</strong> {pet.breed}</p>}
                                     {pet.size && <p><strong>Size:</strong> {pet.size}</p>}
+                                    <p>
+                                        <strong>Status:</strong>
+                                        <span style={{
+                                            marginLeft: '0.5rem',
+                                            padding: '0.2rem 0.5rem',
+                                            borderRadius: '4px',
+                                            backgroundColor: pet.is_confirmed ? '#d4edda' : '#f8d7da',
+                                            color: pet.is_confirmed ? '#155724' : '#721c24',
+                                            fontSize: '0.9rem'
+                                        }}>
+                                            {pet.is_confirmed ? 'Confirmed' : 'Awaiting Confirmation'}
+                                        </span>
+                                        {!pet.is_confirmed && (
+                                            <span style={{
+                                                display: 'block',
+                                                marginTop: '0.3rem',
+                                                fontSize: '0.85rem',
+                                                fontStyle: 'italic'
+                                            }}>
+                                                *You cannot book services for unconfirmed pets. An admin needs to confirm your pet first.
+                                            </span>
+                                        )}
+                                    </p>
                                     {/* Display other fields */}
                                     <div style={{ marginTop: '1rem' }}>
                                         <button onClick={() => handleEditClick(pet)} style={{ marginRight: '0.5rem' }}>Edit</button>

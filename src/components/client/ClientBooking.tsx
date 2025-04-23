@@ -39,6 +39,7 @@ type Pet = {
     breed?: string | null;
     size?: string | null;
     created_at?: string;
+    is_confirmed?: boolean;
 }
 
 // Type for the payload sent to the booking API
@@ -135,8 +136,11 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             }
             const data: Pet[] = await response.json();
             setPets(data);
-            // Default select all fetched pets
-            setSelectedPetIds(data.map(p => p.id));
+            // Default select all confirmed pets
+            const confirmedPetIds = data
+                .filter(pet => pet.is_confirmed)
+                .map(pet => pet.id);
+            setSelectedPetIds(confirmedPetIds);
         } catch (e) {
             console.error("Fetch Pets Error:", e);
             setPets([]);
@@ -339,8 +343,18 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                         checked={selectedPetIds.includes(pet.id)}
                                         onChange={handlePetSelectionChange}
                                         style={{ marginRight: '0.5rem' }}
+                                        disabled={!pet.is_confirmed}
                                     />
-                                    <label htmlFor={`pet-${pet.id}`}>{pet.name} {pet.breed ? `(${pet.breed})` : ''}</label>
+                                    <label
+                                        htmlFor={`pet-${pet.id}`}
+                                        style={{
+                                            color: pet.is_confirmed ? 'white' : '#999',
+                                            fontStyle: pet.is_confirmed ? 'normal' : 'italic'
+                                        }}
+                                    >
+                                        {pet.name} {pet.breed ? `(${pet.breed})` : ''}
+                                        {!pet.is_confirmed && ' - Awaiting confirmation'}
+                                    </label>
                                 </div>
                             ))}
                         </div>

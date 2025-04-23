@@ -114,7 +114,43 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Service with ID ${inputData.service_id} not found.` }, { status: 404 });
     }
 
-    // 4. Final Availability Check & Field Assignment
+    // 4. Validate the pets
+    // a. Check if all pets belong to the client
+    const { data: clientPets, error: clientPetsError } = await supabase
+        .from('pets')
+        .select('id, is_confirmed')
+        .eq('client_id', clientId);
+
+    if (clientPetsError) {
+        console.error('Error fetching client pets:', clientPetsError);
+        return NextResponse.json({ error: 'Failed to validate pet ownership' }, { status: 500 });
+    }
+
+    // Create a set of client's pet IDs for easy lookup
+    const clientPetIds = new Set(clientPets.map(p => p.id));
+    const clientPetMap = new Map(clientPets.map(p => [p.id, p]));
+
+    // Check if all pet IDs in the request belong to this client
+    const invalidPetIds = inputData.pet_ids.filter(id => !clientPetIds.has(id));
+    if (invalidPetIds.length > 0) {
+        return NextResponse.json(
+            { error: `Pet IDs ${invalidPetIds.join(', ')} do not belong to this client` },
+            { status: 400 }
+        );
+    }
+
+    // b. Check if all pets are confirmed
+    const unconfirmedPetIds = inputData.pet_ids
+        .filter(id => clientPetMap.has(id) && !clientPetMap.get(id)?.is_confirmed);
+
+    if (unconfirmedPetIds.length > 0) {
+        return NextResponse.json(
+            { error: `Pets with IDs ${unconfirmedPetIds.join(', ')} are not confirmed yet and cannot be booked` },
+            { status: 400 }
+        );
+    }
+
+    // 5. Final Availability Check & Field Assignment
     let fieldToBook: number | null = null;
     try {
         // We need start/end *dates* for the DB function
@@ -168,7 +204,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Could not determine a field to book.' }, { status: 500 });
     }
 
-    // 5. Database Insert (Booking, Client Link, Pet Links)
+    // 6. Database Insert (Booking, Client Link, Pet Links)
     try {
         // --- Create Booking ---
         const { data: newBooking, error: bookingInsertError } = await supabaseAdmin
@@ -227,7 +263,7 @@ export async function POST(request: Request) {
         }
         // ---------------------------------------------------------
 
-        // 6. Return Success Response
+        // 7. Return Success Response
         return NextResponse.json({ success: true, bookingId: bookingId, message: 'Booking successful!' }, { status: 201 });
 
     } catch (e) {

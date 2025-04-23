@@ -16,6 +16,7 @@ import SiteFieldManagement from '@/components/admin/SiteFieldManagement'; // Imp
 import BookingManagement from '@/components/admin/BookingManagement'; // Import BookingManagement
 import ServiceManagement from '@/components/admin/ServiceManagement'; // Import ServiceManagement
 import ServiceAvailabilityManagement from '@/components/admin/ServiceAvailabilityManagement'; // Import ServiceAvailabilityManagement
+import ClientManagement from '@/components/admin/ClientManagement'; // Import ClientManagement
 import AuthForm from '@/components/AuthForm'; // Import AuthForm
 import PetManagement from '@/components/client/PetManagement'; // Import PetManagement
 import MyBookings from '@/components/client/MyBookings'; // Import MyBookings
@@ -759,6 +760,12 @@ export default function Home() {
                 addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
                 getFieldsForSite={getFieldsForSite}
              />
+           )}
+           {/* ------------------------------------------------ */}
+
+           {/* --- Client Management Section (Admin Only) --- */}
+           {!isLoadingRole && role === 'admin' && (
+             <ClientManagement />
            )}
            {/* ------------------------------------------------ */}
 

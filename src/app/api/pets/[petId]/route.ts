@@ -18,35 +18,48 @@ export async function PUT(request: Request, { params }: { params: { petId: strin
         return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
     }
 
-    // 2. Get client_id by fetching from clients table
-    let clientId: number;
-    try {
-        const { data: clientData, error: clientError } = await supabase
-            .from('clients')
-            .select('id')
-            .eq('user_id', user.id)
-            .single();
-        if (clientError) {
-            console.error('Error fetching client profile for user:', user.id, clientError);
-             if (clientError.code === 'PGRST116') { return NextResponse.json({ error: 'Client profile not found.' }, { status: 404 }); }
-            throw clientError;
+    // 2. Check if user is admin (for managing is_confirmed)
+    const { data: staffData, error: staffError } = await supabase
+        .from('staff')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+
+    const isAdmin = !staffError && staffData && staffData.role === 'admin';
+
+    // 3. Get client_id by fetching from clients table
+    let clientId: number | null = null;
+    if (!isAdmin) {
+        try {
+            const { data: clientData, error: clientError } = await supabase
+                .from('clients')
+                .select('id')
+                .eq('user_id', user.id)
+                .single();
+            if (clientError) {
+                console.error('Error fetching client profile for user:', user.id, clientError);
+                if (clientError.code === 'PGRST116') { return NextResponse.json({ error: 'Client profile not found.' }, { status: 404 }); }
+                throw clientError;
+            }
+            if (!clientData) { return NextResponse.json({ error: 'Client profile not found.' }, { status: 404 }); }
+            clientId = clientData.id;
+        } catch (error) {
+            console.error('Error during client ID fetch:', error);
+            const message = error instanceof Error ? error.message : 'Failed to retrieve client profile';
+            return NextResponse.json({ error: message }, { status: 500 });
         }
-        if (!clientData) { return NextResponse.json({ error: 'Client profile not found.' }, { status: 404 }); }
-        clientId = clientData.id;
-    } catch (error) {
-         console.error('Error during client ID fetch:', error);
-         const message = error instanceof Error ? error.message : 'Failed to retrieve client profile';
-         return NextResponse.json({ error: message }, { status: 500 });
     }
 
-    // 3. Parse request body for update data
-    let updateData: { name?: string; breed?: string; size?: string /* Add other fields */ };
+    // 4. Parse request body for update data
+    let updateData: { name?: string; breed?: string; size?: string; is_confirmed?: boolean /* Add other fields */ };
     try {
         const body = await request.json();
         updateData = {
             name: body.name && typeof body.name === 'string' ? body.name.trim() : undefined,
             breed: body.breed && typeof body.breed === 'string' ? body.breed.trim() : undefined,
             size: body.size && typeof body.size === 'string' ? body.size.trim() : undefined,
+            // Allow is_confirmed only for admin users
+            is_confirmed: isAdmin && body.hasOwnProperty('is_confirmed') ? !!body.is_confirmed : undefined,
             // Add other optional fields...
         };
         // Ensure at least one field is being updated
@@ -58,23 +71,26 @@ export async function PUT(request: Request, { params }: { params: { petId: strin
         return NextResponse.json({ error: errorMessage }, { status: 400 })
     }
 
-    // 4. Update the pet (checking ownership implicitly via client_id filter)
+    // 5. Update the pet
     try {
-        const { data: updatedPet, error: updateError } = await supabaseAdmin
+        let query = supabaseAdmin
             .from('pets')
             .update(updateData)
-            .eq('id', petId)
-            .eq('client_id', clientId) // IMPORTANT: Ensure user owns this pet
-            .select()
-            .single();
+            .eq('id', petId);
+
+        // If not admin, ensure user owns this pet
+        if (!isAdmin && clientId !== null) {
+            query = query.eq('client_id', clientId);
+        }
+
+        const { data: updatedPet, error: updateError } = await query.select().single();
 
         if (updateError) {
             console.error('Error updating pet:', updateError)
-            // Handle specific errors like FK violation if necessary (though unlikely on update)
             throw updateError;
         }
 
-        // If update succeeded but returned no data, it means the petId + clientId didn't match
+        // If update succeeded but returned no data, it means the petId didn't match or access was denied
         if (!updatedPet) {
             return NextResponse.json({ error: 'Pet not found or access denied.' }, { status: 404 });
         }
