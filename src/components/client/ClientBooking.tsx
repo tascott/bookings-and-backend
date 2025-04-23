@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, ChangeEvent } from 'react';
 import styles from "@/app/page.module.css"; // Adjust path as needed
 
 // Define required types directly or import from a shared types file later
@@ -31,12 +31,23 @@ type AggregatedSlot = {
     // contributingSlots: CalculatedSlot[];
 }
 
+// Define Pet type
+type Pet = {
+    id: number;
+    client_id: number;
+    name: string;
+    breed?: string | null;
+    size?: string | null;
+    created_at?: string;
+}
+
 // Type for the payload sent to the booking API
 interface BookingPayload {
     service_id: number;
     start_time: string;
     end_time: string;
     field_id?: number;
+    pet_ids: number[]; // Added selected pet IDs
 }
 
 // Define props for the component
@@ -62,6 +73,11 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     // State for the aggregated slots for display
     const [aggregatedSlots, setAggregatedSlots] = useState<AggregatedSlot[]>([]);
     const [isLoadingCalculatedSlots, setIsLoadingCalculatedSlots] = useState(false);
+
+    // State for pets
+    const [pets, setPets] = useState<Pet[]>([]);
+    const [isLoadingPets, setIsLoadingPets] = useState(true);
+    const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
 
     // State for booking status
     const [bookingStatus, setBookingStatus] = useState<{ loading: boolean; success: string | null; error: string | null; targetSlotKey: string | null }>({ loading: false, success: null, error: null, targetSlotKey: null });
@@ -104,21 +120,77 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         }));
     };
 
+    // --- Fetch Pets ---
+    const fetchPets = useCallback(async () => {
+        // Don't reset error here, let fetchCalculatedSlots handle its errors
+        setIsLoadingPets(true);
+        try {
+            const response = await fetch('/api/pets');
+            if (!response.ok) {
+                // Don't throw here, just log and set empty pets
+                console.error(`Failed to fetch pets (HTTP ${response.status})`);
+                setPets([]);
+                setSelectedPetIds([]);
+                return;
+            }
+            const data: Pet[] = await response.json();
+            setPets(data);
+            // Default select all fetched pets
+            setSelectedPetIds(data.map(p => p.id));
+        } catch (e) {
+            console.error("Fetch Pets Error:", e);
+            setPets([]);
+            setSelectedPetIds([]);
+            // Set error state? Or rely on booking error display?
+        } finally {
+            setIsLoadingPets(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        fetchPets();
+    }, [fetchPets]);
+
+    // --- Pet Selection Handler ---
+    const handlePetSelectionChange = (event: ChangeEvent<HTMLInputElement>) => {
+        const petId = parseInt(event.target.value, 10);
+        const isChecked = event.target.checked;
+
+        setSelectedPetIds(prevSelectedIds => {
+            if (isChecked) {
+                // Add ID if checked and not already present
+                return prevSelectedIds.includes(petId) ? prevSelectedIds : [...prevSelectedIds, petId];
+            } else {
+                // Remove ID if unchecked
+                return prevSelectedIds.filter(id => id !== petId);
+            }
+        });
+    };
+
     // --- Booking Handlers ---
     const handleBookSlot = useCallback(async (slotData: AggregatedSlot | CalculatedSlot, isAggregated: boolean) => {
         const slotKey = isAggregated ? `${(slotData as AggregatedSlot).serviceId}-${(slotData as AggregatedSlot).startTime}` : `${(slotData as CalculatedSlot).slot_field_id}-${(slotData as CalculatedSlot).slot_start_time}`;
         setBookingStatus({ loading: true, success: null, error: null, targetSlotKey: slotKey });
+        setError(null); // Clear general error before booking attempt
 
-        // Use the specific payload type
+        // **Pricing Prerequisite:** Check if pets are selected
+        if (selectedPetIds.length === 0) {
+            setBookingStatus({ loading: false, success: null, error: 'Please select at least one pet to include in the booking.', targetSlotKey: null });
+            return;
+        }
+
         const payload: BookingPayload = {
             service_id: isAggregated ? (slotData as AggregatedSlot).serviceId : parseInt(selectedServiceId, 10),
             start_time: isAggregated ? (slotData as AggregatedSlot).startTime : (slotData as CalculatedSlot).slot_start_time,
             end_time: isAggregated ? (slotData as AggregatedSlot).endTime : (slotData as CalculatedSlot).slot_end_time,
+            pet_ids: selectedPetIds, // Include selected pet IDs
         };
 
         if (!isAggregated) {
             payload.field_id = (slotData as CalculatedSlot).slot_field_id;
         }
+
+        // **Pricing Note:** Here or on the backend, you would calculate the price based on `selectedPetIds.length` and the service type/duration.
 
         try {
             const response = await fetch('/api/client-booking', {
@@ -134,16 +206,16 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             }
 
             setBookingStatus({ loading: false, success: `Successfully booked! (ID: ${result.bookingId})`, error: null, targetSlotKey: null });
-            // Optionally: Refresh available slots or clear the list after successful booking
             setAggregatedSlots([]);
             setRawCalculatedSlots([]);
 
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred during booking.';
             console.error("Booking Error:", e);
+            // Set error in the booking status, not the general component error
             setBookingStatus({ loading: false, success: null, error: errorMessage, targetSlotKey: null });
         }
-    }, [selectedServiceId]); // Add dependencies if needed
+    }, [selectedServiceId, selectedPetIds]); // Added selectedPetIds dependency
 
     // --- Fetch Calculated Slots from API ---
     const fetchCalculatedSlots = async () => {
@@ -248,6 +320,34 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                         style={{ marginRight: '1rem' }}
                     />
                 </div>
+
+                {/* --- Pet Selection Section --- */}
+                <div style={{ marginTop: '1rem', borderTop: '1px dashed #ccc', paddingTop: '1rem' }}>
+                    <h4>Select Pet(s) for Booking</h4>
+                    {isLoadingPets ? (
+                        <p>Loading your pets...</p>
+                    ) : pets.length === 0 ? (
+                        <p>You have no pets registered. Please add pets in the "My Pets" section.</p>
+                    ) : (
+                        <div>
+                            {pets.map(pet => (
+                                <div key={pet.id} style={{ marginBottom: '0.25rem' }}>
+                                    <input
+                                        type="checkbox"
+                                        id={`pet-${pet.id}`}
+                                        value={pet.id}
+                                        checked={selectedPetIds.includes(pet.id)}
+                                        onChange={handlePetSelectionChange}
+                                        style={{ marginRight: '0.5rem' }}
+                                    />
+                                    <label htmlFor={`pet-${pet.id}`}>{pet.name} {pet.breed ? `(${pet.breed})` : ''}</label>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+                {/* -------------------------- */}
+
                 <button
                     onClick={fetchCalculatedSlots}
                     disabled={!selectedServiceId || !selectedStartDate || !selectedEndDate || isLoadingCalculatedSlots}
@@ -296,8 +396,8 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                                 </p>
                                                 <p><strong>Total Remaining Capacity:</strong> {aggSlot.totalRemainingCapacity}</p>
                                                 <button
-                                                    onClick={() => handleBookSlot(aggSlot, true)} // Pass aggregated slot and flag
-                                                    disabled={isLoadingThisSlot || bookingStatus.loading}
+                                                    onClick={() => handleBookSlot(aggSlot, true)}
+                                                    disabled={isLoadingThisSlot || bookingStatus.loading || selectedPetIds.length === 0}
                                                     style={{ marginTop: '0.5rem' }}
                                                 >
                                                     {isLoadingThisSlot ? 'Booking...' : 'Book Now'}
@@ -324,11 +424,11 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                                 {/* Show individual field capacity */}
                                                 <p><strong>Remaining Capacity:</strong> {slot.slot_remaining_capacity}</p>
                                                 <button
-                                                    onClick={() => handleBookSlot(slot, false)} // Pass field slot and flag
-                                                    disabled={isLoadingThisSlot || bookingStatus.loading}
+                                                    onClick={() => handleBookSlot(slot, false)}
+                                                    disabled={isLoadingThisSlot || bookingStatus.loading || selectedPetIds.length === 0}
                                                     style={{ marginTop: '0.5rem' }}
                                                 >
-                                                    {isLoadingThisSlot ? 'Booking...' : 'Book This Field'}
+                                                    {isLoadingThisSlot ? 'Booking...' : 'Book Now'}
                                                 </button>
                                             </div>
                                         );

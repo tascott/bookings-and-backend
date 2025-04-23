@@ -64,18 +64,28 @@ Project Summary for AI Assistant (booking-and-accounts)
 *   Client booking: Prevented booking slots on the current date by filtering in `/api/available-slots`.
 *   Auth form: Separated Login and Sign Up views within the same component.
 
+**Pet Management Implementation (In Progress):**
+*   **API Routes Created:**
+    *   `GET /api/pets`: Fetches pets for the logged-in client.
+    *   `POST /api/pets`: Creates a new pet for the logged-in client.
+    *   `PUT /api/pets/[petId]`: Updates a specific pet owned by the client.
+    *   `DELETE /api/pets/[petId]`: Deletes a specific pet owned by the client.
+    *   *(Note: API routes correctly fetch `clients.id` via `user_id` before interacting with `pets` table)*
+*   **Next Step:** Create UI component (`src/components/client/PetManagement.tsx`) for clients to list, add, edit, delete pets.
+*   **Future:** Handle initial pet creation during signup flow (likely client-side check after email confirmation). Integrate pet selection into booking process.
+
 **Potential Next Steps / Areas for Development:**
 
-1.  **Refine Client Booking:**
+1.  **Implement Pet Management UI:** Create the `PetManagement.tsx` component.
+2.  **Refine Client Booking:**
     *   Improve UI/UX for selecting services/dates/slots.
     *   Handle booking confirmation/feedback more robustly.
     *   Integrate pet selection if necessary for bookings.
     *   Consider adding a "My Bookings" view for clients.
-2.  **Payments:** Implement payment processing (e.g., Stripe integration) linked to bookings via the `payments` table.
-3.  **Staff Features:** Enhance staff capabilities (e.g., assigning staff to bookings, viewing specific schedules).
-4.  **Calendar View:** Implement a more visual calendar display for bookings (admin/staff).
-5.  **Error Handling:** Improve global vs. local error handling/display throughout the UI.
-6.  **Pet Management:** Add UI for clients/admin to manage pet details beyond the initial signup field.
+3.  **Payments:** Implement payment processing (e.g., Stripe integration) linked to bookings via the `payments` table.
+4.  **Staff Features:** Enhance staff capabilities (e.g., assigning staff to bookings, viewing specific schedules).
+5.  **Calendar View:** Implement a more visual calendar display for bookings (admin/staff).
+6.  **Error Handling:** Improve global vs. local error handling/display throughout the UI.
 7.  **Testing:** Add automated tests.
 
 This guide provides context on the current architecture, implementation, and potential future directions.

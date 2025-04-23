@@ -17,6 +17,8 @@ import BookingManagement from '@/components/admin/BookingManagement'; // Import 
 import ServiceManagement from '@/components/admin/ServiceManagement'; // Import ServiceManagement
 import ServiceAvailabilityManagement from '@/components/admin/ServiceAvailabilityManagement'; // Import ServiceAvailabilityManagement
 import AuthForm from '@/components/AuthForm'; // Import AuthForm
+import PetManagement from '@/components/client/PetManagement'; // Import PetManagement
+import MyBookings from '@/components/client/MyBookings'; // Import MyBookings
 
 // Define types for Site and Field based on schema
 type Site = {
@@ -714,17 +716,17 @@ export default function Home() {
 
           {/* --- Booking Management Section (Admin/Staff) --- */}
           {!isLoadingRole && (role === 'admin' || role === 'staff') && (
-            // Render the BookingManagement component
             <BookingManagement
                 role={role}
                 bookings={bookings}
                 isLoadingBookings={isLoadingBookings}
                 sites={sites}
                 fields={fields}
-                error={error}
+                error={error} // Pass the main error state
                 handleAddBooking={handleAddBooking}
                 addBookingFormRef={addBookingFormRef}
                 getFieldsForSite={getFieldsForSite}
+                refetchBookings={fetchBookings} // Pass fetchBookings as prop
              />
           )}
            {/* ----------------------------------------- */}
@@ -763,6 +765,13 @@ export default function Home() {
           {/* --- Client Booking View Section (Visible to all logged-in users for now) --- */}
           {/* Render the ClientBooking component, passing services */}
           <ClientBooking services={services} />
+
+          {/* --- Pet Management Section (Visible to all logged-in users) --- */}
+          {/* Render the PetManagement component */}
+          <PetManagement />
+
+          {/* Render the MyBookings component */}
+          <MyBookings />
         </main>
       )}
     </div>

@@ -38,16 +38,28 @@ export async function POST(request: Request) {
         service_id: number;
         start_time: string;
         end_time: string;
-        field_id?: number; // Optional field_id if booking requires specific field
+        field_id?: number;
+        pet_ids: number[]; // Added pet_ids
     };
     try {
         const body = await request.json();
         inputData = {
             service_id: parseInt(body.service_id, 10),
-            start_time: body.start_time, // Expecting ISO String
-            end_time: body.end_time,     // Expecting ISO String
+            start_time: body.start_time,
+            end_time: body.end_time,
             field_id: body.field_id ? parseInt(body.field_id, 10) : undefined,
+            pet_ids: body.pet_ids, // Get pet_ids from body
         };
+
+        // --- Add Pet ID Validation ---
+        if (!Array.isArray(inputData.pet_ids) || inputData.pet_ids.length === 0) {
+            throw new Error('Missing or invalid required field: pet_ids (must be a non-empty array)');
+        }
+        // Ensure all pet IDs are numbers
+        if (inputData.pet_ids.some(id => typeof id !== 'number' || isNaN(id))) {
+             throw new Error('Invalid pet_id found in the pet_ids array. All IDs must be numbers.');
+        }
+        // -----------------------------
 
         if (isNaN(inputData.service_id) || !inputData.start_time || !inputData.end_time) {
             throw new Error('Missing or invalid required fields: service_id, start_time, end_time');
@@ -66,6 +78,29 @@ export async function POST(request: Request) {
     } catch (e) {
         const errorMessage = e instanceof Error ? e.message : 'Invalid request body';
         return NextResponse.json({ error: errorMessage }, { status: 400 });
+    }
+
+    // 2.5 Validate Pet Ownership
+    try {
+        const { data: ownedPets, error: petCheckError } = await supabaseAdmin
+            .from('pets')
+            .select('id')
+            .eq('client_id', clientId)
+            .in('id', inputData.pet_ids);
+
+        if (petCheckError) {
+            console.error('Error validating pet ownership:', petCheckError);
+            throw new Error('Could not verify pet ownership.');
+        }
+
+        // Check if the number of owned pets found matches the number submitted
+        if (!ownedPets || ownedPets.length !== inputData.pet_ids.length) {
+            return NextResponse.json({ error: 'Invalid pet selection: One or more selected pets do not belong to this client.' }, { status: 403 }); // Forbidden
+        }
+    } catch (e) {
+         const errorMessage = e instanceof Error ? e.message : 'Error verifying pet ownership.';
+         console.error('Pet ownership validation error:', e);
+         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 
     // 3. Fetch Service Details (to check requires_field_selection)
@@ -133,9 +168,9 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Could not determine a field to book.' }, { status: 500 });
     }
 
-    // 5. Database Insert (using admin client for bypassing RLS if needed for booking_clients?)
-    // Use a transaction to ensure both inserts succeed or fail together
+    // 5. Database Insert (Booking, Client Link, Pet Links)
     try {
+        // --- Create Booking ---
         const { data: newBooking, error: bookingInsertError } = await supabaseAdmin
             .from('bookings')
             .insert({
@@ -146,7 +181,7 @@ export async function POST(request: Request) {
                 status: 'confirmed',
                 // max_capacity: null, // Or derive from rule/field?
             })
-            .select('id') // Select the ID of the newly created booking
+            .select('id')
             .single();
 
         if (bookingInsertError) {
@@ -160,20 +195,37 @@ export async function POST(request: Request) {
 
         const bookingId = newBooking.id;
 
-        // Link booking to client
+        // --- Link Client ---
         const { error: bookingClientInsertError } = await supabaseAdmin
             .from('booking_clients')
-            .insert({
-                booking_id: bookingId,
-                client_id: clientId
-                // pet_id: null, // Add later if needed
-            });
+            .insert({ booking_id: bookingId, client_id: clientId });
 
         if (bookingClientInsertError) {
             console.error('Error inserting booking_client link:', bookingClientInsertError);
             // Potentially attempt to delete the booking record here for atomicity if needed
             throw new Error(`Booking created (ID: ${bookingId}) but failed to link to client: ${bookingClientInsertError.message}`);
         }
+
+        // --- Link Pets (using booking_pets junction table) ---
+        const petLinks = inputData.pet_ids.map(petId => ({ // Prepare rows for insert
+            booking_id: bookingId,
+            pet_id: petId
+        }));
+
+        // **** IMPORTANT: Requires `booking_pets` table to exist ****
+        // **** Table Schema: id (pk), booking_id (fk->bookings.id), pet_id (fk->pets.id) ****
+        const { error: bookingPetInsertError } = await supabaseAdmin
+            .from('booking_pets') // Assumes table name is booking_pets
+            .insert(petLinks);
+
+        if (bookingPetInsertError) {
+            console.error('Error inserting booking_pet links:', bookingPetInsertError);
+            // CRITICAL: Ideally, rollback booking and booking_client inserts here.
+            // Since true transactions aren't easy, log error and inform user of partial success.
+            // Consider returning a specific error message indicating booking succeeded but pet linking failed.
+             throw new Error(`Booking created (ID: ${bookingId}) and client linked, but failed to link pets: ${bookingPetInsertError.message}`);
+        }
+        // ---------------------------------------------------------
 
         // 6. Return Success Response
         return NextResponse.json({ success: true, bookingId: bookingId, message: 'Booking successful!' }, { status: 201 });

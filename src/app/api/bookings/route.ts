@@ -2,7 +2,24 @@ import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 
-// GET all bookings, enriching with client names
+// Define the final structure returned by the GET request
+// Includes original booking data plus linked client and pet names
+type EnrichedBooking = {
+  id: number;
+  field_id: number;
+  start_time: string;
+  end_time: string;
+  service_type: string | null;
+  status: string;
+  max_capacity: number | null;
+  created_at: string; // Assuming this exists on bookings table
+  // Added fields
+  client_id: number | null;
+  client_name: string | null;
+  pet_names: string[]; // Array of pet names for this booking
+}
+
+// GET all bookings, enriching with client AND pet names
 export async function GET() {
   const supabase = await createServerClient()
   const supabaseAdmin = await createAdminClient()
@@ -86,14 +103,73 @@ export async function GET() {
       });
     }
 
-    // 4. Merge client info into bookings data
-    const processedBookings = bookingsData.map(booking => {
+    // --- Pet Data Fetching (NEW) ---
+    const bookingPetMap = new Map<number, number[]>(); // booking_id -> [pet_id, ...]
+    const petIds = new Set<number>();
+    // Fetch booking_pet links
+    const { data: petLinksData, error: petLinksError } = await supabaseAdmin
+        .from('booking_pets')
+        .select('booking_id, pet_id')
+        .in('booking_id', bookingIds);
+    if (petLinksError) {
+        console.error("Error fetching booking_pets:", petLinksError);
+        throw new Error(`Failed to fetch booking pet links: ${petLinksError.message}`);
+    }
+    petLinksData?.forEach(link => {
+        if (link.booking_id && link.pet_id) {
+            if (!bookingPetMap.has(link.booking_id)) {
+                bookingPetMap.set(link.booking_id, []);
+            }
+            // Add petId to the list for this booking
+            const petIdList = bookingPetMap.get(link.booking_id);
+            if(petIdList) { // Type guard
+               petIdList.push(link.pet_id);
+            }
+            petIds.add(link.pet_id);
+        }
+    });
+    // Fetch pet names
+    const petNameMap = new Map<number, string>(); // pet_id -> name
+    if (petIds.size > 0) {
+        const { data: petsData, error: petsError } = await supabaseAdmin
+            .from('pets')
+            .select('id, name')
+            .in('id', Array.from(petIds));
+        if (petsError) {
+            console.error("Error fetching pets:", petsError);
+            throw new Error(`Failed to fetch pet details: ${petsError.message}`);
+        }
+        petsData?.forEach(pet => {
+            if (pet.id && pet.name) { // Ensure name is not null/empty
+                 petNameMap.set(pet.id, pet.name);
+            }
+        });
+    }
+    // --- End Pet Data Fetching ---
+
+    // 4. Merge ALL data into final response structure
+    const processedBookings: EnrichedBooking[] = bookingsData.map(booking => {
       const clientId = bookingClientMap.get(booking.id);
       const clientName = clientId ? clientNameMap.get(clientId) : null;
+      // Get linked pet IDs, default to empty array if none found for this booking
+      const linkedPetIds = bookingPetMap.get(booking.id) || [];
+      // Map IDs to names, filter out any potential undefined results if a pet was deleted
+      const petNames = linkedPetIds.map(petId => petNameMap.get(petId)).filter((name): name is string => !!name);
+
       return {
-        ...booking,
-        client_id: clientId ?? null, // Ensure it's number or null
-        client_name: clientName ?? null, // Ensure it's string or null
+        // Spread existing booking fields (ensure EnrichedBooking matches)
+        id: booking.id,
+        field_id: booking.field_id,
+        start_time: booking.start_time,
+        end_time: booking.end_time,
+        service_type: booking.service_type,
+        status: booking.status,
+        max_capacity: booking.max_capacity,
+        created_at: booking.created_at, // Ensure this is selected in step 1 if needed
+        // Add enriched data
+        client_id: clientId ?? null,
+        client_name: clientName ?? null,
+        pet_names: petNames, // Add the pet names array
       };
     });
 

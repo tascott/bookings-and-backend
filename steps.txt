@@ -57,3 +57,20 @@ Purpose: A doggy daycare booking and multi-site management platform.
 
 _Refer to the existing SQL schema (not included here) for data definitions._
 
+
+Current TODOS:
+- Pet integration when booking (default selects all pets, extras increase the price, etc)
+
+- Add pricing to each service, per pet, add a discount feature for additionals but set to 0% for now
+
+- Add modal for admins to click a user and edit them and their pets
+
+- Amend the new booking area on admin side, to have a search-to-find user then modal to edit - or paginated list - then can edit user to say they are 'accepted' or whatever (new column)
+
+- only accepted users/pets can book
+
+- calendar view for bookings (client)
+
+- calendar view for admin
+
+- assign staff / staff dashboard
