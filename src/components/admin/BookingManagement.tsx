@@ -138,7 +138,6 @@ export default function BookingManagement({
                 </div>
             )}
              {/* Display global error if needed and not displayed above */}
-             {error && bookings.length > 0 && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
         </section>
     );
 }

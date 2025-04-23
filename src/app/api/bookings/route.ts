@@ -24,62 +24,88 @@ export async function GET() {
 
   try {
     // 1. Fetch all relevant bookings
-    // TODO: Add pagination/date filtering later
     const { data: bookingsData, error: bookingsError } = await supabaseAdmin
       .from('bookings')
       .select('*')
       .order('start_time', { ascending: false });
 
     if (bookingsError) throw bookingsError;
-    if (!bookingsData) throw new Error('Failed to fetch bookings.');
+    if (!bookingsData) {
+      // Return empty array if no bookings found, not an error
+      return NextResponse.json([]);
+    }
 
-    // Extract booking IDs to fetch relevant client links
     const bookingIds = bookingsData.map(b => b.id);
 
-    // 2. Fetch relevant booking_client links and associated client names
-    const clientLinksMap = new Map<number, { clientId: number; clientName: string | null }>();
+    // Map to store booking_id -> client_id
+    const bookingClientMap = new Map<number, number>();
+    // Set to store unique client_ids
+    const clientIds = new Set<number>();
 
+    // 2. Fetch relevant booking_client links if there are bookings
     if (bookingIds.length > 0) {
       const { data: clientLinksData, error: clientLinksError } = await supabaseAdmin
         .from('booking_clients')
-        .select(`
-          booking_id,
-          client_id,
-          clients ( id, name )
-        `)
+        .select('booking_id, client_id') // Fetch only IDs
         .in('booking_id', bookingIds);
 
-      if (clientLinksError) throw clientLinksError;
+      if (clientLinksError) {
+          console.error("Error fetching booking_clients:", clientLinksError); // Log specific error
+          throw new Error(`Failed to fetch booking client links: ${clientLinksError.message}`);
+      }
 
-      // 3. Create a map for easy lookup: booking_id -> client info
+      // Populate map and set
       clientLinksData?.forEach(link => {
-          // Linter might still infer clients as array, handle it
-          const clientInfo = Array.isArray(link.clients) ? link.clients[0] : link.clients;
-          if (link.booking_id) {
-              clientLinksMap.set(link.booking_id, {
-                  clientId: link.client_id,
-                  clientName: clientInfo?.name ?? null
-              });
-          }
+        if (link.booking_id && link.client_id) {
+          bookingClientMap.set(link.booking_id, link.client_id);
+          clientIds.add(link.client_id);
+        }
+      });
+    }
+
+    // Map to store client_id -> client_name
+    const clientNameMap = new Map<number, string | null>();
+
+    // 3. Fetch client names if there are linked clients
+    if (clientIds.size > 0) {
+      const { data: clientsData, error: clientsError } = await supabaseAdmin
+        .from('clients')
+        .select('id, first_name, last_name') // Fetch names
+        .in('id', Array.from(clientIds)); // Query using unique client IDs
+
+      if (clientsError) {
+           console.error("Error fetching clients:", clientsError); // Log specific error
+           throw new Error(`Failed to fetch client details: ${clientsError.message}`);
+      }
+
+      // Populate client name map
+      clientsData?.forEach(client => {
+         // Combine first and last name, handle nulls
+         const fullName = [client.first_name, client.last_name].filter(Boolean).join(' ') || null;
+         clientNameMap.set(client.id, fullName);
       });
     }
 
     // 4. Merge client info into bookings data
     const processedBookings = bookingsData.map(booking => {
-      const clientInfo = clientLinksMap.get(booking.id);
+      const clientId = bookingClientMap.get(booking.id);
+      const clientName = clientId ? clientNameMap.get(clientId) : null;
       return {
         ...booking,
-        client_id: clientInfo?.clientId,
-        client_name: clientInfo?.clientName,
+        client_id: clientId ?? null, // Ensure it's number or null
+        client_name: clientName ?? null, // Ensure it's string or null
       };
     });
 
     return NextResponse.json(processedBookings);
 
   } catch (error: unknown) {
-      console.error('Error fetching enriched bookings:', error);
-      const message = error instanceof Error ? error.message : 'Failed to fetch bookings';
-      return NextResponse.json({ error: message }, { status: 500 });
+      // Log the specific error that was thrown
+      console.error('Error processing bookings request:', error);
+      const message = error instanceof Error ? error.message : 'An internal error occurred while fetching bookings';
+      // Ensure status code matches error type if possible, default 500
+      const status = (error instanceof Error && (error.message.includes('Forbidden') || error.message.includes('authenticated'))) ? 403 : 500;
+      return NextResponse.json({ error: message }, { status });
   }
 }
 

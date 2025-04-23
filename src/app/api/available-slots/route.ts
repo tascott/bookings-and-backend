@@ -45,11 +45,27 @@ export async function GET(request: Request) {
 
   // 3. Call the database function
   try {
-    const { data: slots, error: rpcError } = await supabase.rpc('calculate_available_slots', {
-      in_service_id: serviceId,
-      in_start_date: startDate,
-      in_end_date: endDate
-    });
+    // Define the expected structure of a slot returned by the RPC
+    // Ensure this matches the actual return type from your calculate_available_slots function
+    type CalculatedSlot = {
+        slot_field_id: number;
+        slot_field_name: string;
+        slot_start_time: string; // ISO String from TIMESTAMPTZ
+        slot_end_time: string;   // ISO String from TIMESTAMPTZ
+        slot_remaining_capacity: number;
+    }
+
+    // Explicitly type the expected return structure of the RPC call
+    // Provide function name as first type argument, expected return as second
+    const { data: slots, error: rpcError } = await supabase.rpc(
+        'calculate_available_slots',
+        {
+          in_service_id: serviceId,
+          in_start_date: startDate,
+          in_end_date: endDate
+        },
+        { /* Optional: Add count option if needed */ }
+      ).returns<CalculatedSlot[]>() // Use .returns<T>() method
 
     if (rpcError) {
       console.error('Error calling calculate_available_slots RPC:', rpcError);
@@ -57,8 +73,36 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: `Database error calculating slots: ${rpcError.message}` }, { status: 500 })
     }
 
-    // 4. Return the results
-    return NextResponse.json(slots || []); // Return empty array if data is null/undefined
+    // Add an explicit check if the returned data is an array before proceeding
+    if (!Array.isArray(slots)) {
+        // Log the unexpected non-array data (might be a Supabase error object)
+        console.error('Unexpected data structure returned from RPC:', slots);
+        // Return an error or an empty array, depending on desired behavior
+        return NextResponse.json({ error: 'Invalid data received from slot calculation.' }, { status: 500 });
+    }
+
+    // Now TypeScript knows slots is definitely CalculatedSlot[] here
+    const fetchedSlots: CalculatedSlot[] = slots;
+
+    // 4. Filter out slots starting on the current date (UTC)
+    const todayUTC = new Date().toISOString().split('T')[0]; // Get current date in YYYY-MM-DD format (UTC)
+
+    // Explicitly type the parameter in the filter function
+    const filteredSlots = fetchedSlots.filter((slot: CalculatedSlot) => {
+        if (!slot || typeof slot.slot_start_time !== 'string') {
+            // Add a check for safety, though RPC typing should help
+            console.warn('Skipping invalid slot data:', slot);
+            return false;
+        }
+        // Extract the date part from the slot's start time (assuming ISO string)
+        const slotStartDate = slot.slot_start_time.split('T')[0];
+        // Keep only slots where the start date is strictly AFTER today
+        return slotStartDate > todayUTC;
+    });
+
+
+    // 5. Return the filtered results
+    return NextResponse.json(filteredSlots); // Return the filtered array
 
   } catch (e) {
     console.error('Unexpected error in /api/available-slots:', e);
