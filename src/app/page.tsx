@@ -20,6 +20,9 @@ import ClientManagement from '@/components/admin/ClientManagement'; // Import Cl
 import AuthForm from '@/components/AuthForm'; // Import AuthForm
 import PetManagement from '@/components/client/PetManagement'; // Import PetManagement
 import MyBookings from '@/components/client/MyBookings'; // Import MyBookings
+import AdminDashboard from '@/components/admin/AdminDashboard';
+import StaffDashboard from '@/components/staff/StaffDashboard';
+import ClientDashboard from '@/components/client/ClientDashboard';
 
 // Define types for Site and Field based on schema
 type Site = {
@@ -671,108 +674,73 @@ export default function Home() {
       )}
       {user && (
         <main>
-          <p>This is the main content area for logged-in users.</p>
+          {isLoadingRole ? (
+            <p>Verifying user role...</p>
+          ) : (
+            <>
+              {/* Render the appropriate dashboard based on user role */}
+              {role === 'admin' && (
+                <AdminDashboard
+                  user={user}
+                  users={users}
+                  isLoadingUsers={isLoadingUsers}
+                  updatingUserId={updatingUserId}
+                  handleAssignRole={handleAssignRole}
+                  sites={sites}
+                  fields={fields}
+                  isLoadingSites={isLoadingSites}
+                  isLoadingFields={isLoadingFields}
+                  handleAddSite={handleAddSite}
+                  handleAddField={handleAddField}
+                  getFieldsForSite={getFieldsForSite}
+                  addSiteFormRef={addSiteFormRef}
+                  bookings={bookings}
+                  isLoadingBookings={isLoadingBookings}
+                  handleAddBooking={handleAddBooking}
+                  addBookingFormRef={addBookingFormRef}
+                  fetchBookings={fetchBookings}
+                  services={services}
+                  isLoadingServices={isLoadingServices}
+                  handleAddService={handleAddService}
+                  addServiceFormRef={addServiceFormRef}
+                  serviceAvailability={serviceAvailability}
+                  isLoadingServiceAvailability={isLoadingServiceAvailability}
+                  handleAddServiceAvailability={handleAddServiceAvailability}
+                  handleToggleServiceAvailabilityActive={handleToggleServiceAvailabilityActive}
+                  addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
+                  error={error}
+                />
+              )}
 
-          {!isLoadingRole && role === 'admin' && (
-            // Render the UserManagement component
-            <UserManagement
-              users={users}
-              isLoadingUsers={isLoadingUsers}
-              error={error} // Pass the global error state
-              currentUser={user}
-              updatingUserId={updatingUserId}
-              handleAssignRole={handleAssignRole}
-            />
-          )}
-          {isLoadingRole && <p>Verifying user role...</p>}
-          {!isLoadingRole && role && role !== 'admin' && (
-            <p>You do not have permission to view user management.</p>
-          )}
+              {role === 'staff' && (
+                <StaffDashboard
+                  user={user}
+                  bookings={bookings}
+                  isLoadingBookings={isLoadingBookings}
+                  sites={sites}
+                  fields={fields}
+                  services={services}
+                  handleAddBooking={handleAddBooking}
+                  addBookingFormRef={addBookingFormRef}
+                  getFieldsForSite={getFieldsForSite}
+                  fetchBookings={fetchBookings}
+                  error={error}
+                />
+              )}
 
-          {/* --- Site & Field Management Section (Admin Only) --- */}
-          {!isLoadingRole && role === 'admin' && (
-            // Render the SiteFieldManagement component
-            <SiteFieldManagement
-              sites={sites}
-              fields={fields}
-              isLoadingSites={isLoadingSites}
-              isLoadingFields={isLoadingFields}
-              error={error} // Pass global error
-              handleAddSite={handleAddSite}
-              handleAddField={handleAddField}
-              getFieldsForSite={getFieldsForSite}
-              addSiteFormRef={addSiteFormRef}
-            />
-          )}
-          {/* ----------------------------------------------- */}
+              {role === 'client' && (
+                <ClientDashboard
+                  user={user}
+                  services={services}
+                />
+              )}
 
-          {/* --- Booking Management Section (Admin/Staff) --- */}
-          {!isLoadingRole && (role === 'admin' || role === 'staff') && (
-            <BookingManagement
-                role={role}
-                bookings={bookings}
-                isLoadingBookings={isLoadingBookings}
-                sites={sites}
-                fields={fields}
-                error={error} // Pass the main error state
-                handleAddBooking={handleAddBooking}
-                addBookingFormRef={addBookingFormRef}
-                getFieldsForSite={getFieldsForSite}
-                refetchBookings={fetchBookings} // Pass fetchBookings as prop
-             />
-          )}
-           {/* ----------------------------------------- */}
-
-          {/* --- Service Management (Admin Only) --- */}
-          {!isLoadingRole && role === 'admin' && (
-            // Render the ServiceManagement component
-            <ServiceManagement
-                services={services}
-                isLoadingServices={isLoadingServices}
-                error={error}
-                handleAddService={handleAddService}
-                addServiceFormRef={addServiceFormRef}
-            />
-          )}
-           {/* ----------------------------------------- */}
-
-           {/* --- Service Availability Management (Admin Only) --- */}
-           {!isLoadingRole && role === 'admin' && (
-             // Render the ServiceAvailabilityManagement component
-             <ServiceAvailabilityManagement
-                serviceAvailability={serviceAvailability}
-                isLoadingServiceAvailability={isLoadingServiceAvailability}
-                services={services}
-                sites={sites}
-                fields={fields}
-                error={error}
-                handleAddServiceAvailability={handleAddServiceAvailability}
-                handleToggleServiceAvailabilityActive={handleToggleServiceAvailabilityActive}
-                addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
-                getFieldsForSite={getFieldsForSite}
-             />
-           )}
-           {/* ------------------------------------------------ */}
-
-           {/* --- Client Management Section (Admin Only) --- */}
-           {!isLoadingRole && role === 'admin' && (
-             <ClientManagement />
-           )}
-           {/* ------------------------------------------------ */}
-
-          {/* --- Client Booking View Section (Visible to clients only) --- */}
-          {!isLoadingRole && role === 'client' && (
-            <ClientBooking services={services} />
-          )}
-
-          {/* --- Pet Management Section (Visible to clients only) --- */}
-          {!isLoadingRole && role === 'client' && (
-            <PetManagement />
-          )}
-
-          {/* --- My Bookings Section (Visible to clients only) --- */}
-          {!isLoadingRole && role === 'client' && (
-            <MyBookings />
+              {!role && (
+                <div>
+                  <p>Your account is not currently assigned a role. Please contact an administrator.</p>
+                </div>
+              )}
+            </>
           )}
         </main>
       )}

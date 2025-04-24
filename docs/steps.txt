@@ -70,6 +70,32 @@ Current TODOS:
 
 - assign staff / staff dashboard
 
+## UI Structure: Role-Based Tabbed Dashboards
+
+The application features a tabbed interface structure to provide role-appropriate dashboards for each user type. Each dashboard shows only the relevant features to that user role:
+
+### Admin Dashboard Tabs
+- **User Management**: Control user roles and permissions
+- **Sites & Fields**: Manage physical locations and fields
+- **Bookings**: View and manage all bookings across the system
+- **Services**: Configure the services offered (daycare, training, etc.)
+- **Service Availability**: Set times when services are available
+- **Client Management**: Manage client information and pets
+
+### Staff Dashboard Tabs
+- **My Schedule**: View personal shift schedule and assignments
+- **Today's Bookings**: View bookings for the current day
+- **My Clients**: Access details of clients assigned to staff's shifts
+
+### Client Dashboard Tabs
+- **Book Services**: Make new bookings
+- **My Bookings**: View personal booking history
+- **My Pets**: Add and manage pet information
+- **My Account**: View/edit personal account information
+
+## Implementation Details
+The tabbed interface is built as a reusable component (`TabNavigation`) that can be configured for each user role. This provides consistent UX across the application while displaying only the permissions-appropriate content to each user type.
+
 - add tabs to dashboards + css
 
 - add addresses and map view
