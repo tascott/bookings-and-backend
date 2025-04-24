@@ -67,8 +67,6 @@ Current TODOS:
 
 - Amend the new booking area on admin side, to have a search-to-find user then modal to edit - or paginated list - then can edit user to say they are 'accepted' or whatever (new column)
 
-- only accepted users/pets can book
-
 - calendar view for bookings (client)
 
 - calendar view for admin
@@ -76,3 +74,5 @@ Current TODOS:
 - assign staff / staff dashboard
 
 - add tabs to dashboards + css
+
+- add addresses and map view

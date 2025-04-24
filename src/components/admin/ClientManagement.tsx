@@ -23,12 +23,140 @@ type Client = {
   pets: Pet[];
 }
 
+// Modal component for editing client
+function ClientEditModal({
+  client,
+  onClose,
+  onSave,
+  isUpdating
+}: {
+  client: Client;
+  onClose: () => void;
+  onSave: (clientId: number, updatedData: Partial<Client>) => Promise<void>;
+  isUpdating: boolean;
+}) {
+  const [name, setName] = useState(client.name || '');
+  const [email, setEmail] = useState(client.email || '');
+  const [phone, setPhone] = useState(client.phone || '');
+  const [error, setError] = useState<string | null>(null);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    try {
+      await onSave(client.id, {
+        name: name || null,
+        email: email || null,
+        phone: phone || null
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(message);
+    }
+  };
+
+  return (
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: 'rgba(0, 0, 0, 0.5)',
+      display: 'flex',
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000
+    }}>
+      <div style={{
+        backgroundColor: 'white',
+        borderRadius: '8px',
+        padding: '20px',
+        width: '90%',
+        maxWidth: '500px',
+        maxHeight: '80vh',
+        overflow: 'auto',
+        color: 'black'
+      }}>
+        <h3>Edit Client</h3>
+        {error && <p style={{ color: 'red' }}>{error}</p>}
+        <form onSubmit={handleSubmit}>
+          <div style={{ marginBottom: '15px' }}>
+            <label htmlFor="clientName" style={{ display: 'block', marginBottom: '5px' }}>Name:</label>
+            <input
+              id="clientName"
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
+          </div>
+          <div style={{ marginBottom: '15px' }}>
+            <label htmlFor="clientEmail" style={{ display: 'block', marginBottom: '5px' }}>Email:</label>
+            <input
+              id="clientEmail"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
+          </div>
+          <div style={{ marginBottom: '15px' }}>
+            <label htmlFor="clientPhone" style={{ display: 'block', marginBottom: '5px' }}>Phone:</label>
+            <input
+              id="clientPhone"
+              type="tel"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+            />
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={isUpdating}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#6c757d',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: isUpdating ? 'not-allowed' : 'pointer'
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={isUpdating}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: '#007bff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: isUpdating ? 'not-allowed' : 'pointer'
+              }}
+            >
+              {isUpdating ? 'Saving...' : 'Save Changes'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export default function ClientManagement() {
   const [clients, setClients] = useState<Client[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
   const [updatingPetId, setUpdatingPetId] = useState<number | null>(null);
+  const [editingClientId, setEditingClientId] = useState<number | null>(null);
+  const [isUpdatingClient, setIsUpdatingClient] = useState(false);
 
   // Fetch all clients and their pets
   const fetchClients = useCallback(async () => {
@@ -99,6 +227,44 @@ export default function ClientManagement() {
     }
   };
 
+  // Update client information
+  const updateClient = async (clientId: number, updatedData: Partial<Client>) => {
+    setIsUpdatingClient(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/clients/${clientId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to update client (HTTP ${response.status})`);
+      }
+
+      const updatedClient = await response.json();
+
+      // Update the local state
+      setClients(prevClients =>
+        prevClients.map(client =>
+          client.id === clientId ? { ...client, ...updatedClient } : client
+        )
+      );
+
+      // Close the modal
+      setEditingClientId(null);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+      console.error("Update Client Error:", e);
+      setError(errorMessage);
+      throw e; // Re-throw to handle in the modal
+    } finally {
+      setIsUpdatingClient(false);
+    }
+  };
+
   return (
     <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
       <h2>Client Management</h2>
@@ -120,16 +286,18 @@ export default function ClientManagement() {
               padding: '1rem',
               marginBottom: '1rem'
             }}>
-              <div
-                onClick={() => toggleClientExpand(client.id)}
-                style={{
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}
-              >
-                <div>
+              <div style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div
+                  onClick={() => toggleClientExpand(client.id)}
+                  style={{
+                    cursor: 'pointer',
+                    flex: 1
+                  }}
+                >
                   <h3 style={{ margin: '0 0 0.5rem 0' }}>
                     {client.name || client.email || `Client #${client.id}`}
                   </h3>
@@ -139,7 +307,28 @@ export default function ClientManagement() {
                     <span> | Pets: {client.pets.length}</span>
                   </p>
                 </div>
-                <span>{expandedClientId === client.id ? '▲' : '▼'}</span>
+
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  <button
+                    onClick={() => setEditingClientId(client.id)}
+                    style={{
+                      padding: '6px 12px',
+                      backgroundColor: '#17a2b8',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Edit Client
+                  </button>
+                  <span
+                    onClick={() => toggleClientExpand(client.id)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    {expandedClientId === client.id ? '▲' : '▼'}
+                  </span>
+                </div>
               </div>
 
               {expandedClientId === client.id && (
@@ -155,7 +344,7 @@ export default function ClientManagement() {
                           margin: '0.5rem 0',
                           background: '#f9f9f9',
                           borderRadius: '4px',
-                          color: 'black'
+                          color: 'black' // Only set black color here since background is light
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
@@ -199,12 +388,33 @@ export default function ClientManagement() {
                   )}
                 </div>
               )}
+
+              {/* Edit Client Modal */}
+              {editingClientId === client.id && (
+                <ClientEditModal
+                  client={client}
+                  onClose={() => setEditingClientId(null)}
+                  onSave={updateClient}
+                  isUpdating={isUpdatingClient}
+                />
+              )}
             </div>
           ))}
         </div>
       )}
 
-      <button onClick={fetchClients} disabled={isLoading}>
+      <button
+        onClick={fetchClients}
+        disabled={isLoading}
+        style={{
+          padding: '0.5rem 1rem',
+          backgroundColor: '#007bff',
+          color: 'white',
+          border: 'none',
+          borderRadius: '4px',
+          cursor: isLoading ? 'wait' : 'pointer'
+        }}
+      >
         {isLoading ? 'Refreshing...' : 'Refresh List'}
       </button>
     </section>
