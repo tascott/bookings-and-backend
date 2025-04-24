@@ -1,6 +1,58 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin' // Use admin client for updates/deletes
+import { getUserAuthInfo } from '@/utils/auth-helpers'
+
+// GET a specific pet by ID
+export async function GET(request: Request, { params }: { params: { petId: string } }) {
+    const supabase = await createClient()
+    const petId = parseInt(params.petId, 10);
+
+    if (isNaN(petId)) {
+        return NextResponse.json({ error: 'Invalid Pet ID format' }, { status: 400 });
+    }
+
+    // Use the combined auth helper function to get user auth info
+    const { clientId, isAdmin, error, status } = await getUserAuthInfo(supabase);
+
+    // Return early if there was an auth error
+    if (error) {
+        return NextResponse.json({ error }, { status: status || 401 });
+    }
+
+    // Fetch the pet
+    try {
+        let query = supabase
+            .from('pets')
+            .select('*')
+            .eq('id', petId);
+
+        // If not admin, only return pets owned by the client
+        if (!isAdmin && clientId !== undefined) {
+            query = query.eq('client_id', clientId);
+        }
+
+        const { data: pet, error: fetchError } = await query.single();
+
+        if (fetchError) {
+            if (fetchError.code === 'PGRST116') { // Not found
+                return NextResponse.json({ error: 'Pet not found or access denied.' }, { status: 404 });
+            }
+            throw fetchError;
+        }
+
+        if (!pet) {
+            return NextResponse.json({ error: 'Pet not found or access denied.' }, { status: 404 });
+        }
+
+        return NextResponse.json(pet);
+
+    } catch (error: unknown) {
+        console.error('Error fetching pet:', error);
+        const message = error instanceof Error ? error.message : 'Failed to fetch pet';
+        return NextResponse.json({ error: message }, { status: 500 });
+    }
+}
 
 // PUT (Update) a specific pet
 export async function PUT(request: Request, { params }: { params: { petId: string } }) {
@@ -12,45 +64,15 @@ export async function PUT(request: Request, { params }: { params: { petId: strin
         return NextResponse.json({ error: 'Invalid Pet ID format' }, { status: 400 });
     }
 
-    // 1. Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    // Use the combined auth helper function to get user auth info
+    const { clientId, isAdmin, error, status } = await getUserAuthInfo(supabase);
+
+    // Return early if there was an auth error
+    if (error) {
+        return NextResponse.json({ error }, { status: status || 401 });
     }
 
-    // 2. Check if user is admin (for managing is_confirmed)
-    const { data: staffData, error: staffError } = await supabase
-        .from('staff')
-        .select('role')
-        .eq('user_id', user.id)
-        .single();
-
-    const isAdmin = !staffError && staffData && staffData.role === 'admin';
-
-    // 3. Get client_id by fetching from clients table
-    let clientId: number | null = null;
-    if (!isAdmin) {
-        try {
-            const { data: clientData, error: clientError } = await supabase
-                .from('clients')
-                .select('id')
-                .eq('user_id', user.id)
-                .single();
-            if (clientError) {
-                console.error('Error fetching client profile for user:', user.id, clientError);
-                if (clientError.code === 'PGRST116') { return NextResponse.json({ error: 'Client profile not found.' }, { status: 404 }); }
-                throw clientError;
-            }
-            if (!clientData) { return NextResponse.json({ error: 'Client profile not found.' }, { status: 404 }); }
-            clientId = clientData.id;
-        } catch (error) {
-            console.error('Error during client ID fetch:', error);
-            const message = error instanceof Error ? error.message : 'Failed to retrieve client profile';
-            return NextResponse.json({ error: message }, { status: 500 });
-        }
-    }
-
-    // 4. Parse request body for update data
+    // Parse request body for update data
     let updateData: { name?: string; breed?: string; size?: string; is_confirmed?: boolean /* Add other fields */ };
     try {
         const body = await request.json();
@@ -71,7 +93,7 @@ export async function PUT(request: Request, { params }: { params: { petId: strin
         return NextResponse.json({ error: errorMessage }, { status: 400 })
     }
 
-    // 5. Update the pet
+    // Update the pet
     try {
         let query = supabaseAdmin
             .from('pets')
@@ -79,7 +101,7 @@ export async function PUT(request: Request, { params }: { params: { petId: strin
             .eq('id', petId);
 
         // If not admin, ensure user owns this pet
-        if (!isAdmin && clientId !== null) {
+        if (!isAdmin && clientId !== undefined) {
             query = query.eq('client_id', clientId);
         }
 
@@ -114,40 +136,33 @@ export async function DELETE(request: Request, { params }: { params: { petId: st
         return NextResponse.json({ error: 'Invalid Pet ID format' }, { status: 400 });
     }
 
-    // 1. Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    // Use the combined auth helper function to get user auth info
+    const { clientId, isAdmin, error, status } = await getUserAuthInfo(supabase);
+
+    // Return early if there was an auth error
+    if (error) {
+        return NextResponse.json({ error }, { status: status || 401 });
     }
 
-    // 2. Get client_id by fetching from clients table
-    let clientId: number;
-    try {
-        const { data: clientData, error: clientError } = await supabase
-            .from('clients')
-            .select('id')
-            .eq('user_id', user.id)
-            .single();
-        if (clientError) {
-            console.error('Error fetching client profile for user:', user.id, clientError);
-             if (clientError.code === 'PGRST116') { return NextResponse.json({ error: 'Client profile not found.' }, { status: 404 }); }
-            throw clientError;
-        }
-        if (!clientData) { return NextResponse.json({ error: 'Client profile not found.' }, { status: 404 }); }
-        clientId = clientData.id;
-    } catch (error) {
-         console.error('Error during client ID fetch:', error);
-         const message = error instanceof Error ? error.message : 'Failed to retrieve client profile';
-         return NextResponse.json({ error: message }, { status: 500 });
+    // Check if client ID is available for non-admin users
+    if (!isAdmin && clientId === undefined) {
+        return NextResponse.json({ error: 'Client profile required' }, { status: 404 });
     }
 
-    // 3. Delete the pet (checking ownership implicitly via client_id filter)
+    // Delete the pet (checking ownership implicitly via client_id filter)
     try {
-        const { error: deleteError, count } = await supabaseAdmin
+        // For regular users, ensure they only delete their own pets
+        const deleteQuery = supabaseAdmin
             .from('pets')
             .delete({ count: 'exact' })
-            .eq('id', petId)
-            .eq('client_id', clientId); // IMPORTANT: Ensure user owns this pet
+            .eq('id', petId);
+
+        // Add client_id filter for regular users (non-admin)
+        if (!isAdmin) {
+            deleteQuery.eq('client_id', clientId!); // Non-null assertion is safe here due to prior check
+        }
+
+        const { error: deleteError, count } = await deleteQuery;
 
         if (deleteError) {
             console.error('Error deleting pet:', deleteError);

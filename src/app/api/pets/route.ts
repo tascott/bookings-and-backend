@@ -1,51 +1,45 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin' // Use admin for inserts/updates if needed
+import { getUserAuthInfo } from '@/utils/auth-helpers'
 
 // GET user's pets
 export async function GET() {
     const supabase = await createClient()
+    const supabaseAdmin = await createAdminClient()
 
-    // 1. Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    // Get user auth info from our helper
+    const { clientId, isAdmin, error, status } = await getUserAuthInfo(supabase);
+
+    // Return early if there was an auth error
+    if (error) {
+        return NextResponse.json({ error }, { status: status || 401 });
     }
 
-    // 2. Get client_id associated with the user by fetching from clients table
-    let clientId: number;
-    try {
-        const { data: clientData, error: clientError } = await supabase
-            .from('clients')
-            .select('id')
-            .eq('user_id', user.id) // Match the user_id column in clients
-            .single();
-
-        if (clientError) {
-            console.error('Error fetching client profile for user:', user.id, clientError);
-            if (clientError.code === 'PGRST116') { // Not found
-                 return NextResponse.json({ error: 'Client profile not found for this user.' }, { status: 404 });
-            }
-            throw clientError; // Rethrow other errors
-        }
-        if (!clientData) {
-            return NextResponse.json({ error: 'Client profile not found for this user.' }, { status: 404 });
-        }
-        clientId = clientData.id;
-    } catch (error) {
-         console.error('Error during client ID fetch:', error);
-         const message = error instanceof Error ? error.message : 'Failed to retrieve client profile';
-         return NextResponse.json({ error: message }, { status: 500 });
+    // For this endpoint, a client ID is required for non-admin users
+    if (!clientId && !isAdmin) {
+        return NextResponse.json({ error: 'Client profile not found for this user' }, { status: 404 });
     }
 
-    // 3. Fetch pets for the client
     try {
-        // RLS on 'pets' should allow select based on client_id matching authenticated user's client record
-        const { data: pets, error: petsError } = await supabase
-            .from('pets')
-            .select('*')
-            .eq('client_id', clientId) // Filter by client_id
-            .order('name'); // Optional ordering
+        let petsQuery;
+
+        if (isAdmin) {
+            // Admin users can see all pets
+            petsQuery = supabaseAdmin
+                .from('pets')
+                .select('*')
+                .order('name');
+        } else {
+            // Regular users can only see their own pets
+            petsQuery = supabase
+                .from('pets')
+                .select('*')
+                .eq('client_id', clientId!) // Non-null assertion is safe here since we checked above
+                .order('name');
+        }
+
+        const { data: pets, error: petsError } = await petsQuery;
 
         if (petsError) {
             throw petsError;
@@ -65,38 +59,20 @@ export async function POST(request: Request) {
     const supabase = await createClient()
     const supabaseAdmin = await createAdminClient() // Use admin client for insert to bypass RLS if needed
 
-    // 1. Check authentication
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    // Get user auth info from our helper
+    const { clientId, error, status } = await getUserAuthInfo(supabase);
+
+    // Return early if there was an auth error
+    if (error) {
+        return NextResponse.json({ error }, { status: status || 401 });
     }
 
-    // 2. Get client_id (same logic as GET, fetch from clients table)
-    let clientId: number;
-    try {
-        const { data: clientData, error: clientError } = await supabase
-            .from('clients')
-            .select('id')
-            .eq('user_id', user.id)
-            .single();
-        if (clientError) {
-            console.error('Error fetching client profile for user:', user.id, clientError);
-             if (clientError.code === 'PGRST116') { // Not found
-                 return NextResponse.json({ error: 'Client profile not found for this user.' }, { status: 404 });
-            }
-            throw clientError;
-        }
-        if (!clientData) {
-             return NextResponse.json({ error: 'Client profile not found for this user.' }, { status: 404 });
-        }
-        clientId = clientData.id;
-    } catch (error) {
-         console.error('Error during client ID fetch:', error);
-         const message = error instanceof Error ? error.message : 'Failed to retrieve client profile';
-         return NextResponse.json({ error: message }, { status: 500 });
+    // For this endpoint, a client ID is required
+    if (!clientId) {
+        return NextResponse.json({ error: 'Client profile not found for this user' }, { status: 404 });
     }
 
-    // 3. Parse request body
+    // Parse request body
     let petData: { name: string; breed?: string; size?: string; is_confirmed?: boolean /* Add other fields as needed */ };
     try {
         const body = await request.json();
@@ -115,7 +91,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: errorMessage }, { status: 400 })
     }
 
-    // 4. Insert the new pet
+    // Insert the new pet
     try {
         const { data: newPet, error: insertError } = await supabaseAdmin
             .from('pets')

@@ -20,13 +20,23 @@ Project Summary for AI Assistant (booking-and-accounts)
     *   **Service Management:** Create/view services (name, description, requires_field_selection flag).
     *   **Service Availability Management:** Create/view rules defining when a service is available (linked to service, fields, times, days/date, capacity, active status).
     *   **Booking Management:** Manually create bookings (linking to field, times, service type, capacity), view existing bookings (including client name fetched via `booking_clients`).
+    *   **Client Management:** View and edit client profiles, manage their pets with confirmation functionality (`src/components/admin/ClientManagement.tsx`).
 
-3.  **Client UI (within `src/app/page.tsx` using `src/components/client/ClientBooking.tsx`):**
-    *   Select service and date range.
-    *   View available slots calculated by the backend (`/api/available-slots`).
-    *   Slots are aggregated if `requires_field_selection` is false for the service, otherwise shown per field.
-    *   **Same-day booking prevention:** The `/api/available-slots` route now filters out slots starting on the current date (UTC).
-    *   Basic "Book Now" functionality exists, calling `/api/client-booking`.
+3.  **Client UI (within `src/app/page.tsx` using client components):**
+    *   **Booking Interface (`src/components/client/ClientBooking.tsx`):**
+        *   Select service and date range.
+        *   View available slots calculated by the backend (`/api/available-slots`).
+        *   Slots are aggregated if `requires_field_selection` is false for the service, otherwise shown per field.
+        *   **Same-day booking prevention:** The `/api/available-slots` route now filters out slots starting on the current date (UTC).
+        *   Basic "Book Now" functionality exists, calling `/api/client-booking`.
+    *   **Pet Management (`src/components/client/PetManagement.tsx`):**
+        *   List all pets for the client
+        *   Add new pets with name, breed, and size
+        *   Edit existing pets
+        *   Delete pets with confirmation
+    *   **My Bookings (`src/components/client/MyBookings.tsx`):**
+        *   View list of past and upcoming bookings
+        *   See booking details including service type, date/time, status, and linked pets
 
 **Database Schema Summary (Implemented Tables):**
 
@@ -39,7 +49,8 @@ Project Summary for AI Assistant (booking-and-accounts)
 *   `public.clients`: Client user profiles (id -> auth.users.id, email, first_name, last_name, phone). **No role here.**
 *   `public.staff`: Staff user profiles and roles (id, user_id -> auth.users.id, name, role, phone_number, notes). **Admin/Staff roles determined here.**
 *   `public.booking_clients`: **Junction table** linking bookings to clients (id, booking_id -> bookings.id, client_id -> clients.id). Enables many-to-many relationship.
-*   `public.pets`: Stores pet information (id, client_id -> clients.id, name, breed, etc.). *Currently captured during sign-up but full management UI not implemented.*
+*   `public.pets`: Stores pet information (id, client_id -> clients.id, name, breed, size, is_confirmed). *Management UI is now fully implemented.*
+*   `public.booking_pets`: **Junction table** linking bookings to pets (id, booking_id -> bookings.id, pet_id -> pets.id).
 *   `public.payments`: Exists but likely not fully integrated yet (id, client_id, booking_id, amount, currency, status, created_at).
 
 **File Structure Overview:**
@@ -47,45 +58,97 @@ Project Summary for AI Assistant (booking-and-accounts)
 *   `src/app/`: Next.js App Router structure.
     *   `page.tsx`: Main entry point, renders different views based on auth/role.
     *   `actions.ts`: Server actions for login/signup.
-    *   `api/`: API route handlers (e.g., `users/route.ts`, `bookings/route.ts`, `available-slots/route.ts`).
+    *   `api/`: API route handlers:
+        *   `available-slots/`: Calculates and returns available booking slots based on service availability.
+        *   `bookings/`: CRUD operations for bookings (admin use).
+        *   `client-booking/`: Creates bookings from client interface.
+        *   `clients/`: Manages client information:
+            *   `clients/route.ts`: Lists all clients (admin access only)
+            *   `clients/[clientId]/route.ts`: GET and PUT for single client, includes pet data.
+        *   `fields/`: Manages field information.
+        *   `my-bookings/`: Returns bookings for the authenticated client.
+        *   `pets/`: Manages pet information:
+            *   `pets/route.ts`: GET (list) and POST (create) for pets owned by the client.
+            *   `pets/[petId]/route.ts`: GET, PUT, and DELETE for specific pet by ID.
+        *   `service-availability/`: Manages service availability rules.
+        *   `services/`: Manages service definitions.
+        *   `sites/`: Manages site information.
+        *   `slots/`: Helper endpoints for booking slots.
+        *   `users/`: Manages user information and roles.
+        *   `test-auth/`: Testing endpoint for authentication utilities.
 *   `src/components/`: Reusable React components.
     *   `AuthForm.tsx`: Handles login/signup UI.
-    *   `admin/`: Components for admin-specific UI sections.
-    *   `client/`: Components for client-facing UI sections (`ClientBooking.tsx`).
+    *   `admin/`: Components for admin-specific UI sections:
+        *   `BookingManagement.tsx`: Create and manage bookings.
+        *   `ClientManagement.tsx`: Manage client records and their pets.
+        *   `ServiceAvailabilityManagement.tsx`: Define when services are available.
+        *   `ServiceManagement.tsx`: Create and manage service offerings.
+        *   `SiteFieldManagement.tsx`: Create and manage locations and fields.
+        *   `UserManagement.tsx`: Manage user accounts and roles.
+    *   `client/`: Components for client-facing UI sections:
+        *   `ClientBooking.tsx`: Interface for clients to book services.
+        *   `PetManagement.tsx`: Interface for clients to manage their pets.
+        *   `MyBookings.tsx`: Interface for clients to view their bookings.
 *   `src/utils/`: Utility functions and Supabase client configurations.
     *   `supabase/client.ts`, `server.ts`, `admin.ts`: Supabase client initializers.
+    *   `auth-helpers.ts`: Centralized authentication utility functions.
 *   `README.md`: Project setup and instructions (including admin creation).
 *   `overallguide.txt`: This file.
 *   `supabasedbschema.png`: Image of the database schema.
 
-**Known Issues / Recent Fixes:**
+**Recent Improvements & Code Refactoring:**
 
-*   Admin booking view: Fixed duplicate error messages. Addressed 500 error fetching bookings by refactoring client data fetching in the API route (avoiding potentially problematic embedded select).
-*   Client booking: Prevented booking slots on the current date by filtering in `/api/available-slots`.
-*   Auth form: Separated Login and Sign Up views within the same component.
+*   **Authentication Utilities:**
+    *   Created `src/utils/auth-helpers.ts` with centralized functions for authentication and authorization:
+        *   `getAuthenticatedUser()`: Retrieves the authenticated user and handles errors
+        *   `getClientId()`: Gets client ID for a user from the clients table
+        *   `isUserAdmin()`: Checks if a user has admin role in the staff table
+        *   `getUserAuthInfo()`: Combined utility that handles all auth checks in one function
+    *   Refactored all API routes to use these helpers, reducing code duplication and increasing consistency
+    *   Updated `/api/clients/[clientId]`, `/api/pets/[petId]`, `/api/pets`, `/api/clients`, `/api/my-bookings` routes
+    *   Added `/api/test-auth` endpoint to verify authentication utility functions
+    *   Benefits: Reduced ~20-30 lines of duplicated code per route, improved security consistency, easier maintenance
 
-**Pet Management Implementation (In Progress):**
-*   **API Routes Created:**
+*   **Other Recent Fixes:**
+    *   Admin booking view: Fixed duplicate error messages. Addressed 500 error fetching bookings by refactoring client data fetching in the API route (avoiding potentially problematic embedded select).
+    *   Client booking: Prevented booking slots on the current date by filtering in `/api/available-slots`.
+    *   Auth form: Separated Login and Sign Up views within the same component.
+
+**Pet Management Implementation (Complete):**
+*   **API Routes Implemented:**
     *   `GET /api/pets`: Fetches pets for the logged-in client.
     *   `POST /api/pets`: Creates a new pet for the logged-in client.
+    *   `GET /api/pets/[petId]`: Fetches a specific pet by ID.
     *   `PUT /api/pets/[petId]`: Updates a specific pet owned by the client.
     *   `DELETE /api/pets/[petId]`: Deletes a specific pet owned by the client.
-    *   *(Note: API routes correctly fetch `clients.id` via `user_id` before interacting with `pets` table)*
-*   **Next Step:** Create UI component (`src/components/client/PetManagement.tsx`) for clients to list, add, edit, delete pets.
-*   **Future:** Handle initial pet creation during signup flow (likely client-side check after email confirmation). Integrate pet selection into booking process.
+    *   `GET /api/clients/[clientId]`: Gets a specific client with their pets.
+*   **UI Components Implemented:**
+    *   `src/components/client/PetManagement.tsx`: Client-facing UI to manage pets.
+    *   `src/components/admin/ClientManagement.tsx`: Admin UI for managing clients and their pets.
+*   **Admin Features:** Can confirm pets (set `is_confirmed` flag) which regular clients cannot modify.
+
+**Client Bookings Enhancements:**
+*   **My Bookings Implementation:**
+    *   **API Route:** `GET /api/my-bookings`: Fetches all bookings for the authenticated client.
+    *   **UI Component:** `src/components/client/MyBookings.tsx`: Displays past and upcoming bookings.
+*   **Booking-Pet Relationship:** Bookings are now linked to specific pets via the `booking_pets` junction table.
 
 **Potential Next Steps / Areas for Development:**
 
-1.  **Implement Pet Management UI:** Create the `PetManagement.tsx` component.
-2.  **Refine Client Booking:**
+1.  **Refine Client Booking:**
     *   Improve UI/UX for selecting services/dates/slots.
     *   Handle booking confirmation/feedback more robustly.
-    *   Integrate pet selection if necessary for bookings.
-    *   Consider adding a "My Bookings" view for clients.
-3.  **Payments:** Implement payment processing (e.g., Stripe integration) linked to bookings via the `payments` table.
-4.  **Staff Features:** Enhance staff capabilities (e.g., assigning staff to bookings, viewing specific schedules).
-5.  **Calendar View:** Implement a more visual calendar display for bookings (admin/staff).
-6.  **Error Handling:** Improve global vs. local error handling/display throughout the UI.
-7.  **Testing:** Add automated tests.
+    *   Integrate pet selection during the booking process.
+    *   Add cancellation feature to MyBookings view.
+2.  **Payments:** Implement payment processing (e.g., Stripe integration) linked to bookings via the `payments` table.
+3.  **Staff Features:** Enhance staff capabilities (e.g., assigning staff to bookings, viewing specific schedules).
+4.  **Calendar View:** Implement a more visual calendar display for bookings (admin/staff).
+5.  **Error Handling:** Improve global vs. local error handling/display throughout the UI.
+6.  **Testing:** Add automated tests.
+7.  **Add pricing:** Implement pricing per service, per pet, with possible discount feature for additional pets.
+8.  **Admin booking improvements:** Add search functionality to find users and edit their status.
+9.  **Dashboard tabs:** Add tabs to improve organization of admin and client dashboards.
+10. **Location data:** Add addresses and map view integration.
+11. **API Refactoring:** Continue refactoring remaining API routes to use the auth-helpers utility functions.
 
 This guide provides context on the current architecture, implementation, and potential future directions.

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/utils/supabase/server'
+import { getUserAuthInfo } from '@/utils/auth-helpers'
 
 // Define expected structure for the response
 // Adapt based on the actual data you need in the UI
@@ -34,28 +35,17 @@ type BookingWithNestedPets = {
 export async function GET() {
     const supabase = await createClient()
 
-    // 1. Authentication & Get Client ID
-    const { data: { user }, error: authError } = await supabase.auth.getUser()
-    if (authError || !user) {
-        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    // Get user auth info from our helper
+    const { clientId, error, status } = await getUserAuthInfo(supabase);
+
+    // Return early if there was an auth error
+    if (error) {
+        return NextResponse.json({ error }, { status: status || 401 });
     }
 
-    let clientId: number;
-    try {
-        const { data: clientData, error: clientError } = await supabase
-            .from('clients')
-            .select('id')
-            .eq('user_id', user.id)
-            .single();
-        if (clientError) throw clientError;
-        if (!clientData) throw new Error('Client profile not found.');
-        clientId = clientData.id;
-    } catch (error) {
-         console.error('Error fetching client ID for my-bookings:', error);
-         const message = error instanceof Error ? error.message : 'Failed to retrieve client profile';
-         // Return 404 specifically if client profile not found
-         const status = (error instanceof Error && error.message.includes('Client profile not found')) ? 404 : 500;
-         return NextResponse.json({ error: message }, { status });
+    // For this endpoint, a client ID is required
+    if (!clientId) {
+        return NextResponse.json({ error: 'Client profile not found' }, { status: 404 });
     }
 
     // 2. Fetch Bookings and Associated Pets for the Client

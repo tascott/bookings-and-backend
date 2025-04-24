@@ -17,7 +17,9 @@ type Client = {
   id: number;
   user_id: string;
   email?: string | null;
-  name?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
+  name?: string | null; // Computed property for backward compatibility with UI
   phone?: string | null;
   created_at?: string;
   pets: Pet[];
@@ -28,17 +30,42 @@ function ClientEditModal({
   client,
   onClose,
   onSave,
-  isUpdating
+  isUpdating,
+  onAddPet,
+  onUpdatePet,
+  onDeletePet,
+  updatingPetId
 }: {
   client: Client;
   onClose: () => void;
   onSave: (clientId: number, updatedData: Partial<Client>) => Promise<void>;
   isUpdating: boolean;
+  onAddPet: (clientId: number, petData: Partial<Pet>) => Promise<void>;
+  onUpdatePet: (petId: number, petData: Partial<Pet>, isConfirmToggle?: boolean) => Promise<void>;
+  onDeletePet: (petId: number) => Promise<void>;
+  updatingPetId: number | null;
 }) {
-  const [name, setName] = useState(client.name || '');
+  // Use first_name as the primary source, falling back to name for backward compatibility
+  const [firstName, setFirstName] = useState(client.first_name || '');
+  const [lastName, setLastName] = useState(client.last_name || '');
   const [email, setEmail] = useState(client.email || '');
   const [phone, setPhone] = useState(client.phone || '');
   const [error, setError] = useState<string | null>(null);
+
+  // Tab state
+  const [activeTab, setActiveTab] = useState<'info' | 'pets'>('info');
+
+  // Pet form states
+  const [newPetName, setNewPetName] = useState('');
+  const [newPetBreed, setNewPetBreed] = useState('');
+  const [newPetSize, setNewPetSize] = useState('');
+  const [isAddingPet, setIsAddingPet] = useState(false);
+
+  // Pet editing states
+  const [editingPet, setEditingPet] = useState<Pet | null>(null);
+  const [editPetName, setEditPetName] = useState('');
+  const [editPetBreed, setEditPetBreed] = useState('');
+  const [editPetSize, setEditPetSize] = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +73,8 @@ function ClientEditModal({
 
     try {
       await onSave(client.id, {
-        name: name || null,
+        first_name: firstName || null,
+        last_name: lastName || null,
         email: email || null,
         phone: phone || null
       });
@@ -54,6 +82,71 @@ function ClientEditModal({
       const message = err instanceof Error ? err.message : 'Unknown error occurred';
       setError(message);
     }
+  };
+
+  const handleAddPet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!newPetName.trim()) {
+      setError('Pet name is required');
+      return;
+    }
+
+    setIsAddingPet(true);
+
+    try {
+      await onAddPet(client.id, {
+        name: newPetName.trim(),
+        breed: newPetBreed.trim() || null,
+        size: newPetSize.trim() || null
+      });
+
+      // Reset form
+      setNewPetName('');
+      setNewPetBreed('');
+      setNewPetSize('');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(message);
+    } finally {
+      setIsAddingPet(false);
+    }
+  };
+
+  const handleUpdatePet = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+
+    if (!editingPet || !editPetName.trim()) {
+      setError('Pet name cannot be empty');
+      return;
+    }
+
+    try {
+      await onUpdatePet(editingPet.id, {
+        name: editPetName.trim(),
+        breed: editPetBreed.trim() || null,
+        size: editPetSize.trim() || null
+      });
+
+      // Reset editing state
+      setEditingPet(null);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      setError(message);
+    }
+  };
+
+  const startEditPet = (pet: Pet) => {
+    setEditingPet(pet);
+    setEditPetName(pet.name);
+    setEditPetBreed(pet.breed || '');
+    setEditPetSize(pet.size || '');
+  };
+
+  const cancelEditPet = () => {
+    setEditingPet(null);
   };
 
   return (
@@ -74,76 +167,358 @@ function ClientEditModal({
         borderRadius: '8px',
         padding: '20px',
         width: '90%',
-        maxWidth: '500px',
+        maxWidth: '600px',
         maxHeight: '80vh',
         overflow: 'auto',
         color: 'black'
       }}>
-        <h3>Edit Client</h3>
+        <h3>Manage Client</h3>
         {error && <p style={{ color: 'red' }}>{error}</p>}
-        <form onSubmit={handleSubmit}>
-          <div style={{ marginBottom: '15px' }}>
-            <label htmlFor="clientName" style={{ display: 'block', marginBottom: '5px' }}>Name:</label>
-            <input
-              id="clientName"
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
-            />
+
+        {/* Tabs */}
+        <div style={{
+          display: 'flex',
+          borderBottom: '1px solid #ddd',
+          marginBottom: '20px',
+          gap: '10px'
+        }}>
+          <button
+            type="button"
+            onClick={() => setActiveTab('info')}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: activeTab === 'info' ? '#007bff' : '#f8f9fa',
+              color: activeTab === 'info' ? 'white' : '#212529',
+              border: 'none',
+              borderTopLeftRadius: '4px',
+              borderTopRightRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Client Info
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('pets')}
+            style={{
+              padding: '8px 16px',
+              backgroundColor: activeTab === 'pets' ? '#007bff' : '#f8f9fa',
+              color: activeTab === 'pets' ? 'white' : '#212529',
+              border: 'none',
+              borderTopLeftRadius: '4px',
+              borderTopRightRadius: '4px',
+              cursor: 'pointer'
+            }}
+          >
+            Pets
+          </button>
+        </div>
+
+        {/* Client Info Tab */}
+        {activeTab === 'info' && (
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="clientFirstName" style={{ display: 'block', marginBottom: '5px' }}>First Name:</label>
+              <input
+                id="clientFirstName"
+                type="text"
+                value={firstName}
+                onChange={(e) => setFirstName(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="clientLastName" style={{ display: 'block', marginBottom: '5px' }}>Last Name:</label>
+              <input
+                id="clientLastName"
+                type="text"
+                value={lastName}
+                onChange={(e) => setLastName(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="clientEmail" style={{ display: 'block', marginBottom: '5px' }}>Email:</label>
+              <input
+                id="clientEmail"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="clientPhone" style={{ display: 'block', marginBottom: '5px' }}>Phone:</label>
+              <input
+                id="clientPhone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isUpdating}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: isUpdating ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={isUpdating}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#007bff',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: isUpdating ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isUpdating ? 'Saving...' : 'Save Changes'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {/* Pets Tab */}
+        {activeTab === 'pets' && (
+          <div>
+            {/* Add New Pet Form */}
+            <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
+              <h4 style={{ marginTop: 0 }}>Add New Pet</h4>
+              <form onSubmit={handleAddPet}>
+                <div style={{ marginBottom: '10px' }}>
+                  <label htmlFor="newPetName" style={{ display: 'block', marginBottom: '5px' }}>Name:</label>
+                  <input
+                    id="newPetName"
+                    type="text"
+                    value={newPetName}
+                    onChange={(e) => setNewPetName(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                    required
+                  />
+                </div>
+                <div style={{ marginBottom: '10px' }}>
+                  <label htmlFor="newPetBreed" style={{ display: 'block', marginBottom: '5px' }}>Breed (Optional):</label>
+                  <input
+                    id="newPetBreed"
+                    type="text"
+                    value={newPetBreed}
+                    onChange={(e) => setNewPetBreed(e.target.value)}
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  />
+                </div>
+                <div style={{ marginBottom: '10px' }}>
+                  <label htmlFor="newPetSize" style={{ display: 'block', marginBottom: '5px' }}>Size (Optional):</label>
+                  <input
+                    id="newPetSize"
+                    type="text"
+                    value={newPetSize}
+                    onChange={(e) => setNewPetSize(e.target.value)}
+                    placeholder="e.g., Small, Medium, Large"
+                    style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={isAddingPet}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#28a745',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: isAddingPet ? 'not-allowed' : 'pointer'
+                  }}
+                >
+                  {isAddingPet ? 'Adding...' : 'Add Pet'}
+                </button>
+              </form>
+            </div>
+
+            {/* Pet List */}
+            <h4>Client's Pets</h4>
+            {client.pets.length === 0 ? (
+              <p>This client has no pets.</p>
+            ) : (
+              <div>
+                {client.pets.map(pet => (
+                  <div key={pet.id} style={{
+                    border: '1px solid #ddd',
+                    borderRadius: '4px',
+                    padding: '10px',
+                    marginBottom: '10px',
+                    backgroundColor: '#f9f9f9'
+                  }}>
+                    {editingPet && editingPet.id === pet.id ? (
+                      // Edit Pet Form
+                      <form onSubmit={handleUpdatePet}>
+                        <div style={{ marginBottom: '10px' }}>
+                          <label htmlFor={`editPetName-${pet.id}`} style={{ display: 'block', marginBottom: '5px' }}>Name:</label>
+                          <input
+                            id={`editPetName-${pet.id}`}
+                            type="text"
+                            value={editPetName}
+                            onChange={(e) => setEditPetName(e.target.value)}
+                            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                            required
+                          />
+                        </div>
+                        <div style={{ marginBottom: '10px' }}>
+                          <label htmlFor={`editPetBreed-${pet.id}`} style={{ display: 'block', marginBottom: '5px' }}>Breed:</label>
+                          <input
+                            id={`editPetBreed-${pet.id}`}
+                            type="text"
+                            value={editPetBreed}
+                            onChange={(e) => setEditPetBreed(e.target.value)}
+                            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                          />
+                        </div>
+                        <div style={{ marginBottom: '10px' }}>
+                          <label htmlFor={`editPetSize-${pet.id}`} style={{ display: 'block', marginBottom: '5px' }}>Size:</label>
+                          <input
+                            id={`editPetSize-${pet.id}`}
+                            type="text"
+                            value={editPetSize}
+                            onChange={(e) => setEditPetSize(e.target.value)}
+                            style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                          />
+                        </div>
+                        <div style={{ display: 'flex', gap: '10px' }}>
+                          <button
+                            type="submit"
+                            disabled={updatingPetId === pet.id}
+                            style={{
+                              padding: '6px 12px',
+                              backgroundColor: '#007bff',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: updatingPetId === pet.id ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            {updatingPetId === pet.id ? 'Saving...' : 'Save'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelEditPet}
+                            disabled={updatingPetId === pet.id}
+                            style={{
+                              padding: '6px 12px',
+                              backgroundColor: '#6c757d',
+                              color: 'white',
+                              border: 'none',
+                              borderRadius: '4px',
+                              cursor: updatingPetId === pet.id ? 'not-allowed' : 'pointer'
+                            }}
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      // Display Pet Info
+                      <div>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <div>
+                            <h5 style={{ margin: '0 0 5px 0' }}>{pet.name}</h5>
+                            <div>
+                              {pet.breed && <span style={{ marginRight: '10px' }}><strong>Breed:</strong> {pet.breed}</span>}
+                              {pet.size && <span><strong>Size:</strong> {pet.size}</span>}
+                            </div>
+                            <div style={{ marginTop: '5px' }}>
+                              <span style={{
+                                padding: '3px 8px',
+                                borderRadius: '4px',
+                                fontSize: '0.8rem',
+                                backgroundColor: pet.is_confirmed ? '#d4edda' : '#f8d7da',
+                                color: pet.is_confirmed ? '#155724' : '#721c24'
+                              }}>
+                                {pet.is_confirmed ? 'Confirmed' : 'Unconfirmed'}
+                              </span>
+                            </div>
+                          </div>
+                          <div style={{ display: 'flex', gap: '5px' }}>
+                            <button
+                              onClick={() => onUpdatePet(pet.id, { is_confirmed: !pet.is_confirmed }, true)}
+                              disabled={updatingPetId === pet.id}
+                              style={{
+                                padding: '5px 10px',
+                                backgroundColor: pet.is_confirmed ? '#dc3545' : '#28a745',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: updatingPetId === pet.id ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              {updatingPetId === pet.id ? '...' : pet.is_confirmed ? 'Unconfirm' : 'Confirm'}
+                            </button>
+                            <button
+                              onClick={() => startEditPet(pet)}
+                              disabled={updatingPetId === pet.id}
+                              style={{
+                                padding: '5px 10px',
+                                backgroundColor: '#17a2b8',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: updatingPetId === pet.id ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => onDeletePet(pet.id)}
+                              disabled={updatingPetId === pet.id}
+                              style={{
+                                padding: '5px 10px',
+                                backgroundColor: '#dc3545',
+                                color: 'white',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: updatingPetId === pet.id ? 'not-allowed' : 'pointer'
+                              }}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div style={{ marginTop: '20px', display: 'flex', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={onClose}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer'
+                }}
+              >
+                Close
+              </button>
+            </div>
           </div>
-          <div style={{ marginBottom: '15px' }}>
-            <label htmlFor="clientEmail" style={{ display: 'block', marginBottom: '5px' }}>Email:</label>
-            <input
-              id="clientEmail"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
-            />
-          </div>
-          <div style={{ marginBottom: '15px' }}>
-            <label htmlFor="clientPhone" style={{ display: 'block', marginBottom: '5px' }}>Phone:</label>
-            <input
-              id="clientPhone"
-              type="tel"
-              value={phone}
-              onChange={(e) => setPhone(e.target.value)}
-              style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
-            />
-          </div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isUpdating}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#6c757d',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isUpdating ? 'not-allowed' : 'pointer'
-              }}
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={isUpdating}
-              style={{
-                padding: '8px 16px',
-                backgroundColor: '#007bff',
-                color: 'white',
-                border: 'none',
-                borderRadius: '4px',
-                cursor: isUpdating ? 'not-allowed' : 'pointer'
-              }}
-            >
-              {isUpdating ? 'Saving...' : 'Save Changes'}
-            </button>
-          </div>
-        </form>
+        )}
       </div>
     </div>
   );
@@ -265,6 +640,121 @@ export default function ClientManagement() {
     }
   };
 
+  // Add a new pet for a client
+  const addPet = async (clientId: number, petData: Partial<Pet>) => {
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/clients/${clientId}/pets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(petData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to add pet (HTTP ${response.status})`);
+      }
+
+      const newPet: Pet = await response.json();
+
+      // Update the local state
+      setClients(prevClients =>
+        prevClients.map(client =>
+          client.id === clientId
+            ? { ...client, pets: [...client.pets, newPet] }
+            : client
+        )
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+      console.error("Add Pet Error:", e);
+      setError(errorMessage);
+      throw e; // Re-throw to handle in the modal
+    }
+  };
+
+  // Update a pet
+  const updatePet = async (petId: number, petData: Partial<Pet>, isConfirmToggle = false) => {
+    // If it's a confirmation toggle, use the existing togglePetConfirmation function
+    if (isConfirmToggle && petData.hasOwnProperty('is_confirmed')) {
+      return togglePetConfirmation(petId, !petData.is_confirmed!);
+    }
+
+    setUpdatingPetId(petId);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/pets/${petId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(petData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to update pet (HTTP ${response.status})`);
+      }
+
+      const updatedPet: Pet = await response.json();
+
+      // Update the local state
+      setClients(prevClients =>
+        prevClients.map(client => ({
+          ...client,
+          pets: client.pets.map(pet =>
+            pet.id === petId ? { ...pet, ...updatedPet } : pet
+          )
+        }))
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+      console.error("Update Pet Error:", e);
+      setError(errorMessage);
+      throw e; // Re-throw to handle in the modal
+    } finally {
+      setUpdatingPetId(null);
+    }
+  };
+
+  // Delete a pet
+  const deletePet = async (petId: number) => {
+    setUpdatingPetId(petId);
+    setError(null);
+
+    // Confirm before deleting
+    if (!window.confirm("Are you sure you want to delete this pet?")) {
+      setUpdatingPetId(null);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/pets/${petId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `Failed to delete pet (HTTP ${response.status})`);
+      }
+
+      // Update the local state
+      setClients(prevClients =>
+        prevClients.map(client => ({
+          ...client,
+          pets: client.pets.filter(pet => pet.id !== petId)
+        }))
+      );
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
+      console.error("Delete Pet Error:", e);
+      setError(errorMessage);
+      throw e; // Re-throw to handle in the modal
+    } finally {
+      setUpdatingPetId(null);
+    }
+  };
+
   return (
     <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
       <h2>Client Management</h2>
@@ -299,7 +789,11 @@ export default function ClientManagement() {
                   }}
                 >
                   <h3 style={{ margin: '0 0 0.5rem 0' }}>
-                    {client.name || client.email || `Client #${client.id}`}
+                    {
+                      client.first_name || client.last_name ?
+                      `${client.first_name || ''} ${client.last_name || ''}`.trim() :
+                      client.email || `Client #${client.id}`
+                    }
                   </h3>
                   <p style={{ margin: 0 }}>
                     {client.email && <span>Email: {client.email}</span>}
@@ -396,6 +890,10 @@ export default function ClientManagement() {
                   onClose={() => setEditingClientId(null)}
                   onSave={updateClient}
                   isUpdating={isUpdatingClient}
+                  onAddPet={addPet}
+                  onUpdatePet={updatePet}
+                  onDeletePet={deletePet}
+                  updatingPetId={updatingPetId}
                 />
               )}
             </div>
