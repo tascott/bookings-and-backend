@@ -347,6 +347,9 @@ export default function Home() {
     if (error) {
       console.error('Error logging out:', error);
       setError('Failed to log out.');
+    } else {
+      // Clear the URL parameters after successful logout
+      window.history.replaceState({}, '', '/');
     }
   };
 
