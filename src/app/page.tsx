@@ -72,17 +72,6 @@ type ServiceAvailability = {
   created_at: string;
 }
 
-// Type for the calculated slots returned by the API/DB function - MOVED to ClientBooking.tsx
-/*
-type CalculatedSlot = {
-    slot_field_id: number;
-    slot_field_name: string; // Added field name
-    slot_start_time: string; // ISO String from TIMESTAMPTZ
-    slot_end_time: string;   // ISO String from TIMESTAMPTZ
-    slot_remaining_capacity: number;
-}
-*/
-
 // Define a type for the user data we expect from the API
 type UserWithRole = {
   id: string;
@@ -460,7 +449,6 @@ export default function Home() {
       setError(e instanceof Error ? e.message : 'Failed to add booking');
     }
   };
-  // ---------------------------------
 
   // --- Service Management Functions ---
   const fetchServices = async () => {
@@ -769,16 +757,20 @@ export default function Home() {
            )}
            {/* ------------------------------------------------ */}
 
-          {/* --- Client Booking View Section (Visible to all logged-in users for now) --- */}
-          {/* Render the ClientBooking component, passing services */}
-          <ClientBooking services={services} />
+          {/* --- Client Booking View Section (Visible to clients only) --- */}
+          {!isLoadingRole && role === 'client' && (
+            <ClientBooking services={services} />
+          )}
 
-          {/* --- Pet Management Section (Visible to all logged-in users) --- */}
-          {/* Render the PetManagement component */}
-          <PetManagement />
+          {/* --- Pet Management Section (Visible to clients only) --- */}
+          {!isLoadingRole && role === 'client' && (
+            <PetManagement />
+          )}
 
-          {/* Render the MyBookings component */}
-          <MyBookings />
+          {/* --- My Bookings Section (Visible to clients only) --- */}
+          {!isLoadingRole && role === 'client' && (
+            <MyBookings />
+          )}
         </main>
       )}
     </div>
