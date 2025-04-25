@@ -52,6 +52,18 @@ Project Summary for AI Assistant (booking-and-accounts)
 *   `public.pets`: Stores pet information (id, client_id -> clients.id, name, breed, size, is_confirmed). *Management UI is now fully implemented.*
 *   `public.booking_pets`: **Junction table** linking bookings to pets (id, booking_id -> bookings.id, pet_id -> pets.id).
 *   `public.payments`: Exists but likely not fully integrated yet (id, client_id, booking_id, amount, currency, status, created_at).
+*   `public.vehicles`: Stores vehicles assigned to staff members (id, staff_id -> staff.id, make, model, year, color, license_plate, notes). Each vehicle is linked to a staff member. Admins can manage all vehicles; staff can view their own.
+
+**Vehicle Management Features:**
+
+*   **API Endpoints:**
+    *   `GET /api/vehicles`: Admins can fetch all vehicles or filter by staff; staff can fetch only their own vehicles (using `staff_id`).
+    *   `POST /api/vehicles`: Admins can add a new vehicle and assign it to a staff member.
+    *   `DELETE /api/vehicles?id=...`: Admins can delete a vehicle by ID.
+*   **Admin UI:**
+    *   Vehicles tab in the admin dashboard allows viewing, adding, and deleting vehicles, and assigning them to staff members via dropdown.
+*   **Staff UI:**
+    *   "My Vehicle" tab in the staff dashboard shows a read-only list of vehicles assigned to the logged-in staff member.
 
 **File Structure Overview:**
 
@@ -132,23 +144,3 @@ Project Summary for AI Assistant (booking-and-accounts)
     *   **API Route:** `GET /api/my-bookings`: Fetches all bookings for the authenticated client.
     *   **UI Component:** `src/components/client/MyBookings.tsx`: Displays past and upcoming bookings.
 *   **Booking-Pet Relationship:** Bookings are now linked to specific pets via the `booking_pets` junction table.
-
-**Potential Next Steps / Areas for Development:**
-
-1.  **Refine Client Booking:**
-    *   Improve UI/UX for selecting services/dates/slots.
-    *   Handle booking confirmation/feedback more robustly.
-    *   Integrate pet selection during the booking process.
-    *   Add cancellation feature to MyBookings view.
-2.  **Payments:** Implement payment processing (e.g., Stripe integration) linked to bookings via the `payments` table.
-3.  **Staff Features:** Enhance staff capabilities (e.g., assigning staff to bookings, viewing specific schedules).
-4.  **Calendar View:** Implement a more visual calendar display for bookings (admin/staff).
-5.  **Error Handling:** Improve global vs. local error handling/display throughout the UI.
-6.  **Testing:** Add automated tests.
-7.  **Add pricing:** Implement pricing per service, per pet, with possible discount feature for additional pets.
-8.  **Admin booking improvements:** Add search functionality to find users and edit their status.
-9.  **Dashboard tabs:** Add tabs to improve organization of admin and client dashboards.
-10. **Location data:** Add addresses and map view integration.
-11. **API Refactoring:** Continue refactoring remaining API routes to use the auth-helpers utility functions.
-
-This guide provides context on the current architecture, implementation, and potential future directions.

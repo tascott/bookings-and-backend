@@ -8,9 +8,10 @@ import BookingManagement from './BookingManagement';
 import ServiceManagement from './ServiceManagement';
 import ServiceAvailabilityManagement from './ServiceAvailabilityManagement';
 import ClientManagement from './ClientManagement';
+import VehicleManagement from './VehicleManagement';
 import styles from '@/app/page.module.css';
 import type { User } from '@supabase/supabase-js';
-import { UserWithRole, Site, Field, Booking, Service, ServiceAvailability } from '@/types';
+import { UserWithRole, Site, Field, Booking, Service, ServiceAvailability, Vehicle, Staff } from '@/types';
 
 // Define props for the admin dashboard
 interface AdminDashboardProps {
@@ -28,26 +29,33 @@ interface AdminDashboardProps {
   handleAddSite: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   handleAddField: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   getFieldsForSite: (siteId: number) => Field[];
-  addSiteFormRef: React.RefObject<HTMLFormElement>;
+  addSiteFormRef: React.RefObject<HTMLFormElement | null>;
   // Booking management
   bookings: Booking[];
   isLoadingBookings: boolean;
   handleAddBooking: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
-  addBookingFormRef: React.RefObject<HTMLFormElement>;
+  addBookingFormRef: React.RefObject<HTMLFormElement | null>;
   fetchBookings: () => Promise<void>;
   // Service management
   services: Service[];
   isLoadingServices: boolean;
   handleAddService: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
-  addServiceFormRef: React.RefObject<HTMLFormElement>;
+  addServiceFormRef: React.RefObject<HTMLFormElement | null>;
   // Service availability
   serviceAvailability: ServiceAvailability[];
   isLoadingServiceAvailability: boolean;
   handleAddServiceAvailability: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   handleToggleServiceAvailabilityActive: (ruleId: number, currentStatus: boolean) => Promise<void>;
-  addServiceAvailabilityFormRef: React.RefObject<HTMLFormElement>;
+  addServiceAvailabilityFormRef: React.RefObject<HTMLFormElement | null>;
   // Shared
   error: string | null;
+  // Add vehicle management props
+  vehicles: Vehicle[];
+  staff: Staff[];
+  isLoadingVehicles: boolean;
+  vehicleError: string | null;
+  handleAddVehicle: (vehicle: Partial<Vehicle>) => Promise<void>;
+  handleDeleteVehicle: (id: number) => Promise<void>;
 }
 
 export default function AdminDashboard({
@@ -79,6 +87,12 @@ export default function AdminDashboard({
   handleToggleServiceAvailabilityActive,
   addServiceAvailabilityFormRef,
   error,
+  vehicles,
+  staff,
+  isLoadingVehicles,
+  vehicleError,
+  handleAddVehicle,
+  handleDeleteVehicle,
 }: AdminDashboardProps) {
 
   // Define tabs for the admin dashboard
@@ -168,6 +182,20 @@ export default function AdminDashboard({
       label: 'Client Management',
       content: (
         <ClientManagement />
+      ),
+    },
+    {
+      id: 'vehicles',
+      label: 'Vehicles',
+      content: (
+        <VehicleManagement
+          vehicles={vehicles}
+          staff={staff}
+          isLoading={isLoadingVehicles}
+          error={vehicleError}
+          onAdd={handleAddVehicle}
+          onDelete={handleDeleteVehicle}
+        />
       ),
     },
   ];

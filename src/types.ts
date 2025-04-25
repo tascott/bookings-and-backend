@@ -81,3 +81,25 @@ export type Client = {
   phone: string;
   pets?: Pet[];
 }
+
+// Staff type
+export type Staff = {
+  id: number;
+  user_id: string;
+  name: string;
+  role: string;
+  phone_number?: string | null;
+  notes?: string | null;
+}
+
+// Vehicle type
+export type Vehicle = {
+  id: number;
+  staff_id: number;
+  make: string;
+  model: string;
+  year?: number | null;
+  color?: string | null;
+  license_plate?: string | null;
+  notes?: string | null;
+}

@@ -6,20 +6,12 @@ import { createClient } from '@/utils/supabase/client';
 // import { Auth } from '@supabase/auth-ui-react';
 // import { ThemeSupa } from '@supabase/auth-ui-shared';
 import type { User } from '@supabase/supabase-js';
+import type { Vehicle, Staff } from '@/types';
 import styles from "./page.module.css";
 // Import server actions
 import { login, signup } from './actions';
 // Import the new component
-import ClientBooking from '@/components/client/ClientBooking';
-import UserManagement from '@/components/admin/UserManagement'; // Import UserManagement
-import SiteFieldManagement from '@/components/admin/SiteFieldManagement'; // Import SiteFieldManagement
-import BookingManagement from '@/components/admin/BookingManagement'; // Import BookingManagement
-import ServiceManagement from '@/components/admin/ServiceManagement'; // Import ServiceManagement
-import ServiceAvailabilityManagement from '@/components/admin/ServiceAvailabilityManagement'; // Import ServiceAvailabilityManagement
-import ClientManagement from '@/components/admin/ClientManagement'; // Import ClientManagement
-import AuthForm from '@/components/AuthForm'; // Import AuthForm
-import PetManagement from '@/components/client/PetManagement'; // Import PetManagement
-import MyBookings from '@/components/client/MyBookings'; // Import MyBookings
+import AuthForm from '@/components/AuthForm';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import StaffDashboard from '@/components/staff/StaffDashboard';
 import ClientDashboard from '@/components/client/ClientDashboard';
@@ -107,6 +99,11 @@ export default function Home() {
   const [isLoadingServices, setIsLoadingServices] = useState(false);
   const [serviceAvailability, setServiceAvailability] = useState<ServiceAvailability[]>([]);
   const [isLoadingServiceAvailability, setIsLoadingServiceAvailability] = useState(false);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [isLoadingVehicles, setIsLoadingVehicles] = useState(false);
+  const [vehicleError, setVehicleError] = useState<string | null>(null);
+  const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
   const supabase = createClient();
 
   // Create refs for forms that need resetting after async ops
@@ -218,10 +215,39 @@ export default function Home() {
   useEffect(() => {
     if (role === 'admin') {
       fetchAllUsers();
+      fetchVehicles();
+      fetchStaff();
+    } else if (role === 'staff' && user) {
+      // Fetch staff's own vehicles
+      (async () => {
+        // Get staff record for this user
+        const { data: staffRows, error: staffError } = await supabase
+          .from('staff')
+          .select('id')
+          .eq('user_id', user.id)
+          .limit(1);
+        if (staffError || !staffRows || staffRows.length === 0) {
+          setMyVehicles([]);
+          return;
+        }
+        const staffId = staffRows[0].id;
+        // Fetch vehicles for this staff
+        try {
+          const response = await fetch(`/api/vehicles?staff_id=${staffId}`);
+          if (!response.ok) throw new Error('Failed to fetch vehicles');
+          const data: Vehicle[] = await response.json();
+          setMyVehicles(data);
+        } catch {
+          setMyVehicles([]);
+        }
+      })();
     } else {
       setUsers([]);
+      setVehicles([]);
+      setStaff([]);
+      setMyVehicles([]);
     }
-  }, [role]);
+  }, [role, user]);
 
   // --- Site/Field Management Functions ---
   const fetchSites = async () => {
@@ -638,6 +664,68 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, role]); // Re-run if user or role changes
 
+  const fetchVehicles = async () => {
+    setIsLoadingVehicles(true);
+    setVehicleError(null);
+    try {
+      const response = await fetch('/api/vehicles');
+      if (!response.ok) throw new Error('Failed to fetch vehicles');
+      const data: Vehicle[] = await response.json();
+      setVehicles(data);
+    } catch (e) {
+      setVehicleError(e instanceof Error ? e.message : 'Failed to load vehicles');
+      setVehicles([]);
+    } finally {
+      setIsLoadingVehicles(false);
+    }
+  };
+
+  const fetchStaff = async () => {
+    // Fetch all staff directly from Supabase (no API route)
+    setStaff([]);
+    try {
+      const { data, error } = await supabase.from('staff').select('*');
+      if (error) throw error;
+      setStaff(data || []);
+    } catch {
+      // No global error, just leave staff empty
+      setStaff([]);
+    }
+  };
+
+  const handleAddVehicle = async (vehicle: Partial<Vehicle>) => {
+    setVehicleError(null);
+    try {
+      const response = await fetch('/api/vehicles', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(vehicle),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to add vehicle');
+      }
+      const newVehicle: Vehicle = await response.json();
+      setVehicles(prev => [...prev, newVehicle]);
+    } catch (e) {
+      setVehicleError(e instanceof Error ? e.message : 'Failed to add vehicle');
+    }
+  };
+
+  const handleDeleteVehicle = async (id: number) => {
+    setVehicleError(null);
+    try {
+      const response = await fetch(`/api/vehicles?id=${id}`, { method: 'DELETE' });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to delete vehicle');
+      }
+      setVehicles(prev => prev.filter(v => v.id !== id));
+    } catch (e) {
+      setVehicleError(e instanceof Error ? e.message : 'Failed to delete vehicle');
+    }
+  };
+
   if (isLoadingInitial) {
     return <div>Loading...</div>;
   }
@@ -709,6 +797,12 @@ export default function Home() {
                   handleToggleServiceAvailabilityActive={handleToggleServiceAvailabilityActive}
                   addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
                   error={error}
+                  vehicles={vehicles}
+                  staff={staff}
+                  isLoadingVehicles={isLoadingVehicles}
+                  vehicleError={vehicleError}
+                  handleAddVehicle={handleAddVehicle}
+                  handleDeleteVehicle={handleDeleteVehicle}
                 />
               )}
 
@@ -725,6 +819,7 @@ export default function Home() {
                   getFieldsForSite={getFieldsForSite}
                   fetchBookings={fetchBookings}
                   error={error}
+                  vehicles={myVehicles}
                 />
               )}
 
