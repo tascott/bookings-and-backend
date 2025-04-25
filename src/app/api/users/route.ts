@@ -16,6 +16,13 @@ type ClientRecord = {
   user_id: string;
 }
 
+type ProfileRecord = {
+  user_id: string;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+}
+
 export async function GET() {
   // Await server client creation
   const supabase = await createServerClient()
@@ -66,6 +73,16 @@ export async function GET() {
     .in('user_id', userIds)
     .returns<ClientRecord[]>() // Specify return type
 
+  // Fetch profiles for all users
+  const { data: profiles, error: profilesError } = await supabaseAdmin
+    .from('profiles')
+    .select('user_id, first_name, last_name, phone')
+    .in('user_id', userIds)
+    .returns<ProfileRecord[]>();
+  if (profilesError) {
+    console.error('Error fetching profiles:', profilesError);
+  }
+
   if (staffRolesError || clientRecordsError) {
     console.error('Error fetching role data:', staffRolesError, clientRecordsError)
     // Proceeding with potentially incomplete role data, but log the error
@@ -76,6 +93,7 @@ export async function GET() {
   const usersWithRoles = authUsers.users.map((user: User) => {
     const staffInfo = staffRoles?.find((s: StaffRole) => s.user_id === user.id)
     const clientInfo = clientRecords?.find((c: ClientRecord) => c.user_id === user.id)
+    const profile = profiles?.find((p: ProfileRecord) => p.user_id === user.id)
     let role = 'unknown' // Default if not in staff or clients
 
     if (staffInfo) {
@@ -89,7 +107,10 @@ export async function GET() {
       email: user.email,
       role: role,
       created_at: user.created_at,
-      last_sign_in_at: user.last_sign_in_at
+      last_sign_in_at: user.last_sign_in_at,
+      first_name: profile?.first_name ?? null,
+      last_name: profile?.last_name ?? null,
+      phone: profile?.phone ?? null
     }
   })
 

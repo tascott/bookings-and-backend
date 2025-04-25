@@ -526,36 +526,46 @@ function ClientEditModal({
 
 export default function ClientManagement() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
   const [updatingPetId, setUpdatingPetId] = useState<number | null>(null);
   const [editingClientId, setEditingClientId] = useState<number | null>(null);
   const [isUpdatingClient, setIsUpdatingClient] = useState(false);
+  const [search, setSearch] = useState('');
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 15;
 
-  // Fetch all clients and their pets
+  // Fetch paginated clients and their pets
   const fetchClients = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/clients');
+      const params = new URLSearchParams();
+      if (search) params.append('search', search);
+      params.append('limit', PAGE_SIZE.toString());
+      params.append('offset', (page * PAGE_SIZE).toString());
+      const response = await fetch(`/api/clients?${params.toString()}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || `Failed to fetch clients (HTTP ${response.status})`);
       }
-      const data: Client[] = await response.json();
-      setClients(data);
+      const data = await response.json();
+      setClients(data.clients || []);
+      setTotal(data.total || 0);
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
       console.error("Fetch Clients Error:", e);
       setError(errorMessage);
       setClients([]);
+      setTotal(0);
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [search, page]);
 
-  // Fetch data on component mount
+  // Fetch data on mount and when search/page changes
   useEffect(() => {
     fetchClients();
   }, [fetchClients]);
@@ -758,6 +768,23 @@ export default function ClientManagement() {
   return (
     <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
       <h2>Client Management</h2>
+      {/* Search and Pagination Controls */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
+        <input
+          type="text"
+          placeholder="Search clients..."
+          value={search}
+          onChange={e => { setSearch(e.target.value); setPage(0); }}
+          style={{ padding: 8, borderRadius: 4, border: '1px solid #ccc', minWidth: 200 }}
+        />
+        <span style={{ color: '#666' }}>Total: {total}</span>
+        <button onClick={() => setPage(p => Math.max(0, p - 1))} disabled={page === 0}>&lt; Prev</button>
+        <span>Page {page + 1} / {Math.max(1, Math.ceil(total / PAGE_SIZE))}</span>
+        <button onClick={() => setPage(p => (p + 1 < Math.ceil(total / PAGE_SIZE) ? p + 1 : p))} disabled={page + 1 >= Math.ceil(total / PAGE_SIZE)}>Next &gt;</button>
+        <button onClick={fetchClients} disabled={isLoading} style={{ marginLeft: 16 }}>
+          {isLoading ? 'Refreshing...' : 'Refresh List'}
+        </button>
+      </div>
 
       {/* Error display */}
       {error && <p style={{ color: 'red' }}>Error: {error}</p>}
@@ -900,21 +927,6 @@ export default function ClientManagement() {
           ))}
         </div>
       )}
-
-      <button
-        onClick={fetchClients}
-        disabled={isLoading}
-        style={{
-          padding: '0.5rem 1rem',
-          backgroundColor: '#007bff',
-          color: 'white',
-          border: 'none',
-          borderRadius: '4px',
-          cursor: isLoading ? 'wait' : 'pointer'
-        }}
-      >
-        {isLoading ? 'Refreshing...' : 'Refresh List'}
-      </button>
     </section>
   );
 }

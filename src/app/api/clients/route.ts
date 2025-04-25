@@ -3,9 +3,10 @@ import { createClient as createServerClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { getUserAuthInfo } from '@/utils/auth-helpers'
 
-// GET all clients with their pets
-export async function GET() {
+// GET all clients (admin only)
+export async function GET(request: Request) {
   const supabase = await createServerClient()
+  const supabaseAdmin = await createAdminClient()
 
   // Get user auth info from our helper
   const { isAdmin, error, status } = await getUserAuthInfo(supabase);
@@ -15,52 +16,53 @@ export async function GET() {
     return NextResponse.json({ error }, { status: status || 401 });
   }
 
-  // This endpoint is admin-only
+  // Only admins can list all clients
   if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden: Requires admin role' }, { status: 403 })
+    return NextResponse.json({ error: 'Forbidden: Requires admin role' }, { status: 403 });
   }
 
-  // Use admin client to fetch all clients and their pets
-  const supabaseAdmin = await createAdminClient()
+  // --- Minimal search & pagination ---
+  const { searchParams } = new URL(request.url);
+  const search = searchParams.get('search')?.trim() || '';
+  const limit = parseInt(searchParams.get('limit') || '0', 10);
+  const offset = parseInt(searchParams.get('offset') || '0', 10);
 
-  // First fetch all clients
-  const { data: clients, error: clientsError } = await supabaseAdmin
+  let query = supabaseAdmin
     .from('clients')
-    .select('*')
-    .order('id')
+    .select('id, user_id, email, profiles(first_name, last_name, phone), pets(id, name, breed, size, is_confirmed)', { count: 'exact' })
+    .order('id');
 
-  if (clientsError) {
-    console.error('Error fetching clients:', clientsError)
-    return NextResponse.json({ error: clientsError.message }, { status: 500 })
+  if (search) {
+    // Filter by email, first_name, or last_name (case-insensitive, partial match)
+    query = query.or(`email.ilike.%${search}%,profiles.first_name.ilike.%${search}%,profiles.last_name.ilike.%${search}%`);
+  }
+  if (limit > 0) {
+    query = query.range(offset, offset + limit - 1);
   }
 
-  // Then fetch all pets and group them by client_id
-  const { data: pets, error: petsError } = await supabaseAdmin
-    .from('pets')
-    .select('*')
-    .order('name')
-
-  if (petsError) {
-    console.error('Error fetching pets:', petsError)
-    return NextResponse.json({ error: petsError.message }, { status: 500 })
-  }
-
-  // Group pets by client_id
-  const petsByClient = new Map()
-  for (const pet of pets || []) {
-    if (!petsByClient.has(pet.client_id)) {
-      petsByClient.set(pet.client_id, [])
+  try {
+    const { data: clients, error: clientsError, count } = await query;
+    if (clientsError) {
+      console.error('Error fetching clients:', clientsError);
+      throw clientsError;
     }
-    petsByClient.get(pet.client_id).push(pet)
+    // Flatten the joined profile fields
+    const clientsWithProfile = (clients || []).map(c => {
+      const profile = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
+      return {
+        ...c,
+        first_name: profile?.first_name ?? null,
+        last_name: profile?.last_name ?? null,
+        phone: profile?.phone ?? null,
+        pets: c.pets || []
+      };
+    });
+    return NextResponse.json({ clients: clientsWithProfile, total: count ?? clientsWithProfile.length });
+  } catch (error) {
+    console.error('Error fetching clients:', error);
+    const message = error instanceof Error ? error.message : 'Failed to fetch clients';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
-
-  // Add pets to each client
-  const clientsWithPets = clients?.map(client => ({
-    ...client,
-    pets: petsByClient.get(client.id) || []
-  })) || []
-
-  return NextResponse.json(clientsWithPets)
 }
 
 // POST a new client
@@ -82,7 +84,7 @@ export async function POST(request: Request) {
   }
 
   // Parse request body
-  let clientData: { first_name?: string; last_name?: string; email: string; phone?: string; address?: string; user_id?: string };
+  let clientData: { email: string; address?: string; user_id?: string };
   try {
     const body = await request.json();
     if (!body.email || typeof body.email !== 'string' || body.email.trim() === '') {
@@ -90,9 +92,6 @@ export async function POST(request: Request) {
     }
     clientData = {
       email: body.email.trim(),
-      first_name: typeof body.first_name === 'string' ? body.first_name.trim() : undefined,
-      last_name: typeof body.last_name === 'string' ? body.last_name.trim() : undefined,
-      phone: typeof body.phone === 'string' ? body.phone.trim() : undefined,
       address: typeof body.address === 'string' ? body.address.trim() : undefined,
       user_id: typeof body.user_id === 'string' ? body.user_id : undefined,
     };

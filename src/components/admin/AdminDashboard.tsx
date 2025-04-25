@@ -21,6 +21,7 @@ interface AdminDashboardProps {
   isLoadingUsers: boolean;
   updatingUserId: string | null;
   handleAssignRole: (userId: string, targetRole: 'client' | 'staff' | 'admin') => Promise<void>;
+  fetchAllUsers: () => Promise<void>;
   // Site and field management
   sites: Site[];
   fields: Field[];
@@ -64,6 +65,7 @@ export default function AdminDashboard({
   isLoadingUsers,
   updatingUserId,
   handleAssignRole,
+  fetchAllUsers,
   sites,
   fields,
   isLoadingSites,
@@ -108,6 +110,7 @@ export default function AdminDashboard({
           currentUser={user}
           updatingUserId={updatingUserId}
           handleAssignRole={handleAssignRole}
+          onUserUpdated={fetchAllUsers}
         />
       ),
     },

@@ -2,145 +2,117 @@ Project Summary for AI Assistant (booking-and-accounts)
 
 **Overall Goal:** Build a booking and multi-site management platform, initially for doggy daycare services, designed to be adaptable for other pet businesses.
 
-**Current Status:** Core foundation is built using Next.js, Supabase (Auth & PostgreSQL), and React. Admin/Staff UI provides management capabilities, and a basic client booking interface exists.
+**System Overview:**
+- **Tech Stack:** Next.js (App Router), Supabase (Auth & PostgreSQL), React.
+- **User Roles:** Admin, Staff, Client. Role-based access is enforced throughout the UI and API.
 
-**Key Implemented Features:**
+**Key Features:**
+- **Authentication:**
+  - Supabase Auth for user sign-up/login.
+  - Role-based access: roles are managed in the `staff` table (for staff/admin) and inferred for clients via the `clients` table.
+  - Sign-up/Login UI (`src/components/AuthForm.tsx`) adapts fields for each mode.
+- **Admin/Staff UI:**
+  - **User Management (`src/components/admin/UserManagement.tsx`):**
+    - View all staff/admin users.
+    - Assign roles (client/staff/admin) via API.
+    - Promote clients to staff/admin using an autocomplete search (server-side, via `/api/clients`).
+  - **Client Management (`src/components/admin/ClientManagement.tsx`):**
+    - Paginated, searchable list of clients (15 per page, server-side search via `/api/clients`).
+    - Edit client profiles, manage their pets (add/edit/delete/confirm pets).
+  - **Site & Field Management:** Create/view sites and fields.
+  - **Service Management:** Create/view services and their availability rules.
+  - **Booking Management:** Create/view bookings, link bookings to clients and pets.
+  - **Vehicle Management:**
+    - Admins can view/add/delete vehicles and assign them to staff.
+    - Staff can view their own vehicles.
+- **Client UI:**
+  - **Booking Interface:**
+    - Select service/date, view available slots (`/api/available-slots`).
+    - Book services (no same-day bookings).
+  - **Pet Management:**
+    - Add/edit/delete pets, view all pets.
+  - **My Bookings:**
+    - View past/upcoming bookings, see details and linked pets.
 
-1.  **Authentication:**
-    *   Supabase Auth handles user sign-up and login.
-    *   Sign-up/Login form (`src/components/AuthForm.tsx`) now has distinct modes, only showing necessary fields (Email/Password for Login; Name/Phone etc. for Sign Up).
-    *   Role-based access is implemented:
-        *   `clients` table stores client-specific info (first_name, last_name, phone), linked to `auth.users` via ID (UUID). **No role column here.**
-        *   `staff` table stores staff info (name, role, phone_number), linked to `auth.users` via `user_id`. **Admin/Staff roles are defined here.**
-    *   `README.md` includes instructions for creating the first admin user by inserting a record into the `staff` table.
+**Database Schema Summary:**
+- **auth.users:** Managed by Supabase Auth. Columns: id (uuid, PK), email, etc.
+- **profiles:** user_id (uuid, PK, FK to users.id), first_name, last_name, phone.
+- **clients:** id (serial PK), user_id (uuid, FK to profiles.user_id), email. (No first_name, last_name, phone, or created_at columns.)
+- **staff:** id (serial PK), user_id (uuid, FK to profiles.user_id), role (admin/staff), name, phone_number, notes.
+- **sites, fields, services, service_availability, bookings, booking_clients, pets, booking_pets, payments, vehicles:** See below for details.
 
-2.  **Admin/Staff UI (within `src/app/page.tsx` using components in `src/components/admin/`):**
-    *   **User Management:** View users, assign roles (client/staff/admin) via API call.
-    *   **Site & Field Management:** Create/view sites and their associated fields (name, capacity, type).
-    *   **Service Management:** Create/view services (name, description, requires_field_selection flag).
-    *   **Service Availability Management:** Create/view rules defining when a service is available (linked to service, fields, times, days/date, capacity, active status).
-    *   **Booking Management:** Manually create bookings (linking to field, times, service type, capacity), view existing bookings (including client name fetched via `booking_clients`).
-    *   **Client Management:** View and edit client profiles, manage their pets with confirmation functionality (`src/components/admin/ClientManagement.tsx`).
+**Table Details:**
+- **sites:** id, name, address, is_active
+- **fields:** id, site_id (FK), name, capacity, field_type
+- **services:** id, name, description, created_at, requires_field_selection
+- **service_availability:** id, service_id (FK), field_ids (array), start_time, end_time, days_of_week, specific_date, base_capacity, is_active, created_at
+- **bookings:** id, field_id (FK), start_time, end_time, service_type, status, max_capacity, assigned_staff_id (uuid, FK), vehicle_id (FK), assignment_notes
+- **booking_clients:** id, booking_id (FK), client_id (FK)
+- **pets:** id, client_id (FK), name, breed, size, is_confirmed
+- **booking_pets:** id, booking_id (FK), pet_id (FK)
+- **payments:** id, client_id (FK), booking_id (FK), amount, currency, status, created_at
+- **vehicles:** id, staff_id (FK), make, model, year, color, license_plate, notes
 
-3.  **Client UI (within `src/app/page.tsx` using client components):**
-    *   **Booking Interface (`src/components/client/ClientBooking.tsx`):**
-        *   Select service and date range.
-        *   View available slots calculated by the backend (`/api/available-slots`).
-        *   Slots are aggregated if `requires_field_selection` is false for the service, otherwise shown per field.
-        *   **Same-day booking prevention:** The `/api/available-slots` route now filters out slots starting on the current date (UTC).
-        *   Basic "Book Now" functionality exists, calling `/api/client-booking`.
-    *   **Pet Management (`src/components/client/PetManagement.tsx`):**
-        *   List all pets for the client
-        *   Add new pets with name, breed, and size
-        *   Edit existing pets
-        *   Delete pets with confirmation
-    *   **My Bookings (`src/components/client/MyBookings.tsx`):**
-        *   View list of past and upcoming bookings
-        *   See booking details including service type, date/time, status, and linked pets
+**Foreign Key Relationships:**
+- profiles.user_id → users.id
+- clients.user_id → profiles.user_id
+- staff.user_id → profiles.user_id
+- pets.client_id → clients.id
+- vehicles.staff_id → staff.id
+- bookings.field_id → fields.id
+- booking_clients.booking_id → bookings.id
+- booking_clients.client_id → clients.id
+- booking_pets.booking_id → bookings.id
+- booking_pets.pet_id → pets.id
 
-**Database Schema Summary (Implemented Tables):**
+**API Route Reference:**
+- **/api/users**
+  - Purpose: Manage all users (admin, staff, client) and assign roles.
+  - Usage: Used for role management and admin-level user queries.
+  - Not for client search or client-specific data.
+- **/api/clients**
+  - Purpose: Manage client-specific data (search, pagination, profile, pets).
+  - Usage: Used for all client search/autocomplete, paginated client lists, and client management in the UI.
+  - Supports `search`, `limit`, and `offset` query params for server-side filtering and pagination. Returns `{ clients: [...], total: N }`.
+- **/api/vehicles**
+  - GET: Admins fetch all vehicles or filter by staff; staff fetch their own vehicles.
+  - POST: Admins add a new vehicle and assign to staff.
+  - DELETE: Admins delete a vehicle by ID.
+- **/api/pets**
+  - GET: Fetch pets for the logged-in client.
+  - POST: Create a new pet for the logged-in client.
+  - /api/pets/[petId]: GET, PUT, DELETE for a specific pet.
+- **/api/bookings, /api/client-booking, /api/my-bookings:**
+  - Bookings CRUD, client booking, and viewing bookings for the logged-in client.
+- **/api/available-slots:**
+  - Returns available booking slots for a service/date.
+- **/api/fields, /api/sites, /api/services, /api/service-availability:**
+  - CRUD for fields, sites, services, and service availability rules.
 
-*   `auth.users`: Managed by Supabase Auth (standard user data).
-*   `public.sites`: Stores physical locations (id, name, address, is_active).
-*   `public.fields`: Sub-locations within sites (id, site_id -> sites.id, name, capacity, field_type).
-*   `public.services`: Defines offered services (id, name, description, created_at, requires_field_selection).
-*   `public.service_availability`: Rules linking services to fields and times (id, service_id -> services.id, field_ids (array), start_time, end_time, days_of_week, specific_date, base_capacity, is_active, created_at).
-*   `public.bookings`: Individual booking instances (id, field_id -> fields.id, start_time, end_time, service_type, status, max_capacity). *Client bookings are created via `/api/client-booking`, Admin bookings via `/api/bookings` POST.*
-*   `public.clients`: Client user profiles (id -> auth.users.id, email, first_name, last_name, phone). **No role here.**
-*   `public.staff`: Staff user profiles and roles (id, user_id -> auth.users.id, name, role, phone_number, notes). **Admin/Staff roles determined here.**
-*   `public.booking_clients`: **Junction table** linking bookings to clients (id, booking_id -> bookings.id, client_id -> clients.id). Enables many-to-many relationship.
-*   `public.pets`: Stores pet information (id, client_id -> clients.id, name, breed, size, is_confirmed). *Management UI is now fully implemented.*
-*   `public.booking_pets`: **Junction table** linking bookings to pets (id, booking_id -> bookings.id, pet_id -> pets.id).
-*   `public.payments`: Exists but likely not fully integrated yet (id, client_id, booking_id, amount, currency, status, created_at).
-*   `public.vehicles`: Stores vehicles assigned to staff members (id, staff_id -> staff.id, make, model, year, color, license_plate, notes). Each vehicle is linked to a staff member. Admins can manage all vehicles; staff can view their own.
+**Component/File Structure:**
+- **src/app/page.tsx:** Main entry point, renders UI based on auth/role.
+- **src/components/admin/UserManagement.tsx:**
+  - View staff/admin users, assign roles, promote clients (autocomplete, server-side search).
+- **src/components/admin/ClientManagement.tsx:**
+  - Paginated/searchable client list, edit client, manage pets.
+- **src/components/admin/BookingManagement.tsx:** Create/manage bookings.
+- **src/components/admin/ServiceManagement.tsx:** Manage services.
+- **src/components/admin/SiteFieldManagement.tsx:** Manage sites/fields.
+- **src/components/admin/ServiceAvailabilityManagement.tsx:** Manage service availability.
+- **src/components/client/ClientBooking.tsx:** Client booking UI.
+- **src/components/client/PetManagement.tsx:** Client pet management UI.
+- **src/components/client/MyBookings.tsx:** Client booking history/upcoming bookings.
+- **src/utils/auth-helpers.ts:** Centralized authentication/authorization helpers.
+- **src/utils/supabase/client.ts, server.ts, admin.ts:** Supabase client initializers.
 
-**Vehicle Management Features:**
+**SQL/Data Insertion Best Practices:**
+- Insert users into `auth.users` first, then `profiles`, then `clients`.
+- Only insert columns that exist in the table (see schema above).
+- Use `ON CONFLICT DO NOTHING` for idempotency and to avoid duplicate errors.
+- For demo data, do not include `first_name`, `last_name`, `phone`, or `created_at` in `clients` inserts—these belong in `profiles`.
 
-*   **API Endpoints:**
-    *   `GET /api/vehicles`: Admins can fetch all vehicles or filter by staff; staff can fetch only their own vehicles (using `staff_id`).
-    *   `POST /api/vehicles`: Admins can add a new vehicle and assign it to a staff member.
-    *   `DELETE /api/vehicles?id=...`: Admins can delete a vehicle by ID.
-*   **Admin UI:**
-    *   Vehicles tab in the admin dashboard allows viewing, adding, and deleting vehicles, and assigning them to staff members via dropdown.
-*   **Staff UI:**
-    *   "My Vehicle" tab in the staff dashboard shows a read-only list of vehicles assigned to the logged-in staff member.
-
-**File Structure Overview:**
-
-*   `src/app/`: Next.js App Router structure.
-    *   `page.tsx`: Main entry point, renders different views based on auth/role.
-    *   `actions.ts`: Server actions for login/signup.
-    *   `api/`: API route handlers:
-        *   `available-slots/`: Calculates and returns available booking slots based on service availability.
-        *   `bookings/`: CRUD operations for bookings (admin use).
-        *   `client-booking/`: Creates bookings from client interface.
-        *   `clients/`: Manages client information:
-            *   `clients/route.ts`: Lists all clients (admin access only)
-            *   `clients/[clientId]/route.ts`: GET and PUT for single client, includes pet data.
-        *   `fields/`: Manages field information.
-        *   `my-bookings/`: Returns bookings for the authenticated client.
-        *   `pets/`: Manages pet information:
-            *   `pets/route.ts`: GET (list) and POST (create) for pets owned by the client.
-            *   `pets/[petId]/route.ts`: GET, PUT, and DELETE for specific pet by ID.
-        *   `service-availability/`: Manages service availability rules.
-        *   `services/`: Manages service definitions.
-        *   `sites/`: Manages site information.
-        *   `slots/`: Helper endpoints for booking slots.
-        *   `users/`: Manages user information and roles.
-        *   `test-auth/`: Testing endpoint for authentication utilities.
-*   `src/components/`: Reusable React components.
-    *   `AuthForm.tsx`: Handles login/signup UI.
-    *   `admin/`: Components for admin-specific UI sections:
-        *   `BookingManagement.tsx`: Create and manage bookings.
-        *   `ClientManagement.tsx`: Manage client records and their pets.
-        *   `ServiceAvailabilityManagement.tsx`: Define when services are available.
-        *   `ServiceManagement.tsx`: Create and manage service offerings.
-        *   `SiteFieldManagement.tsx`: Create and manage locations and fields.
-        *   `UserManagement.tsx`: Manage user accounts and roles.
-    *   `client/`: Components for client-facing UI sections:
-        *   `ClientBooking.tsx`: Interface for clients to book services.
-        *   `PetManagement.tsx`: Interface for clients to manage their pets.
-        *   `MyBookings.tsx`: Interface for clients to view their bookings.
-*   `src/utils/`: Utility functions and Supabase client configurations.
-    *   `supabase/client.ts`, `server.ts`, `admin.ts`: Supabase client initializers.
-    *   `auth-helpers.ts`: Centralized authentication utility functions.
-*   `README.md`: Project setup and instructions (including admin creation).
-*   `overallguide.txt`: This file.
-*   `supabasedbschema.png`: Image of the database schema.
-
-**Recent Improvements & Code Refactoring:**
-
-*   **Authentication Utilities:**
-    *   Created `src/utils/auth-helpers.ts` with centralized functions for authentication and authorization:
-        *   `getAuthenticatedUser()`: Retrieves the authenticated user and handles errors
-        *   `getClientId()`: Gets client ID for a user from the clients table
-        *   `isUserAdmin()`: Checks if a user has admin role in the staff table
-        *   `getUserAuthInfo()`: Combined utility that handles all auth checks in one function
-    *   Refactored all API routes to use these helpers, reducing code duplication and increasing consistency
-    *   Updated `/api/clients/[clientId]`, `/api/pets/[petId]`, `/api/pets`, `/api/clients`, `/api/my-bookings` routes
-    *   Added `/api/test-auth` endpoint to verify authentication utility functions
-    *   Benefits: Reduced ~20-30 lines of duplicated code per route, improved security consistency, easier maintenance
-
-*   **Other Recent Fixes:**
-    *   Admin booking view: Fixed duplicate error messages. Addressed 500 error fetching bookings by refactoring client data fetching in the API route (avoiding potentially problematic embedded select).
-    *   Client booking: Prevented booking slots on the current date by filtering in `/api/available-slots`.
-    *   Auth form: Separated Login and Sign Up views within the same component.
-
-**Pet Management Implementation (Complete):**
-*   **API Routes Implemented:**
-    *   `GET /api/pets`: Fetches pets for the logged-in client.
-    *   `POST /api/pets`: Creates a new pet for the logged-in client.
-    *   `GET /api/pets/[petId]`: Fetches a specific pet by ID.
-    *   `PUT /api/pets/[petId]`: Updates a specific pet owned by the client.
-    *   `DELETE /api/pets/[petId]`: Deletes a specific pet owned by the client.
-    *   `GET /api/clients/[clientId]`: Gets a specific client with their pets.
-*   **UI Components Implemented:**
-    *   `src/components/client/PetManagement.tsx`: Client-facing UI to manage pets.
-    *   `src/components/admin/ClientManagement.tsx`: Admin UI for managing clients and their pets.
-*   **Admin Features:** Can confirm pets (set `is_confirmed` flag) which regular clients cannot modify.
-
-**Client Bookings Enhancements:**
-*   **My Bookings Implementation:**
-    *   **API Route:** `GET /api/my-bookings`: Fetches all bookings for the authenticated client.
-    *   **UI Component:** `src/components/client/MyBookings.tsx`: Displays past and upcoming bookings.
-*   **Booking-Pet Relationship:** Bookings are now linked to specific pets via the `booking_pets` junction table.
+**Best Practices for LLMs/Developers:**
+- Use `/api/clients` for all client search, autocomplete, and paginated lists in the UI.
+- Use `/api/users` only for role management and admin-level user queries.
+- Always check the schema (see above or docs/tables.csv) before writing SQL or API code.
+- Reference this document for table/column names, relationships, and API route purposes before searching the codebase.

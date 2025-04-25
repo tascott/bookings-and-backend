@@ -1,0 +1,17 @@
+source_table,source_column,target_table,target_column
+fields,site_id,sites,id
+bookings,field_id,fields,id
+pets,client_id,clients,id
+payments,client_id,clients,id
+payments,booking_id,bookings,id
+service_availability,service_id,services,id
+booking_pets,booking_id,bookings,id
+booking_pets,pet_id,pets,id
+booking_clients,booking_id,bookings,id
+booking_clients,client_id,clients,id
+bookings,assigned_staff_id,users,id
+vehicles,staff_id,staff,id
+profiles,user_id,users,id
+clients,user_id,profiles,user_id
+staff,user_id,profiles,user_id
+profiles,user_id,users,id

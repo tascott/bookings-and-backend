@@ -774,6 +774,7 @@ export default function Home() {
                   isLoadingUsers={isLoadingUsers}
                   updatingUserId={updatingUserId}
                   handleAssignRole={handleAssignRole}
+                  fetchAllUsers={fetchAllUsers}
                   sites={sites}
                   fields={fields}
                   isLoadingSites={isLoadingSites}

@@ -87,8 +87,8 @@ export async function GET() {
     if (clientIds.size > 0) {
       const { data: clientsData, error: clientsError } = await supabaseAdmin
         .from('clients')
-        .select('id, first_name, last_name') // Fetch names
-        .in('id', Array.from(clientIds)); // Query using unique client IDs
+        .select('id, user_id, profiles(first_name, last_name)')
+        .in('id', Array.from(clientIds));
 
       if (clientsError) {
            console.error("Error fetching clients:", clientsError); // Log specific error
@@ -97,8 +97,8 @@ export async function GET() {
 
       // Populate client name map
       clientsData?.forEach(client => {
-         // Combine first and last name, handle nulls
-         const fullName = [client.first_name, client.last_name].filter(Boolean).join(' ') || null;
+         // Combine first and last name from profiles
+         const fullName = [client.profiles?.first_name, client.profiles?.last_name].filter(Boolean).join(' ') || null;
          clientNameMap.set(client.id, fullName);
       });
     }

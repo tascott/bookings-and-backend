@@ -71,14 +71,19 @@ export type Pet = {
   is_active: boolean;
 }
 
+// Profile type
+export type Profile = {
+  user_id: string;
+  first_name: string;
+  last_name: string;
+  phone: string;
+}
+
 // Client type
 export type Client = {
   id: number;
   user_id: string;
-  first_name: string;
-  last_name: string;
   email: string;
-  phone: string;
   pets?: Pet[];
 }
 
@@ -86,9 +91,7 @@ export type Client = {
 export type Staff = {
   id: number;
   user_id: string;
-  name: string;
   role: string;
-  phone_number?: string | null;
   notes?: string | null;
 }
 
