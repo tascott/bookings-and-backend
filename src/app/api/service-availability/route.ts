@@ -81,6 +81,7 @@ export async function POST(request: Request) {
       is_active?: boolean;
       days_of_week?: number[];
       specific_date?: string;
+      override_price?: number | null;
   };
 
   try {
@@ -116,6 +117,17 @@ export async function POST(request: Request) {
     if (body.specific_date != null && !dateRegex.test(body.specific_date)) throw new Error('Invalid specific_date format');
     // --------------------------------
 
+    // Parse and validate optional override_price
+    let overridePrice = body.override_price;
+    if (overridePrice !== undefined && overridePrice !== null && typeof overridePrice !== 'number') {
+        const parsedPrice = parseFloat(overridePrice);
+        if (isNaN(parsedPrice)) {
+            throw new Error('Invalid format for override_price');
+        }
+        overridePrice = parsedPrice;
+    }
+    overridePrice = overridePrice === undefined ? null : overridePrice; // Ensure null if undefined
+
     availabilityData = {
         service_id: parseInt(body.service_id, 10),
         field_ids: fieldIds,
@@ -124,7 +136,8 @@ export async function POST(request: Request) {
         base_capacity: baseCapacityValue,
         is_active: body.is_active !== undefined ? body.is_active : true,
         days_of_week: daysOfWeekValue,
-        specific_date: body.specific_date || null
+        specific_date: body.specific_date || null,
+        override_price: overridePrice
     };
     if (isNaN(availabilityData.service_id)) throw new Error('Invalid service_id');
 

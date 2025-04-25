@@ -36,6 +36,7 @@ export type Service = {
   description: string | null;
   created_at: string;
   requires_field_selection: boolean;
+  default_price?: number | null; // Add default price
 }
 
 // Service Availability type
@@ -50,6 +51,7 @@ export type ServiceAvailability = {
   base_capacity: number | null;
   is_active: boolean;
   created_at: string;
+  override_price?: number | null; // Add override price
 }
 
 // User with role information
@@ -93,16 +95,21 @@ export type Staff = {
   user_id: string;
   role: string;
   notes?: string | null;
+  profile?: { // Nested profile
+    first_name: string | null;
+    last_name: string | null;
+  } | null; // Allow profile to be null if join fails or profile doesn't exist
+  default_vehicle_id?: number | null; // Add default vehicle ID field
 }
 
 // Vehicle type
 export type Vehicle = {
   id: number;
-  staff_id: number;
   make: string;
   model: string;
   year?: number | null;
   color?: string | null;
   license_plate?: string | null;
   notes?: string | null;
+  pet_capacity?: number | null;
 }

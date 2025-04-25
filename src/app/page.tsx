@@ -6,6 +6,7 @@ import { createClient } from '@/utils/supabase/client';
 // import { Auth } from '@supabase/auth-ui-react';
 // import { ThemeSupa } from '@supabase/auth-ui-shared';
 import type { User } from '@supabase/supabase-js';
+// import type { Vehicle, Staff } from '@/types'; // Removed Staff import
 import type { Vehicle, Staff } from '@/types';
 import styles from "./page.module.css";
 // Import server actions
@@ -103,7 +104,6 @@ export default function Home() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [isLoadingVehicles, setIsLoadingVehicles] = useState(false);
   const [vehicleError, setVehicleError] = useState<string | null>(null);
-  const [myVehicles, setMyVehicles] = useState<Vehicle[]>([]);
   const supabase = createClient();
 
   // Create refs for forms that need resetting after async ops
@@ -218,34 +218,11 @@ export default function Home() {
       fetchVehicles();
       fetchStaff();
     } else if (role === 'staff' && user) {
-      // Fetch staff's own vehicles
-      (async () => {
-        // Get staff record for this user
-        const { data: staffRows, error: staffError } = await supabase
-          .from('staff')
-          .select('id')
-          .eq('user_id', user.id)
-          .limit(1);
-        if (staffError || !staffRows || staffRows.length === 0) {
-          setMyVehicles([]);
-          return;
-        }
-        const staffId = staffRows[0].id;
-        // Fetch vehicles for this staff
-        try {
-          const response = await fetch(`/api/vehicles?staff_id=${staffId}`);
-          if (!response.ok) throw new Error('Failed to fetch vehicles');
-          const data: Vehicle[] = await response.json();
-          setMyVehicles(data);
-        } catch {
-          setMyVehicles([]);
-        }
-      })();
+      // Staff logic (no vehicle fetch needed here for default vehicle assignment)
     } else {
       setUsers([]);
       setVehicles([]);
       setStaff([]);
-      setMyVehicles([]);
     }
   }, [role, user]);
 
@@ -505,17 +482,29 @@ export default function Home() {
     const formData = new FormData(event.currentTarget);
     const name = formData.get('serviceName') as string;
     const description = formData.get('serviceDescription') as string;
+    const defaultPriceStr = formData.get('serviceDefaultPrice') as string;
 
     if (!name) {
       setError('Service name is required.');
       return;
     }
 
+    let defaultPrice: number | null = null;
+    if (defaultPriceStr) {
+        const parsed = parseFloat(defaultPriceStr);
+        if (!isNaN(parsed)) {
+            defaultPrice = parsed;
+        } else {
+            setError('Invalid format for default price.');
+            return;
+        }
+    }
+
     try {
       const response = await fetch('/api/services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description }),
+        body: JSON.stringify({ name, description, default_price: defaultPrice }),
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -527,6 +516,49 @@ export default function Home() {
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to add service');
     }
+  };
+
+  const handleUpdateService = async (serviceId: number, data: Partial<Omit<Service, 'id' | 'created_at'>>) => {
+    setError(null);
+    try {
+        const response = await fetch(`/api/services/${serviceId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to update service');
+        }
+        const updatedService: Service = await response.json();
+        // Update local state
+        setServices(prev =>
+            prev.map(s => s.id === serviceId ? updatedService : s).sort((a, b) => a.name.localeCompare(b.name))
+        );
+    } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to update service');
+        // Optionally revert optimistic update here
+    }
+  };
+
+  const handleDeleteService = async (serviceId: number) => {
+      if (!window.confirm('Are you sure you want to delete this service? This cannot be undone.')) {
+          return;
+      }
+      setError(null);
+      try {
+          const response = await fetch(`/api/services/${serviceId}`, {
+              method: 'DELETE',
+          });
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Failed to delete service');
+          }
+          // Update local state
+          setServices(prev => prev.filter(s => s.id !== serviceId));
+      } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to delete service');
+      }
   };
   // -----------------------------------
 
@@ -558,6 +590,18 @@ export default function Home() {
         daysOfWeek.push(i);
       }
     }
+    // Parse override price
+    const overridePriceStr = formData.get('availabilityOverridePrice') as string;
+    let overridePrice: number | null = null;
+    if (overridePriceStr) {
+        const parsed = parseFloat(overridePriceStr);
+        if (!isNaN(parsed)) {
+            overridePrice = parsed;
+        } else {
+            setError('Invalid format for override price.');
+            return;
+        }
+    }
 
     const payload = {
       service_id: formData.get('availabilityServiceId') as string,
@@ -568,6 +612,7 @@ export default function Home() {
       is_active: formData.get('availabilityIsActive') === 'on',
       days_of_week: daysOfWeek.length > 0 ? daysOfWeek : undefined,
       specific_date: formData.get('availabilitySpecificDate') as string || undefined,
+      override_price: overridePrice, // Add override price
     };
 
     // Client-side validation (matching API)
@@ -605,7 +650,52 @@ export default function Home() {
       setError(e instanceof Error ? e.message : 'Failed to add service availability rule');
     }
   };
-  // --------------------------------------------
+
+  const handleUpdateServiceAvailability = async (ruleId: number, data: Partial<Omit<ServiceAvailability, 'id' | 'created_at'>>) => {
+    setError(null);
+    try {
+        // Basic frontend validation (mirroring API)
+        if (data.end_time && data.start_time && data.end_time <= data.start_time) throw new Error("End time must be after start time.");
+        if (data.days_of_week && data.specific_date) throw new Error("Cannot set both recurring days and specific date.");
+
+        const response = await fetch(`/api/service-availability/${ruleId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(data),
+        });
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to update availability rule');
+        }
+        const updatedRule: ServiceAvailability = await response.json();
+        // Update local state
+        setServiceAvailability(prev =>
+            prev.map(r => r.id === ruleId ? updatedRule : r).sort((a, b) => a.id - b.id)
+        );
+    } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to update availability rule');
+    }
+  };
+
+ const handleDeleteServiceAvailability = async (ruleId: number) => {
+      if (!window.confirm('Are you sure you want to delete this availability rule? This cannot be undone.')) {
+          return;
+      }
+      setError(null);
+      try {
+          const response = await fetch(`/api/service-availability/${ruleId}`, {
+              method: 'DELETE',
+          });
+          if (!response.ok) {
+              const errorData = await response.json();
+              throw new Error(errorData.error || 'Failed to delete availability rule');
+          }
+          // Update local state
+          setServiceAvailability(prev => prev.filter(r => r.id !== ruleId));
+      } catch (e) {
+          setError(e instanceof Error ? e.message : 'Failed to delete availability rule');
+      }
+  };
 
   // --- Handler to toggle Service Availability Active state ---
   const handleToggleServiceAvailabilityActive = async (ruleId: number, currentStatus: boolean) => {
@@ -680,19 +770,6 @@ export default function Home() {
     }
   };
 
-  const fetchStaff = async () => {
-    // Fetch all staff directly from Supabase (no API route)
-    setStaff([]);
-    try {
-      const { data, error } = await supabase.from('staff').select('*');
-      if (error) throw error;
-      setStaff(data || []);
-    } catch {
-      // No global error, just leave staff empty
-      setStaff([]);
-    }
-  };
-
   const handleAddVehicle = async (vehicle: Partial<Vehicle>) => {
     setVehicleError(null);
     try {
@@ -725,6 +802,72 @@ export default function Home() {
       setVehicleError(e instanceof Error ? e.message : 'Failed to delete vehicle');
     }
   };
+
+  // Re-add fetchStaff function, now fetching default_vehicle_id
+  const fetchStaff = async () => {
+    setStaff([]);
+    try {
+      // Select required staff fields + profile + default vehicle id
+      const { data, error } = await supabase
+        .from('staff')
+        .select('id, user_id, role, default_vehicle_id, profiles(first_name, last_name)');
+
+      if (error) {
+        console.error("Supabase error fetching staff:", error.message);
+        throw error;
+      }
+
+      // Log data for debugging if needed
+      // console.log("Raw staff data:", data);
+
+      const formattedStaff: Staff[] = (data || []).map(s => {
+        const profileData = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
+        return {
+          id: s.id,
+          user_id: s.user_id,
+          role: s.role,
+          default_vehicle_id: s.default_vehicle_id,
+          profile: profileData ? { first_name: profileData.first_name, last_name: profileData.last_name } : null
+        };
+      });
+
+      // console.log("Formatted staff data:", formattedStaff);
+      setStaff(formattedStaff);
+
+    } catch (e) {
+      console.error("Error in fetchStaff process:", e instanceof Error ? e.message : String(e));
+      setStaff([]);
+    }
+  };
+
+  // Function to handle assigning a default vehicle to staff
+  const handleAssignDefaultVehicle = async (staffId: number, vehicleId: number | null) => {
+    setError(null); // Clear global error
+    try {
+        const response = await fetch('/api/staff/assignment', { // Using a new specific route
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ staffId, defaultVehicleId: vehicleId }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || `Failed to assign vehicle (HTTP ${response.status})`);
+        }
+
+        // Optimistically update local state or refetch
+        setStaff(prevStaff =>
+            prevStaff.map(s =>
+                s.id === staffId ? { ...s, default_vehicle_id: vehicleId } : s
+            )
+        );
+
+    } catch (e) {
+        const message = e instanceof Error ? e.message : 'Unknown error assigning vehicle';
+        console.error("Error assigning default vehicle:", message);
+        setError(message); // Show error to user
+    }
+};
 
   if (isLoadingInitial) {
     return <div>Loading...</div>;
@@ -775,6 +918,9 @@ export default function Home() {
                   updatingUserId={updatingUserId}
                   handleAssignRole={handleAssignRole}
                   fetchAllUsers={fetchAllUsers}
+                  staff={staff}
+                  vehicles={vehicles}
+                  handleAssignDefaultVehicle={handleAssignDefaultVehicle}
                   sites={sites}
                   fields={fields}
                   isLoadingSites={isLoadingSites}
@@ -792,14 +938,16 @@ export default function Home() {
                   isLoadingServices={isLoadingServices}
                   handleAddService={handleAddService}
                   addServiceFormRef={addServiceFormRef}
+                  handleUpdateService={handleUpdateService}
+                  handleDeleteService={handleDeleteService}
                   serviceAvailability={serviceAvailability}
                   isLoadingServiceAvailability={isLoadingServiceAvailability}
                   handleAddServiceAvailability={handleAddServiceAvailability}
                   handleToggleServiceAvailabilityActive={handleToggleServiceAvailabilityActive}
                   addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
+                  handleUpdateServiceAvailability={handleUpdateServiceAvailability}
+                  handleDeleteServiceAvailability={handleDeleteServiceAvailability}
                   error={error}
-                  vehicles={vehicles}
-                  staff={staff}
                   isLoadingVehicles={isLoadingVehicles}
                   vehicleError={vehicleError}
                   handleAddVehicle={handleAddVehicle}
@@ -820,7 +968,6 @@ export default function Home() {
                   getFieldsForSite={getFieldsForSite}
                   fetchBookings={fetchBookings}
                   error={error}
-                  vehicles={myVehicles}
                 />
               )}
 

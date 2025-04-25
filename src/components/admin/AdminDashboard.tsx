@@ -18,10 +18,12 @@ interface AdminDashboardProps {
   user: User;
   // User management
   users: UserWithRole[];
+  staff: Staff[];
   isLoadingUsers: boolean;
   updatingUserId: string | null;
   handleAssignRole: (userId: string, targetRole: 'client' | 'staff' | 'admin') => Promise<void>;
   fetchAllUsers: () => Promise<void>;
+  handleAssignDefaultVehicle: (staffId: number, vehicleId: number | null) => Promise<void>;
   // Site and field management
   sites: Site[];
   fields: Field[];
@@ -42,17 +44,22 @@ interface AdminDashboardProps {
   isLoadingServices: boolean;
   handleAddService: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   addServiceFormRef: React.RefObject<HTMLFormElement | null>;
+  // Add service update/delete handlers
+  handleUpdateService: (serviceId: number, data: Partial<Omit<Service, 'id' | 'created_at'>>) => Promise<void>;
+  handleDeleteService: (serviceId: number) => Promise<void>;
   // Service availability
   serviceAvailability: ServiceAvailability[];
   isLoadingServiceAvailability: boolean;
   handleAddServiceAvailability: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   handleToggleServiceAvailabilityActive: (ruleId: number, currentStatus: boolean) => Promise<void>;
   addServiceAvailabilityFormRef: React.RefObject<HTMLFormElement | null>;
+  // Add availability update/delete handlers
+  handleUpdateServiceAvailability: (ruleId: number, data: Partial<Omit<ServiceAvailability, 'id' | 'created_at'>>) => Promise<void>;
+  handleDeleteServiceAvailability: (ruleId: number) => Promise<void>;
   // Shared
   error: string | null;
-  // Add vehicle management props
+  // Vehicle management props (vehicles needed for dropdown in user mgmt)
   vehicles: Vehicle[];
-  staff: Staff[];
   isLoadingVehicles: boolean;
   vehicleError: string | null;
   handleAddVehicle: (vehicle: Partial<Vehicle>) => Promise<void>;
@@ -62,10 +69,12 @@ interface AdminDashboardProps {
 export default function AdminDashboard({
   user,
   users,
+  staff,
   isLoadingUsers,
   updatingUserId,
   handleAssignRole,
   fetchAllUsers,
+  handleAssignDefaultVehicle,
   sites,
   fields,
   isLoadingSites,
@@ -83,14 +92,19 @@ export default function AdminDashboard({
   isLoadingServices,
   handleAddService,
   addServiceFormRef,
+  // Pass handlers down
+  handleUpdateService,
+  handleDeleteService,
   serviceAvailability,
   isLoadingServiceAvailability,
   handleAddServiceAvailability,
   handleToggleServiceAvailabilityActive,
   addServiceAvailabilityFormRef,
+  // Destructure availability update/delete handlers
+  handleUpdateServiceAvailability,
+  handleDeleteServiceAvailability,
   error,
   vehicles,
-  staff,
   isLoadingVehicles,
   vehicleError,
   handleAddVehicle,
@@ -105,6 +119,9 @@ export default function AdminDashboard({
       content: (
         <UserManagement
           users={users}
+          staff={staff}
+          vehicles={vehicles}
+          handleAssignDefaultVehicle={handleAssignDefaultVehicle}
           isLoadingUsers={isLoadingUsers}
           error={error}
           currentUser={user}
@@ -159,6 +176,9 @@ export default function AdminDashboard({
           error={error}
           handleAddService={handleAddService}
           addServiceFormRef={addServiceFormRef}
+          // Pass handlers down
+          handleUpdateService={handleUpdateService}
+          handleDeleteService={handleDeleteService}
         />
       ),
     },
@@ -177,6 +197,9 @@ export default function AdminDashboard({
           handleToggleServiceAvailabilityActive={handleToggleServiceAvailabilityActive}
           addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
           getFieldsForSite={getFieldsForSite}
+          // Pass handlers down
+          handleUpdateServiceAvailability={handleUpdateServiceAvailability}
+          handleDeleteServiceAvailability={handleDeleteServiceAvailability}
         />
       ),
     },
@@ -193,7 +216,6 @@ export default function AdminDashboard({
       content: (
         <VehicleManagement
           vehicles={vehicles}
-          staff={staff}
           isLoading={isLoadingVehicles}
           error={vehicleError}
           onAdd={handleAddVehicle}

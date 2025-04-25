@@ -16,7 +16,7 @@ export async function GET() {
   const supabaseAdmin = await createAdminClient()
   const { data: services, error } = await supabaseAdmin
     .from('services')
-    .select('id, name, description, created_at, requires_field_selection')
+    .select('id, name, description, created_at, requires_field_selection, default_price')
     .order('name')
 
   if (error) {
@@ -47,12 +47,24 @@ export async function POST(request: Request) {
   }
 
   // Parse request body
-  let serviceData: { name: string; description?: string };
+  let serviceData: { name: string; description?: string; default_price?: number | null };
   try {
     const body = await request.json();
+    // Validate price if provided
+    let defaultPrice = body.default_price;
+    if (defaultPrice !== undefined && defaultPrice !== null && typeof defaultPrice !== 'number') {
+        // Attempt conversion if it's a string number
+        const parsedPrice = parseFloat(defaultPrice);
+        if (isNaN(parsedPrice)) {
+            throw new Error('Invalid format for default_price');
+        }
+        defaultPrice = parsedPrice;
+    }
+
     serviceData = {
         name: body.name,
-        description: body.description
+        description: body.description,
+        default_price: defaultPrice === undefined ? null : defaultPrice // Ensure it's number or null
     };
     if (!serviceData.name) {
       throw new Error('Missing required field: name');

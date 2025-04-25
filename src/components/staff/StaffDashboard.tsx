@@ -5,39 +5,37 @@ import TabNavigation from '@/components/TabNavigation';
 import BookingManagement from '@/components/admin/BookingManagement';
 import styles from '@/app/page.module.css';
 import type { User } from '@supabase/supabase-js';
-import { Site, Field, Booking, Service, Vehicle } from '@/types';
+import type { Site, Field, Booking, Service } from '@/types';
 
 // Define props for the staff dashboard
 interface StaffDashboardProps {
-  user: User; // Keep for future use even if not currently used
+  user: User; // Changed back as it might be used later, or remove if definitely unused
   // Booking management
   bookings: Booking[];
   isLoadingBookings: boolean;
   sites: Site[];
   fields: Field[];
-  services: Service[]; // Keep for future use
+  services: Service[]; // Renamed back from _services
   handleAddBooking: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   addBookingFormRef: React.RefObject<HTMLFormElement | null>;
   getFieldsForSite: (siteId: number) => Field[];
   fetchBookings: () => Promise<void>;
   // Shared
   error: string | null;
-  vehicles?: Vehicle[];
 }
 
 export default function StaffDashboard({
-  user: _user, // Rename to _user to indicate it's not currently used
+  user, // Renamed back from _user
   bookings,
   isLoadingBookings,
   sites,
   fields,
-  services: _services, // Rename to _services to indicate it's not currently used
+  services, // Renamed back from _services
   handleAddBooking,
   addBookingFormRef,
   getFieldsForSite,
   fetchBookings,
   error,
-  vehicles = [],
 }: StaffDashboardProps) {
   // Profile state
   const [profile, setProfile] = useState<{ first_name: string; last_name: string; phone: string } | null>(null);
@@ -147,29 +145,6 @@ export default function StaffDashboard({
           <div className={styles.comingSoon}>
             <p>Coming soon - view client and pet details for your scheduled shifts</p>
           </div>
-        </div>
-      ),
-    },
-    {
-      id: 'my-vehicle',
-      label: 'My Vehicle',
-      content: (
-        <div>
-          <h3>My Vehicle</h3>
-          {vehicles.length === 0 ? (
-            <p>You have no vehicles assigned.</p>
-          ) : (
-            <ul style={{ listStyle: 'none', padding: 0 }}>
-              {vehicles.map(vehicle => (
-                <li key={vehicle.id} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.5rem', borderRadius: '4px' }}>
-                  <strong>{vehicle.make} {vehicle.model}</strong> ({vehicle.year || 'Year N/A'})<br />
-                  Color: {vehicle.color || 'N/A'}<br />
-                  License Plate: {vehicle.license_plate || 'N/A'}<br />
-                  Notes: {vehicle.notes || 'N/A'}<br />
-                </li>
-              ))}
-            </ul>
-          )}
         </div>
       ),
     },
