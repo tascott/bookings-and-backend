@@ -33,8 +33,8 @@ export async function GET(request: Request) {
     .order('id');
 
   if (search) {
-    // Filter by email, first_name, or last_name (case-insensitive, partial match)
-    query = query.or(`email.ilike.%${search}%,profiles.first_name.ilike.%${search}%,profiles.last_name.ilike.%${search}%`);
+    // Filter by email only (joined fields not supported in .or())
+    query = query.ilike('email', `%${search}%`);
   }
   if (limit > 0) {
     query = query.range(offset, offset + limit - 1);

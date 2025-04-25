@@ -169,31 +169,19 @@ export async function POST(request: Request) {
       if (deleteStaffError) throw deleteStaffError;
 
       // Ensure user exists in clients (Upsert: insert if not exists, do nothing if exists)
-      // Fetch email from auth.users to populate client record if inserting
-       const { data: { user: targetUser }, error: getUserError } = await supabaseAdminClient.auth.admin.getUserById(userIdToModify);
-       if (getUserError) throw new Error(`Failed to get user details for profile creation: ${getUserError.message}`);
-
       const { error: upsertClientError } = await supabaseAdminClient
         .from('clients')
-        .upsert({ user_id: userIdToModify, email: targetUser?.email }, { onConflict: 'user_id' });
+        .upsert({ user_id: userIdToModify }, { onConflict: 'user_id' });
       if (upsertClientError) throw upsertClientError;
 
     } else if (targetRole === 'staff' || targetRole === 'admin') {
-      // Ensure user is removed from clients
-      const { error: deleteClientError } = await supabaseAdminClient
-        .from('clients')
-        .delete()
-        .eq('user_id', userIdToModify);
-      // Ignore error if user wasn't in clients (e.g., error code PGRST116 for no rows)
-      if (deleteClientError && deleteClientError.code !== 'PGRST116') throw deleteClientError;
-
       // Ensure user exists in staff (Upsert: insert if not exists, update role if exists)
-       const { data: { user: targetUser }, error: getUserError } = await supabaseAdminClient.auth.admin.getUserById(userIdToModify);
+       const { error: getUserError } = await supabaseAdminClient.auth.admin.getUserById(userIdToModify);
        if (getUserError) throw new Error(`Failed to get user details for profile creation: ${getUserError.message}`);
 
       const { error: upsertStaffError } = await supabaseAdminClient
         .from('staff')
-        .upsert({ user_id: userIdToModify, role: targetRole, name: targetUser?.user_metadata?.full_name || targetUser?.email }, { onConflict: 'user_id' }); // Populate name if available
+        .upsert({ user_id: userIdToModify, role: targetRole }, { onConflict: 'user_id' });
       if (upsertStaffError) throw upsertStaffError;
     }
 

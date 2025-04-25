@@ -7,12 +7,14 @@ import { useState, useEffect, useRef } from 'react';
 // Define type for user data passed as props
 type UserWithRole = {
     id: string;
+    user_id?: string;
     email?: string;
     role: string;
     created_at?: string;
     last_sign_in_at?: string;
     first_name?: string;
     last_name?: string;
+    phone?: string;
     phone_number?: string;
     notes?: string;
 }
@@ -84,7 +86,7 @@ export default function UserManagement({
             return;
         }
         try {
-            await handleAssignRole(selectedClient.id, targetRole);
+            await handleAssignRole(selectedClient.user_id || selectedClient.id, targetRole);
             setSelectedClient(null);
             setClientSearch('');
             setFilteredClients([]);
@@ -149,7 +151,7 @@ export default function UserManagement({
                 </button>
                 {showPromote && (
                     <div style={{ background: '#181818', padding: 16, borderRadius: 8, maxWidth: 480 }}>
-                        <label>Search for client by email or name:<br />
+                        <label>Search for client by email:<br />
                             <input
                                 ref={inputRef}
                                 type="text"
@@ -199,7 +201,6 @@ export default function UserManagement({
                         <div>Phone</div>
                         <div>Current Role</div>
                         <div>Created At</div>
-                        <div>Last Sign In</div>
                         <div className={styles.userAction}>Actions</div>
                     </div>
                     {filteredUsers.map((u) => (
@@ -207,10 +208,9 @@ export default function UserManagement({
                             <div>{u.email ?? 'N/A'}</div>
                             <div>{u.first_name ?? 'N/A'}</div>
                             <div>{u.last_name ?? 'N/A'}</div>
-                            <div>{u.phone_number ?? 'N/A'}</div>
+                            <div>{u.phone ?? u.phone_number ?? 'N/A'}</div>
                             <div>{u.role}</div>
                             <div>{u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A'}</div>
-                            <div>{u.last_sign_in_at ? new Date(u.last_sign_in_at).toLocaleString() : 'N/A'}</div>
                             <div className={styles.userAction}>
                                 {updatingUserId === u.id ? (
                                     <span>Updating...</span>
