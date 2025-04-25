@@ -39,6 +39,8 @@ interface AdminDashboardProps {
   handleAddBooking: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   addBookingFormRef: React.RefObject<HTMLFormElement | null>;
   fetchBookings: () => Promise<void>;
+  // Add paid status toggle handler
+  handleToggleBookingPaidStatus: (bookingId: number, currentStatus: boolean) => Promise<void>;
   // Service management
   services: Service[];
   isLoadingServices: boolean;
@@ -88,6 +90,8 @@ export default function AdminDashboard({
   handleAddBooking,
   addBookingFormRef,
   fetchBookings,
+  // Destructure paid status toggle handler
+  handleToggleBookingPaidStatus,
   services,
   isLoadingServices,
   handleAddService,
@@ -163,6 +167,8 @@ export default function AdminDashboard({
           addBookingFormRef={addBookingFormRef}
           getFieldsForSite={getFieldsForSite}
           refetchBookings={fetchBookings}
+          // Pass handler down
+          handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
         />
       ),
     },

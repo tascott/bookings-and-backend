@@ -10,6 +10,7 @@ type Service = {
   description: string | null;
   created_at: string;
   requires_field_selection: boolean;
+  default_price?: number | null; // Add price
 }
 
 type CalculatedSlot = {
@@ -18,6 +19,7 @@ type CalculatedSlot = {
     slot_start_time: string;
     slot_end_time: string;
     slot_remaining_capacity: number;
+    price_per_pet: number; // Price from API
 }
 
 // Define a new type for the aggregated data used for display
@@ -27,6 +29,7 @@ type AggregatedSlot = {
     startTime: string; // ISO string
     endTime: string;   // ISO string
     totalRemainingCapacity: number;
+    price_per_pet: number; // Use the lowest price found for this time block?
     // Keep track of contributing fields/slots if needed for booking later?
     // contributingSlots: CalculatedSlot[];
 }
@@ -43,6 +46,7 @@ type Pet = {
 }
 
 // Type for the payload sent to the booking API
+/* // Removed unused type for now
 interface BookingPayload {
     service_id: number;
     start_time: string;
@@ -50,6 +54,7 @@ interface BookingPayload {
     field_id?: number;
     pet_ids: number[]; // Added selected pet IDs
 }
+*/
 
 // Define props for the component
 interface ClientBookingProps {
@@ -80,8 +85,8 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     const [isLoadingPets, setIsLoadingPets] = useState(true);
     const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
 
-    // State for booking status
-    const [bookingStatus, setBookingStatus] = useState<{ loading: boolean; success: string | null; error: string | null; targetSlotKey: string | null }>({ loading: false, success: null, error: null, targetSlotKey: null });
+    // State for slots and selections
+    const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set()); // Use Set for easy add/remove, key = `${startTime}` or `${fieldId}-${startTime}`
 
     // Define helper here to be accessible throughout the component
     const getServiceName = (id: number) => services.find(s => s.id === id)?.name || `Service ID ${id}`;
@@ -90,7 +95,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     const aggregateSlots = (slots: CalculatedSlot[], serviceId: number): AggregatedSlot[] => {
         if (!slots || slots.length === 0) return [];
 
-        const grouped: { [key: string]: { serviceId: number; serviceName: string; startTime: string; endTime: string; totalCapacity: number } } = {};
+        const grouped: { [key: string]: { serviceId: number; serviceName: string; startTime: string; endTime: string; totalCapacity: number; price: number } } = {};
 
         // Use the helper defined outside
         const currentServiceName = getServiceName(serviceId);
@@ -106,6 +111,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                     startTime: slot.slot_start_time,
                     endTime: slot.slot_end_time,
                     totalCapacity: 0,
+                    price: slot.price_per_pet // Take the price from the first slot in the group
                 };
             }
             grouped[key].totalCapacity += slot.slot_remaining_capacity;
@@ -118,6 +124,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             startTime: group.startTime,
             endTime: group.endTime,
             totalRemainingCapacity: group.totalCapacity,
+            price_per_pet: group.price // Assign the stored price
         }));
     };
 
@@ -171,55 +178,134 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         });
     };
 
-    // --- Booking Handlers ---
-    const handleBookSlot = useCallback(async (slotData: AggregatedSlot | CalculatedSlot, isAggregated: boolean) => {
-        const slotKey = isAggregated ? `${(slotData as AggregatedSlot).serviceId}-${(slotData as AggregatedSlot).startTime}` : `${(slotData as CalculatedSlot).slot_field_id}-${(slotData as CalculatedSlot).slot_start_time}`;
-        setBookingStatus({ loading: true, success: null, error: null, targetSlotKey: slotKey });
-        setError(null); // Clear general error before booking attempt
+    // --- Slot Selection Handler ---
+    const handleSlotSelectionToggle = (slotKey: string) => {
+        setSelectedSlots(prevSelected => {
+            const newSelected = new Set(prevSelected);
+            if (newSelected.has(slotKey)) {
+                newSelected.delete(slotKey);
+            } else {
+                newSelected.add(slotKey);
+            }
+            return newSelected;
+        });
+    };
 
-        // **Pricing Prerequisite:** Check if pets are selected
+    // --- Calculate Total Price ---
+    const calculateTotalPrice = () => {
+        if (selectedSlots.size === 0 || selectedPetIds.length === 0) {
+            return 0;
+        }
+
+        let total = 0;
+        const selectedService = services.find(s => s.id === parseInt(selectedServiceId, 10));
+        const requiresFieldSelection = selectedService?.requires_field_selection ?? false;
+
+        selectedSlots.forEach(slotKey => {
+            let slotPrice = 0;
+            if (requiresFieldSelection) {
+                // Key is fieldId-startTime
+                const [fieldIdStr, startTime] = slotKey.split('-');
+                const slot = rawCalculatedSlots.find(s => s.slot_field_id === parseInt(fieldIdStr, 10) && s.slot_start_time === startTime);
+                slotPrice = slot?.price_per_pet ?? 0;
+            } else {
+                // Key is startTime
+                 const startTime = slotKey;
+                 const slot = aggregatedSlots.find(s => s.startTime === startTime);
+                 slotPrice = slot?.price_per_pet ?? 0;
+            }
+            total += slotPrice;
+        });
+
+        return total * selectedPetIds.length;
+    };
+
+    const totalPrice = calculateTotalPrice();
+
+    // --- Book Selected Slots Handler ---
+    const handleBookSelectedSlots = async () => {
+        setError(null); // Clear previous errors
+
+        if (selectedSlots.size === 0) {
+            setError('Please select at least one slot.');
+            return;
+        }
         if (selectedPetIds.length === 0) {
-            setBookingStatus({ loading: false, success: null, error: 'Please select at least one pet to include in the booking.', targetSlotKey: null });
+            setError('Please select at least one pet.');
+            return;
+        }
+        if (!selectedServiceId) {
+            setError('Internal error: Service ID not found.');
             return;
         }
 
-        const payload: BookingPayload = {
-            service_id: isAggregated ? (slotData as AggregatedSlot).serviceId : parseInt(selectedServiceId, 10),
-            start_time: isAggregated ? (slotData as AggregatedSlot).startTime : (slotData as CalculatedSlot).slot_start_time,
-            end_time: isAggregated ? (slotData as AggregatedSlot).endTime : (slotData as CalculatedSlot).slot_end_time,
-            pet_ids: selectedPetIds, // Include selected pet IDs
-        };
+        console.log("Booking selected slots:", selectedSlots);
+        console.log("Booking for pets:", selectedPetIds);
 
-        if (!isAggregated) {
-            payload.field_id = (slotData as CalculatedSlot).slot_field_id;
-        }
+        setIsLoadingCalculatedSlots(true); // Reuse loading state or add a new one?
 
-        // **Pricing Note:** Here or on the backend, you would calculate the price based on `selectedPetIds.length` and the service type/duration.
+        let bookingSuccess = true;
+        const bookingResults = [];
 
-        try {
-            const response = await fetch('/api/client-booking', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
-            });
+        for (const slotKey of selectedSlots) {
+            // The slotKey is the start_time string from AggregatedSlot
+            const startTime = slotKey;
+            // Find the corresponding aggregated slot to get end_time and service_id
+            const slotDetails = aggregatedSlots.find(s => s.startTime === startTime);
 
-            const result = await response.json();
-
-            if (!response.ok) {
-                throw new Error(result.error || `Booking failed (HTTP ${response.status})`);
+            if (!slotDetails) {
+                console.error(`Could not find details for selected slot key: ${slotKey}`);
+                bookingResults.push({ slot: slotKey, success: false, error: 'Slot details not found.' });
+                bookingSuccess = false;
+                continue; // Skip to next slot
             }
 
-            setBookingStatus({ loading: false, success: `Successfully booked! (ID: ${result.bookingId})`, error: null, targetSlotKey: null });
-            setAggregatedSlots([]);
-            setRawCalculatedSlots([]);
+            const payload = {
+                service_id: parseInt(selectedServiceId, 10), // Ensure service ID is an integer
+                start_time: slotDetails.startTime,
+                end_time: slotDetails.endTime,
+                pet_ids: selectedPetIds,
+                // Field ID might not be needed if API handles allocation based on service/time/capacity
+            };
 
-        } catch (e) {
-            const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred during booking.';
-            console.error("Booking Error:", e);
-            // Set error in the booking status, not the general component error
-            setBookingStatus({ loading: false, success: null, error: errorMessage, targetSlotKey: null });
+            try {
+                const response = await fetch('/api/client-booking', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || `Booking failed (HTTP ${response.status})`);
+                }
+                const result = await response.json();
+                bookingResults.push({ slot: slotKey, success: true, data: result });
+
+            } catch (e) {
+                const message = e instanceof Error ? e.message : 'Unknown booking error occurred.';
+                console.error(`Error booking slot ${slotKey}:`, e);
+                bookingResults.push({ slot: slotKey, success: false, error: message });
+                bookingSuccess = false;
+                // Decide if we should stop on first error or try all slots
+                // break; // Uncomment to stop on first error
+            }
+        } // End loop through selectedSlots
+
+        setIsLoadingCalculatedSlots(false);
+
+        if (bookingSuccess) {
+            alert('All selected slots booked successfully!'); // Simple feedback for now
+            setSelectedSlots(new Set()); // Clear selection on success
+            setRawCalculatedSlots([]); // Clear results
+            setAggregatedSlots([]); // Clear aggregated results
+            // Optionally refetch slots or redirect
+        } else {
+            // Provide more detailed error feedback
+            const failedSlots = bookingResults.filter(r => !r.success);
+            setError(`Failed to book ${failedSlots.length} slot(s). Please try again or contact support. Errors: ${failedSlots.map(f => `Slot ${f.slot?.substring(11, 16)}: ${f.error}`).join(', ')}`);
         }
-    }, [selectedServiceId, selectedPetIds]); // Added selectedPetIds dependency
+    };
 
     // --- Fetch Calculated Slots from API ---
     const fetchCalculatedSlots = async () => {
@@ -291,7 +377,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                         <select
                             id="clientServiceSelect"
                             value={selectedServiceId}
-                            onChange={(e) => setSelectedServiceId(e.target.value)}
+                            onChange={(e) => { setSelectedServiceId(e.target.value); setRawCalculatedSlots([]); setAggregatedSlots([]); setSelectedSlots(new Set()); }}
                             required
                             style={{ marginRight: '1rem' }}
                         >
@@ -398,35 +484,39 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                             <div className={styles.calculatedSlotsList}>
                                 {showAggregated
                                     ? /* Render Aggregated Slots */
-                                      aggregatedSlots.map((aggSlot, index) => {
-                                        const slotKey = `${aggSlot.serviceId}-${aggSlot.startTime}`;
-                                        const isLoadingThisSlot = bookingStatus.loading && bookingStatus.targetSlotKey === slotKey;
+                                      aggregatedSlots.map((aggSlot /*, index*/) => {
+                                        const slotKey = aggSlot.startTime;
+                                        const isSelected = selectedSlots.has(slotKey);
                                         return (
-                                            <div key={`agg-${slotKey}-${index}`} className={styles.calculatedSlotCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
+                                            <div
+                                                key={`agg-${slotKey}`}
+                                                className={`${styles.calculatedSlotCard} ${isSelected ? styles.selectedSlot : ''}`}
+                                                style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}
+                                                onClick={() => handleSlotSelectionToggle(slotKey)}
+                                            >
                                                 <p><strong>Service:</strong> {aggSlot.serviceName}</p>
                                                 <p>
                                                     <strong>Start:</strong> {new Date(aggSlot.startTime).toLocaleString([], { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' })} |
                                                     <strong> End:</strong> {new Date(aggSlot.endTime).toLocaleString([], { timeZone: 'UTC', timeStyle: 'short' })}
                                                 </p>
                                                 <p><strong>Total Remaining Capacity:</strong> {aggSlot.totalRemainingCapacity}</p>
-                                                <button
-                                                    onClick={() => handleBookSlot(aggSlot, true)}
-                                                    disabled={isLoadingThisSlot || bookingStatus.loading || selectedPetIds.length === 0}
-                                                    style={{ marginTop: '0.5rem' }}
-                                                >
-                                                    {isLoadingThisSlot ? 'Booking...' : 'Book Now'}
-                                                </button>
+                                                <p><strong>Price per Pet:</strong> £{aggSlot.price_per_pet.toFixed(2)}</p>
                                             </div>
                                         )
                                       })
                                     : /* Render Per-Field Slots */
-                                      rawCalculatedSlots.map((slot, index) => {
+                                      rawCalculatedSlots.map((slot /*, index*/) => {
                                         const slotKey = `${slot.slot_field_id}-${slot.slot_start_time}`;
-                                        const isLoadingThisSlot = bookingStatus.loading && bookingStatus.targetSlotKey === slotKey;
+                                        const isSelected = selectedSlots.has(slotKey);
                                         // Find the service name for this slot's service ID (needed if mixing results)
                                         const serviceName = getServiceName(parseInt(selectedServiceId, 10)) || `Service ID ${selectedServiceId}`;
                                         return (
-                                            <div key={`field-${slot.slot_field_id}-${slot.slot_start_time}-${index}`} className={styles.calculatedSlotCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
+                                            <div
+                                                key={`field-${slot.slot_field_id}-${slot.slot_start_time}`}
+                                                className={`${styles.calculatedSlotCard} ${isSelected ? styles.selectedSlot : ''}`}
+                                                style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}
+                                                onClick={() => handleSlotSelectionToggle(slotKey)}
+                                            >
                                                 {/* Add Service Name */}
                                                 <p><strong>Service:</strong> {serviceName}</p>
                                                 {/* Display field name prominently */}
@@ -437,13 +527,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                                 </p>
                                                 {/* Show individual field capacity */}
                                                 <p><strong>Remaining Capacity:</strong> {slot.slot_remaining_capacity}</p>
-                                                <button
-                                                    onClick={() => handleBookSlot(slot, false)}
-                                                    disabled={isLoadingThisSlot || bookingStatus.loading || selectedPetIds.length === 0}
-                                                    style={{ marginTop: '0.5rem' }}
-                                                >
-                                                    {isLoadingThisSlot ? 'Booking...' : 'Book Now'}
-                                                </button>
+                                                <p><strong>Price per Pet:</strong> £{slot.price_per_pet.toFixed(2)}</p>
                                             </div>
                                         );
                                     })
@@ -453,9 +537,25 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                     })()
                 )}
             </div>
-            {/* Display Booking Status Messages */}
-            {bookingStatus.error && <p style={{ color: 'red', marginTop: '1rem' }}>Booking Error: {bookingStatus.error}</p>}
-            {bookingStatus.success && <p style={{ color: 'green', marginTop: '1rem' }}>{bookingStatus.success}</p>}
+
+            {/* Error Display */}
+            {error && <p className={styles.errorText}>{error}</p>}
+
+            {/* Total Price and Booking Button */}
+            {(rawCalculatedSlots.length > 0 || aggregatedSlots.length > 0) && (
+                <div className={styles.bookingSummary}>
+                     <p><strong>Selected Pets:</strong> {selectedPetIds.length}</p>
+                     <p><strong>Selected Slots:</strong> {selectedSlots.size}</p>
+                     <p><strong>Total Price:</strong> £{totalPrice.toFixed(2)}</p>
+                     <button
+                        onClick={handleBookSelectedSlots}
+                        disabled={selectedSlots.size === 0 || selectedPetIds.length === 0}
+                        className={styles.mainBookButton}
+                    >
+                        Book Selected Slots
+                    </button>
+                </div>
+            )}
         </section>
     );
 }

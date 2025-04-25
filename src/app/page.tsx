@@ -43,6 +43,7 @@ type Booking = {
   service_type: string | null;
   status: string;
   max_capacity: number | null;
+  is_paid: boolean;
 }
 
 // Define Service Type
@@ -869,6 +870,37 @@ export default function Home() {
     }
 };
 
+  // --- Booking Paid Status Handler ---
+  const handleToggleBookingPaidStatus = async (bookingId: number, currentStatus: boolean) => {
+    setError(null);
+    const newStatus = !currentStatus;
+    try {
+        const response = await fetch(`/api/bookings/${bookingId}/status`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_paid: newStatus }),
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to update booking status');
+        }
+
+        const updatedBookingStatus: { id: number; is_paid: boolean } = await response.json();
+
+        // Update local state optimistically or based on response
+        setBookings(prevBookings =>
+            prevBookings.map(b =>
+                b.id === bookingId ? { ...b, is_paid: updatedBookingStatus.is_paid } : b
+            )
+        );
+    } catch (e) {
+        setError(e instanceof Error ? e.message : 'Failed to update booking status');
+        // Optionally revert optimistic update here
+    }
+  };
+  // ---------------------------------
+
   if (isLoadingInitial) {
     return <div>Loading...</div>;
   }
@@ -952,6 +984,7 @@ export default function Home() {
                   vehicleError={vehicleError}
                   handleAddVehicle={handleAddVehicle}
                   handleDeleteVehicle={handleDeleteVehicle}
+                  handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
                 />
               )}
 
@@ -968,6 +1001,7 @@ export default function Home() {
                   getFieldsForSite={getFieldsForSite}
                   fetchBookings={fetchBookings}
                   error={error}
+                  handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
                 />
               )}
 

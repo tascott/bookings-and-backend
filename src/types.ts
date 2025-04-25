@@ -27,6 +27,7 @@ export type Booking = {
   service_type: string | null;
   status: string;
   max_capacity: number | null;
+  is_paid: boolean; // Add paid status
 }
 
 // Service type

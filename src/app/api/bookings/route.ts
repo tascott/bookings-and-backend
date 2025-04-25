@@ -13,6 +13,7 @@ type EnrichedBooking = {
   status: string;
   max_capacity: number | null;
   created_at: string; // Assuming this exists on bookings table
+  is_paid: boolean; // Add is_paid
   // Added fields
   client_id: number | null;
   client_name: string | null;
@@ -97,8 +98,10 @@ export async function GET() {
 
       // Populate client name map
       clientsData?.forEach(client => {
-         // Combine first and last name from profiles
-         const fullName = [client.profiles?.first_name, client.profiles?.last_name].filter(Boolean).join(' ') || null;
+         // Handle profiles potentially being an array
+         const profileData = Array.isArray(client.profiles) ? client.profiles[0] : client.profiles;
+         // Combine first and last name from profileData
+         const fullName = profileData ? [profileData.first_name, profileData.last_name].filter(Boolean).join(' ') : null;
          clientNameMap.set(client.id, fullName);
       });
     }
@@ -166,6 +169,7 @@ export async function GET() {
         status: booking.status,
         max_capacity: booking.max_capacity,
         created_at: booking.created_at, // Ensure this is selected in step 1 if needed
+        is_paid: booking.is_paid ?? false, // Add is_paid (default to false if somehow null)
         // Add enriched data
         client_id: clientId ?? null,
         client_name: clientName ?? null,

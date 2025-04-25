@@ -22,6 +22,8 @@ interface StaffDashboardProps {
   fetchBookings: () => Promise<void>;
   // Shared
   error: string | null;
+  // Add paid status toggle handler
+  handleToggleBookingPaidStatus: (bookingId: number, currentStatus: boolean) => Promise<void>;
 }
 
 export default function StaffDashboard({
@@ -36,6 +38,8 @@ export default function StaffDashboard({
   getFieldsForSite,
   fetchBookings,
   error,
+  // Destructure paid status toggle handler
+  handleToggleBookingPaidStatus
 }: StaffDashboardProps) {
   // Profile state
   const [profile, setProfile] = useState<{ first_name: string; last_name: string; phone: string } | null>(null);
@@ -132,6 +136,7 @@ export default function StaffDashboard({
           addBookingFormRef={addBookingFormRef}
           getFieldsForSite={getFieldsForSite}
           refetchBookings={fetchBookings}
+          handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
         />
       ),
     },

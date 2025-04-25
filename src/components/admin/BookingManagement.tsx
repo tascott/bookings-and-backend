@@ -12,6 +12,7 @@ type Booking = {
   service_type: string | null;
   status: string;
   max_capacity: number | null;
+  is_paid: boolean;
   // Add fields returned by the updated API
   client_id?: number | null;
   client_name?: string | null;
@@ -44,6 +45,7 @@ interface BookingManagementProps {
     addBookingFormRef: React.RefObject<HTMLFormElement | null>;
     getFieldsForSite: (siteId: number) => Field[]; // Helper for dropdown
     refetchBookings: () => Promise<void>;
+    handleToggleBookingPaidStatus: (bookingId: number, currentStatus: boolean) => Promise<void>;
 }
 
 // Helper function to format ISO string for datetime-local input
@@ -72,7 +74,8 @@ export default function BookingManagement({
     handleAddBooking,
     addBookingFormRef,
     getFieldsForSite,
-    refetchBookings
+    refetchBookings,
+    handleToggleBookingPaidStatus
 }: BookingManagementProps) {
 
     // State for local operations (edit/delete errors)
@@ -254,141 +257,137 @@ export default function BookingManagement({
             <h3>Existing Bookings</h3>
             {isLoadingBookings ? (
                 <p>Loading bookings...</p>
-            ) : bookings.length === 0 ? (
+            ) : bookings.length === 0 && !parentError ? (
                 <p>No bookings found.</p>
-            ) : (
-                <div className={styles.bookingList}> {/* Use a class for styling */}
-                    {bookings.map(booking => (
-                        <div key={booking.id} className={styles.bookingCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
-                            {editingBooking?.id === booking.id ? (
-                                // --- EDIT FORM ---
-                                <form onSubmit={handleUpdateBookingSubmit}>
-                                    <h4>Editing Booking ID: {booking.id}</h4>
-                                     {/* Field Selector */}
-                                     <div style={{ marginBottom: '0.5rem' }}>
-                                         <label htmlFor={`editBookingFieldId-${booking.id}`}>Field:</label>
-                                         <select
-                                             id={`editBookingFieldId-${booking.id}`}
-                                             value={editFormFieldId}
-                                             onChange={(e: ChangeEvent<HTMLSelectElement>) => setEditFormFieldId(e.target.value)}
-                                             required
-                                             style={{ marginLeft: '0.5rem' }}
-                                         >
-                                             {/* Options generated similar to Add form */}
-                                             {sites.map(site => (
-                                                <optgroup key={`edit-site-${site.id}`} label={site.name}>
-                                                    {getFieldsForSite(site.id).map(field => (
-                                                        <option key={`edit-field-${field.id}`} value={field.id}>
-                                                            {field.name || `Field ID ${field.id}`}
-                                                        </option>
-                                                    ))}
-                                                </optgroup>
-                                             ))}
-                                         </select>
-                                     </div>
-                                    {/* Start Time */}
-                                    <div style={{ marginBottom: '0.5rem' }}>
-                                        <label htmlFor={`editBookingStartTime-${booking.id}`}>Start Time:</label>
-                                        <input
-                                            type="datetime-local"
-                                            id={`editBookingStartTime-${booking.id}`}
-                                            value={editFormStartTime}
-                                            onChange={(e: ChangeEvent<HTMLInputElement>) => setEditFormStartTime(e.target.value)}
-                                            required
-                                            style={{ marginLeft: '0.5rem' }}
-                                        />
-                                    </div>
-                                    {/* End Time */}
-                                    <div style={{ marginBottom: '0.5rem' }}>
-                                        <label htmlFor={`editBookingEndTime-${booking.id}`}>End Time:</label>
-                                        <input
-                                            type="datetime-local"
-                                            id={`editBookingEndTime-${booking.id}`}
-                                            value={editFormEndTime}
-                                            onChange={(e: ChangeEvent<HTMLInputElement>) => setEditFormEndTime(e.target.value)}
-                                            required
-                                            style={{ marginLeft: '0.5rem' }}
-                                        />
-                                    </div>
-                                     {/* Service Type */}
-                                    <div style={{ marginBottom: '0.5rem' }}>
-                                        <label htmlFor={`editBookingServiceType-${booking.id}`}>Service Type:</label>
-                                        <input
-                                            type="text"
-                                            id={`editBookingServiceType-${booking.id}`}
-                                            value={editFormServiceType}
-                                            onChange={(e) => setEditFormServiceType(e.target.value)}
-                                            style={{ marginLeft: '0.5rem' }}
-                                        />
-                                    </div>
-                                    {/* Status */}
-                                     <div style={{ marginBottom: '0.5rem' }}>
-                                        <label htmlFor={`editBookingStatus-${booking.id}`}>Status:</label>
-                                         {/* Consider using a select dropdown for specific statuses */}
-                                        <input
-                                            type="text"
-                                            id={`editBookingStatus-${booking.id}`}
-                                            value={editFormStatus}
-                                            onChange={(e: ChangeEvent<HTMLInputElement>) => setEditFormStatus(e.target.value)}
-                                            style={{ marginLeft: '0.5rem' }}
-                                        />
-                                    </div>
-                                     {/* Max Capacity */}
-                                     <div style={{ marginBottom: '0.5rem' }}>
-                                        <label htmlFor={`editBookingMaxCapacity-${booking.id}`}>Max Capacity:</label>
-                                        <input
-                                            type="number"
-                                            id={`editBookingMaxCapacity-${booking.id}`}
-                                            value={editFormMaxCapacity}
-                                            onChange={(e: ChangeEvent<HTMLInputElement>) => setEditFormMaxCapacity(e.target.value)}
-                                            min="0"
-                                            style={{ marginLeft: '0.5rem' }}
-                                        />
-                                    </div>
+            ) : bookings.length > 0 ? (
+                <div className={styles.bookingListContainer}>
+                    <table className={styles.bookingTable}><thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Client</th>
+                                <th>Pet(s)</th>
+                                <th>Field</th>
+                                <th>Start Time</th>
+                                <th>End Time</th>
+                                <th>Service</th>
+                                <th>Status</th>
+                                <th>Paid</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead><tbody>
+                            {bookings.map(booking => (
+                                <tr key={booking.id}>
+                                    <td>{booking.id}</td>
+                                    <td>{booking.client_name || 'N/A'} (ID: {booking.client_id || 'N/A'})</td>
+                                    <td>{booking.pet_names?.join(', ') || 'N/A'}</td>
+                                    <td>{fields.find(f => f.id === booking.field_id)?.name || `ID ${booking.field_id}`}</td>
+                                    <td>{formatDateTimeLocal(booking.start_time)}</td>
+                                    <td>{formatDateTimeLocal(booking.end_time)}</td>
+                                    <td>{booking.service_type || 'N/A'}</td>
+                                    <td>{booking.status}</td>
+                                    <td><input
+                                            type="checkbox"
+                                            checked={booking.is_paid}
+                                            onChange={() => handleToggleBookingPaidStatus(booking.id, booking.is_paid)}
+                                            title={booking.is_paid ? 'Mark as Unpaid' : 'Mark as Paid'}
+                                            disabled={isSubmitting}
+                                        /><span style={{ marginLeft: '4px' }}>{booking.is_paid ? 'Yes' : 'No'}</span></td>
+                                    <td><button onClick={() => handleEditBookingClick(booking)} disabled={isSubmitting} style={{ marginRight: '0.5rem' }}>Edit</button><button onClick={() => handleDeleteBooking(booking.id)} disabled={isSubmitting} style={{ color: 'red' }}>Delete</button></td>
+                                </tr>
+                            ))}
+                        </tbody></table>
+                </div>
+            ) : null}
 
-                                    {/* Action Buttons */}
-                                    <div style={{ marginTop: '1rem' }}>
-                                        <button type="submit" disabled={isSubmitting} style={{ marginRight: '0.5rem' }}>
-                                            {isSubmitting ? 'Saving...' : 'Save Changes'}
-                                        </button>
-                                        <button type="button" onClick={handleCancelEditBooking} disabled={isSubmitting}>
-                                            Cancel
-                                        </button>
-                                    </div>
-                                </form>
-                            ) : (
-                                // --- DISPLAY BOOKING DETAILS ---
-                                <div>
-                                    <p>
-                                        <strong>Client:</strong> {booking.client_name || 'N/A'} (ID: {booking.client_id || 'N/A'}) |
-                                        <strong>Field ID:</strong> {booking.field_id} |
-                                        <strong>Service:</strong> {booking.service_type || 'N/A'} |
-                                        <strong>Status:</strong> {booking.status}
-                                    </p>
-                                    <p>
-                                        <strong>From:</strong> {new Date(booking.start_time).toLocaleString()} |
-                                        <strong>To:</strong> {new Date(booking.end_time).toLocaleString()}
-                                    </p>
-                                    {/* Display Pet Names if available */}
-                                    {booking.pet_names && booking.pet_names.length > 0 && (
-                                        <p><strong>Pet(s):</strong> {booking.pet_names.join(', ')}</p>
-                                    )}
-                                    {booking.max_capacity !== null && (
-                                        <p><strong>Max Capacity:</strong> {booking.max_capacity}</p>
-                                    )}
-                                    {/* Add Edit/Delete Buttons */}
-                                    <div style={{ marginTop: '1rem' }}>
-                                        <button onClick={() => handleEditBookingClick(booking)} style={{ marginRight: '0.5rem' }} disabled={isSubmitting}>
-                                            Edit
-                                        </button>
-                                        <button onClick={() => handleDeleteBooking(booking.id)} style={{ color: 'red' }} disabled={isSubmitting}>
-                                            Delete
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    ))}
+            {/* Edit Booking Modal */}
+            {editingBooking && (
+                <div className={styles.editBookingModal}>
+                    <div className={styles.editBookingModalContent}>
+                        <h4>Editing Booking ID: {editingBooking.id}</h4>
+                        <form onSubmit={handleUpdateBookingSubmit}>
+                            <div style={{ marginBottom: '0.5rem' }}>
+                                <label htmlFor={`editBookingFieldId-${editingBooking.id}`}>Field:</label>
+                                <select
+                                    id={`editBookingFieldId-${editingBooking.id}`}
+                                    value={editFormFieldId}
+                                    onChange={(e: ChangeEvent<HTMLSelectElement>) => setEditFormFieldId(e.target.value)}
+                                    required
+                                    style={{ marginLeft: '0.5rem' }}
+                                >
+                                    {sites.map(site => (
+                                        <optgroup key={`edit-site-${site.id}`} label={site.name}>
+                                            {getFieldsForSite(site.id).map(field => (
+                                                <option key={`edit-field-${field.id}`} value={field.id}>
+                                                    {field.name || `Field ID ${field.id}`}
+                                                </option>
+                                            ))}
+                                        </optgroup>
+                                    ))}
+                                </select>
+                            </div>
+                            <div style={{ marginBottom: '0.5rem' }}>
+                                <label htmlFor={`editBookingStartTime-${editingBooking.id}`}>Start Time:</label>
+                                <input
+                                    type="datetime-local"
+                                    id={`editBookingStartTime-${editingBooking.id}`}
+                                    value={editFormStartTime}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEditFormStartTime(e.target.value)}
+                                    required
+                                    style={{ marginLeft: '0.5rem' }}
+                                />
+                            </div>
+                            <div style={{ marginBottom: '0.5rem' }}>
+                                <label htmlFor={`editBookingEndTime-${editingBooking.id}`}>End Time:</label>
+                                <input
+                                    type="datetime-local"
+                                    id={`editBookingEndTime-${editingBooking.id}`}
+                                    value={editFormEndTime}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEditFormEndTime(e.target.value)}
+                                    required
+                                    style={{ marginLeft: '0.5rem' }}
+                                />
+                            </div>
+                            <div style={{ marginBottom: '0.5rem' }}>
+                                <label htmlFor={`editBookingServiceType-${editingBooking.id}`}>Service Type:</label>
+                                <input
+                                    type="text"
+                                    id={`editBookingServiceType-${editingBooking.id}`}
+                                    value={editFormServiceType}
+                                    onChange={(e) => setEditFormServiceType(e.target.value)}
+                                    style={{ marginLeft: '0.5rem' }}
+                                />
+                            </div>
+                            <div style={{ marginBottom: '0.5rem' }}>
+                                <label htmlFor={`editBookingStatus-${editingBooking.id}`}>Status:</label>
+                                <input
+                                    type="text"
+                                    id={`editBookingStatus-${editingBooking.id}`}
+                                    value={editFormStatus}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEditFormStatus(e.target.value)}
+                                    style={{ marginLeft: '0.5rem' }}
+                                />
+                            </div>
+                            <div style={{ marginBottom: '0.5rem' }}>
+                                <label htmlFor={`editBookingMaxCapacity-${editingBooking.id}`}>Max Capacity:</label>
+                                <input
+                                    type="number"
+                                    id={`editBookingMaxCapacity-${editingBooking.id}`}
+                                    value={editFormMaxCapacity}
+                                    onChange={(e: ChangeEvent<HTMLInputElement>) => setEditFormMaxCapacity(e.target.value)}
+                                    min="0"
+                                    style={{ marginLeft: '0.5rem' }}
+                                />
+                            </div>
+                            <div style={{ marginTop: '1rem' }}>
+                                <button type="submit" disabled={isSubmitting} style={{ marginRight: '0.5rem' }}>
+                                    {isSubmitting ? 'Saving...' : 'Save Changes'}
+                                </button>
+                                <button type="button" onClick={handleCancelEditBooking} disabled={isSubmitting}>
+                                    Cancel
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
         </section>
