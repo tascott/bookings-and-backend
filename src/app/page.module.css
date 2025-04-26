@@ -177,7 +177,7 @@ a.secondary {
 
 .userCard {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1.5fr;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1.5fr 1.5fr;
   gap: 1rem;
   padding: 1rem;
   border-bottom: 1px solid #eee;
@@ -189,7 +189,7 @@ a.secondary {
 
 .userCardHeader {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1.5fr;
+  grid-template-columns: 1.5fr 1fr 1fr 1fr 1.5fr 1.5fr 1.5fr 1.5fr;
   gap: 1rem;
   padding: 1rem;
   background-color: #222;

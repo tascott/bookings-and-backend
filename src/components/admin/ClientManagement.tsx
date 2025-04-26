@@ -22,7 +22,16 @@ type Client = {
   name?: string | null; // Computed property for backward compatibility with UI
   phone?: string | null;
   created_at?: string;
+  default_staff_id?: number | null;
+  default_staff_name?: string | null;
   pets: Pet[];
+}
+
+// Type for staff list items fetched from API
+type StaffMemberListItem = {
+    id: number;
+    first_name: string | null;
+    last_name: string | null;
 }
 
 // Modal component for editing client
@@ -34,7 +43,8 @@ function ClientEditModal({
   onAddPet,
   onUpdatePet,
   onDeletePet,
-  updatingPetId
+  updatingPetId,
+  staffList
 }: {
   client: Client;
   onClose: () => void;
@@ -44,6 +54,7 @@ function ClientEditModal({
   onUpdatePet: (petId: number, petData: Partial<Pet>, isConfirmToggle?: boolean) => Promise<void>;
   onDeletePet: (petId: number) => Promise<void>;
   updatingPetId: number | null;
+  staffList: StaffMemberListItem[];
 }) {
   // Use first_name as the primary source, falling back to name for backward compatibility
   const [firstName, setFirstName] = useState(client.first_name || '');
@@ -67,16 +78,22 @@ function ClientEditModal({
   const [editPetBreed, setEditPetBreed] = useState('');
   const [editPetSize, setEditPetSize] = useState('');
 
+  const [selectedStaffId, setSelectedStaffId] = useState<number | string>(client.default_staff_id ?? '');
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Convert selectedStaffId back to number or null before saving
+    const staffIdToSave = selectedStaffId === '' ? null : Number(selectedStaffId);
 
     try {
       await onSave(client.id, {
         first_name: firstName || null,
         last_name: lastName || null,
         email: email || null,
-        phone: phone || null
+        phone: phone || null,
+        default_staff_id: staffIdToSave
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error occurred';
@@ -256,6 +273,22 @@ function ClientEditModal({
                 onChange={(e) => setPhone(e.target.value)}
                 style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
               />
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="defaultStaff" style={{ display: 'block', marginBottom: '5px' }}>Default Staff Member:</label>
+              <select
+                id="defaultStaff"
+                value={selectedStaffId}
+                onChange={(e) => setSelectedStaffId(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd', backgroundColor: 'white', color: 'black' }}
+              >
+                <option value="">-- Unassigned --</option>
+                {staffList.map((staff) => (
+                  <option key={staff.id} value={staff.id}>
+                    {`${staff.first_name || ''} ${staff.last_name || ''}`.trim() || `Staff ID: ${staff.id}`}
+                  </option>
+                ))}
+              </select>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginTop: '20px' }}>
               <button
@@ -526,6 +559,7 @@ function ClientEditModal({
 
 export default function ClientManagement() {
   const [clients, setClients] = useState<Client[]>([]);
+  const [staffList, setStaffList] = useState<StaffMemberListItem[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -536,6 +570,24 @@ export default function ClientManagement() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(0);
   const PAGE_SIZE = 15;
+
+  // Fetch staff list on mount
+  useEffect(() => {
+    const fetchStaff = async () => {
+      try {
+        const response = await fetch('/api/staff');
+        if (!response.ok) {
+          throw new Error(`Failed to fetch staff list: ${response.statusText}`);
+        }
+        const data: StaffMemberListItem[] = await response.json();
+        setStaffList(data);
+      } catch (err) {
+        console.error("Error fetching staff:", err);
+        // Handle error appropriately, maybe set an error state
+      }
+    };
+    fetchStaff();
+  }, []);
 
   // Fetch paginated clients and their pets
   const fetchClients = useCallback(async () => {
@@ -766,7 +818,7 @@ export default function ClientManagement() {
   };
 
   return (
-    <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
+    <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem', color: 'white' }}>
       <h2>Client Management</h2>
       {/* Search and Pagination Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>
@@ -810,22 +862,26 @@ export default function ClientManagement() {
               }}>
                 <div
                   onClick={() => toggleClientExpand(client.id)}
-                  style={{
-                    cursor: 'pointer',
-                    flex: 1
-                  }}
+                  style={{ cursor: 'pointer', flex: 1 }}
                 >
                   <h3 style={{ margin: '0 0 0.5rem 0' }}>
                     {
                       client.first_name || client.last_name ?
-                      `${client.first_name || ''} ${client.last_name || ''}`.trim() :
-                      client.email || `Client #${client.id}`
+                        `${client.first_name || ''} ${client.last_name || ''}`.trim() :
+                        client.email || `Client #${client.id}`
                     }
                   </h3>
-                  <p style={{ margin: 0 }}>
+                  <p style={{ margin: 0, fontSize: '0.9em', color: '#ccc' }}>
                     {client.email && <span>Email: {client.email}</span>}
                     {client.phone && <span> | Phone: {client.phone}</span>}
                     <span> | Pets: {client.pets.length}</span>
+                    <span style={{ marginLeft: '10px' }}>
+                       | Default Staff: {
+                        client.default_staff_name
+                          ? <span style={{ color: '#eee' }}>{client.default_staff_name}</span>
+                          : <span style={{ fontStyle: 'italic', color: '#aaa' }}>Unassigned</span>
+                       }
+                     </span>
                   </p>
                 </div>
 
@@ -833,15 +889,15 @@ export default function ClientManagement() {
                   <button
                     onClick={() => setEditingClientId(client.id)}
                     style={{
-                      padding: '6px 12px',
-                      backgroundColor: '#17a2b8',
-                      color: 'white',
-                      border: 'none',
-                      borderRadius: '4px',
-                      cursor: 'pointer'
-                    }}
+                       padding: '6px 12px',
+                       backgroundColor: '#17a2b8',
+                       color: 'white',
+                       border: 'none',
+                       borderRadius: '4px',
+                       cursor: 'pointer'
+                     }}
                   >
-                    Edit Client
+                    Manage
                   </button>
                   <span
                     onClick={() => toggleClientExpand(client.id)}
@@ -865,7 +921,7 @@ export default function ClientManagement() {
                           margin: '0.5rem 0',
                           background: '#f9f9f9',
                           borderRadius: '4px',
-                          color: 'black' // Only set black color here since background is light
+                          color: 'black'
                         }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <div>
@@ -909,24 +965,25 @@ export default function ClientManagement() {
                   )}
                 </div>
               )}
-
-              {/* Edit Client Modal */}
-              {editingClientId === client.id && (
-                <ClientEditModal
-                  client={client}
-                  onClose={() => setEditingClientId(null)}
-                  onSave={updateClient}
-                  isUpdating={isUpdatingClient}
-                  onAddPet={addPet}
-                  onUpdatePet={updatePet}
-                  onDeletePet={deletePet}
-                  updatingPetId={updatingPetId}
-                />
-              )}
             </div>
           ))}
         </div>
       )}
+
+      {/* Client Edit Modal */}
+      {editingClientId !== null && (
+         <ClientEditModal
+           client={clients.find(c => c.id === editingClientId)!}
+           onClose={() => setEditingClientId(null)}
+           onSave={updateClient}
+           isUpdating={isUpdatingClient}
+           onAddPet={addPet}
+           onUpdatePet={updatePet}
+           onDeletePet={deletePet}
+           updatingPetId={updatingPetId}
+           staffList={staffList}
+         />
+       )}
     </section>
   );
 }

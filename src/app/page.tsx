@@ -7,7 +7,17 @@ import { createClient } from '@/utils/supabase/client';
 // import { ThemeSupa } from '@supabase/auth-ui-shared';
 import type { User } from '@supabase/supabase-js';
 // import type { Vehicle, Staff } from '@/types'; // Removed Staff import
-import type { Vehicle, Staff } from '@/types';
+import type {
+  Site,
+  Field,
+  Booking,
+  Service,
+  ServiceAvailability,
+  UserWithRole,
+  Vehicle,
+  Staff,
+  // Add other shared types if needed (e.g., Pet, Profile, Client)
+} from '@/types';
 import styles from "./page.module.css";
 // Import server actions
 import { login, signup } from './actions';
@@ -16,67 +26,6 @@ import AuthForm from '@/components/AuthForm';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import StaffDashboard from '@/components/staff/StaffDashboard';
 import ClientDashboard from '@/components/client/ClientDashboard';
-
-// Define types for Site and Field based on schema
-type Site = {
-  id: number;
-  name: string;
-  address: string | null;
-  is_active: boolean;
-  fields?: Field[]; // Optional: for nesting fields under sites in state
-}
-
-type Field = {
-  id: number;
-  site_id: number;
-  name: string | null;
-  capacity: number | null;
-  field_type: string | null;
-}
-
-// Define Booking Type
-type Booking = {
-  id: number;
-  field_id: number;
-  start_time: string; // ISO string format from DB
-  end_time: string; // ISO string format from DB
-  service_type: string | null;
-  status: string;
-  max_capacity: number | null;
-  is_paid: boolean;
-}
-
-// Define Service Type
-type Service = {
-  id: number;
-  name: string;
-  description: string | null;
-  created_at: string;
-  requires_field_selection: boolean;
-}
-
-// Define ServiceAvailability Type
-type ServiceAvailability = {
-  id: number;
-  service_id: number;
-  field_ids: number[];
-  start_time: string;
-  end_time: string;
-  days_of_week: number[] | null;
-  specific_date: string | null;
-  base_capacity: number | null;
-  is_active: boolean;
-  created_at: string;
-}
-
-// Define a type for the user data we expect from the API
-type UserWithRole = {
-  id: string;
-  email?: string;
-  role: string;
-  created_at?: string;
-  last_sign_in_at?: string;
-}
 
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
@@ -105,6 +54,9 @@ export default function Home() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [isLoadingVehicles, setIsLoadingVehicles] = useState(false);
   const [vehicleError, setVehicleError] = useState<string | null>(null);
+  // Add state for user profile details
+  const [firstName, setFirstName] = useState<string | null>(null);
+  const [lastName, setLastName] = useState<string | null>(null);
   const supabase = createClient();
 
   // Create refs for forms that need resetting after async ops
@@ -181,28 +133,68 @@ export default function Home() {
   };
 
   useEffect(() => {
-    const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+    const checkUserAndProfile = async () => {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
       setUser(user);
-      setIsLoadingInitial(false);
+      if (userError) {
+        console.error("Error fetching user:", userError);
+      }
+
+      if (user) {
+        // Fetch profile details after getting user
+        const { data: profile, error: profileError } = await supabase
+          .from('profiles')
+          .select('first_name, last_name')
+          .eq('user_id', user.id)
+          .single();
+
+        if (profileError) {
+          console.error("Error fetching profile:", profileError);
+          // Don't block rendering, just won't have name
+          setFirstName(null);
+          setLastName(null);
+        } else if (profile) {
+          setFirstName(profile.first_name);
+          setLastName(profile.last_name);
+        } else {
+          // Profile might not exist yet
+          setFirstName(null);
+          setLastName(null);
+        }
+      } else {
+        // No user, clear profile state
+        setFirstName(null);
+        setLastName(null);
+      }
+      setIsLoadingInitial(false); // Set initial loading false after user and profile check
     };
 
-    checkUser();
+    checkUserAndProfile();
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
-      setUser(session?.user ?? null);
+      const newUser = session?.user ?? null;
+      setUser(newUser);
+      // Reset dependent states on auth change
       setRole(null);
       setUsers([]);
       setError(null);
       setIsLoadingRole(false);
       setIsLoadingUsers(false);
+      setFirstName(null);
+      setLastName(null);
+
+      // If user logs in, fetch their profile immediately
+      if (newUser) {
+        checkUserAndProfile(); // Re-run check on login/logout
+      }
     });
 
     return () => {
       authListener.subscription.unsubscribe();
     };
-  }, [supabase]);
+  }, [supabase]); // Depend only on supabase client instance
 
+  // Fetch role after user state is confirmed
   useEffect(() => {
     if (user) {
       fetchUserRole(user.id).then(fetchedRole => {
@@ -211,7 +203,7 @@ export default function Home() {
     } else {
       setRole(null);
     }
-  }, [user]);
+  }, [user]); // Depend on user object
 
   useEffect(() => {
     if (role === 'admin') {
@@ -901,6 +893,14 @@ export default function Home() {
   };
   // ---------------------------------
 
+  // Helper to display user name or email
+  const getUserDisplayName = () => {
+    if (firstName || lastName) {
+      return `${firstName || ''} ${lastName || ''}`.trim();
+    }
+    return user?.email || 'User'; // Fallback to email or generic 'User'
+  };
+
   if (isLoadingInitial) {
     return <div>Loading...</div>;
   }
@@ -918,7 +918,7 @@ export default function Home() {
         {user ? (
           <div>
             <p>
-              Welcome, {user.email}!
+              Welcome, {getUserDisplayName()}!
               {isLoadingRole ? (
                 <span> (Checking role...)</span>
               ) : (

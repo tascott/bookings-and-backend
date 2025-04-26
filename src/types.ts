@@ -50,6 +50,7 @@ export type ServiceAvailability = {
   days_of_week: number[] | null;
   specific_date: string | null;
   base_capacity: number | null;
+  capacity_type: 'field' | 'staff_vehicle'; // Added based on DB schema
   is_active: boolean;
   created_at: string;
   override_price?: number | null; // Add override price

@@ -108,58 +108,144 @@ export async function PUT(
   }
 
   // 3. Parse the request body
-  let updateData: {
+  let incomingData: {
     first_name?: string | null
-    last_name?: string | null
+    last_name?: string | null // Accept last_name directly now
+    name?: string // Keep for backward compatibility
     email?: string | null
     phone?: string | null
+    default_staff_id?: number | null
   }
+  let clientUpdateData: { email?: string | null; default_staff_id?: number | null } = {};
+  let profileUpdateData: { first_name?: string | null; last_name?: string | null; phone?: string | null } = {};
 
   try {
     const body = await request.json()
+    incomingData = body;
 
-    // If the client is sending a name field, we need to map it to first_name
-    // This ensures backward compatibility with the UI
-    updateData = {
-      first_name: body.name !== undefined ? body.name : undefined,
-      email: body.email !== undefined ? body.email : undefined,
-      phone: body.phone !== undefined ? body.phone : undefined
+    // Separate data for clients and profiles tables
+    if (incomingData.email !== undefined) {
+      clientUpdateData.email = incomingData.email;
+    }
+    if (incomingData.default_staff_id !== undefined) {
+       // Validate default_staff_id (must be number or null)
+      if (incomingData.default_staff_id !== null && typeof incomingData.default_staff_id !== 'number') {
+        throw new Error('Invalid default_staff_id format. Must be a number or null.');
+      }
+      clientUpdateData.default_staff_id = incomingData.default_staff_id;
     }
 
-    // Ensure at least one field is being updated
-    if (Object.values(updateData).every(val => val === undefined)) {
+    // Handle name fields for profiles table
+    if (incomingData.first_name !== undefined) {
+      profileUpdateData.first_name = incomingData.first_name;
+    } else if (incomingData.name !== undefined) {
+      // Backward compatibility: treat 'name' as 'first_name' if first_name isn't provided
+      profileUpdateData.first_name = incomingData.name;
+    }
+    if (incomingData.last_name !== undefined) {
+        profileUpdateData.last_name = incomingData.last_name;
+    }
+    if (incomingData.phone !== undefined) {
+      profileUpdateData.phone = incomingData.phone;
+    }
+
+    // Ensure at least one field is being updated across both tables
+    if (Object.keys(clientUpdateData).length === 0 && Object.keys(profileUpdateData).length === 0) {
       throw new Error('No valid fields provided for update')
     }
 
-    console.log("Updating client with data:", updateData);
+    console.log("Client update data:", clientUpdateData);
+    console.log("Profile update data:", profileUpdateData);
+
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : 'Invalid request body'
     return NextResponse.json({ error: errorMessage }, { status: 400 })
   }
 
-  // 4. Update the client
+  // 4. Perform Updates
   try {
-    const { data: updatedClient, error: updateError } = await supabaseAdmin
+    // Fetch client's user_id first, needed for profile update
+    const { data: clientInfo, error: clientFetchError } = await supabaseAdmin
       .from('clients')
-      .update(updateData)
+      .select('user_id')
       .eq('id', clientId)
-      .select()
-      .single()
+      .single();
 
-    if (updateError) {
-      console.error('Error updating client:', updateError)
-      return NextResponse.json({ error: updateError.message }, { status: 500 })
+    if (clientFetchError || !clientInfo?.user_id) {
+      console.error('Error fetching client user_id:', clientFetchError);
+      return NextResponse.json({ error: 'Client not found or user_id missing.' }, { status: 404 });
+    }
+    const userId = clientInfo.user_id;
+
+    // --- Update Profile --- (Only if there's profile data to update)
+    if (Object.keys(profileUpdateData).length > 0) {
+      const { error: profileUpdateError } = await supabaseAdmin
+        .from('profiles')
+        .update(profileUpdateData)
+        .eq('user_id', userId);
+
+      if (profileUpdateError) {
+        console.error('Error updating profile:', profileUpdateError);
+        // Decide if this is a critical error or if client update can proceed
+        // For now, let's return an error
+        return NextResponse.json({ error: `Failed to update profile data: ${profileUpdateError.message}` }, { status: 500 });
+      }
     }
 
-    if (!updatedClient) {
-      return NextResponse.json({ error: 'Client not found' }, { status: 404 })
+    // --- Update Client --- (Only if there's client data to update)
+    let updatedClientData = null;
+    if (Object.keys(clientUpdateData).length > 0) {
+      const { data: updatedClient, error: clientUpdateError } = await supabaseAdmin
+        .from('clients')
+        .update(clientUpdateData)
+        .eq('id', clientId)
+        .select() // Select updated client data
+        .single();
+
+      if (clientUpdateError) {
+        console.error('Error updating client:', clientUpdateError);
+        // If profile update succeeded but client update failed, the state is inconsistent.
+        // Consider rolling back or logging inconsistency.
+        return NextResponse.json({ error: `Failed to update client data: ${clientUpdateError.message}` }, { status: 500 });
+      }
+      updatedClientData = updatedClient;
     }
 
-    // Return the updated client
-    return NextResponse.json(updatedClient)
+    // If only profile was updated, fetch the client data again to return full object
+    if (!updatedClientData) {
+        const { data: finalClientData, error: finalFetchError } = await supabaseAdmin
+            .from('clients')
+            .select('*')
+            .eq('id', clientId)
+            .single();
+        if (finalFetchError) {
+             console.error('Error fetching final client data after profile update:', finalFetchError);
+             return NextResponse.json({ message: 'Profile updated, but failed to fetch final client state.' }, { status: 200 }); // Or status 500?
+        }
+        updatedClientData = finalClientData;
+    }
+
+    // Fetch updated profile data to include in the response
+    const { data: updatedProfileData, error: profileFetchError } = await supabaseAdmin
+      .from('profiles')
+      .select('first_name, last_name, phone')
+      .eq('user_id', userId)
+      .single();
+
+    // Combine results for the response
+    const responseData = {
+        ...(updatedClientData || {}),
+        // Add profile fields directly to the response object
+        first_name: updatedProfileData?.first_name,
+        last_name: updatedProfileData?.last_name,
+        phone: updatedProfileData?.phone,
+    };
+
+    return NextResponse.json(responseData);
+
   } catch (error) {
-    console.error('Error processing client update:', error)
-    const message = error instanceof Error ? error.message : 'Failed to update client'
+    console.error('Error processing client/profile update:', error);
+    const message = error instanceof Error ? error.message : 'Failed to update client/profile'
     return NextResponse.json({ error: message }, { status: 500 })
   }
 }

@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
+import type { ServiceAvailability } from '@/types'; // Import shared type
 
-// Define the structure expected from the DB function for a single slot
-// This might need adjustment based on the actual return type if not exactly matching CalculatedSlot
+// Define the structure expected from the DB function for a single slot - REMOVED as RPC is removed
+/*
 type SingleSlotCheckResult = {
     slot_field_id: number;
     slot_field_name: string;
@@ -11,6 +12,7 @@ type SingleSlotCheckResult = {
     slot_end_time: string;   // ISO string
     slot_remaining_capacity: number;
 }
+*/
 
 export async function POST(request: Request) {
     const supabase = await createServerClient();
@@ -24,7 +26,7 @@ export async function POST(request: Request) {
     // Fetch the client ID associated with the authenticated user
     const { data: clientData, error: clientError } = await supabase
         .from('clients')
-        .select('id')
+        .select('id, default_staff_id')
         .eq('user_id', user.id)
         .single();
     if (clientError || !clientData) {
@@ -32,6 +34,19 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: 'Client profile not found or error fetching it.' }, { status: 404 });
     }
     const clientId = clientData.id;
+
+    // Fetch client details including default_staff_id
+    const { data: fullClientData, error: fullClientError } = await supabase
+        .from('clients')
+        .select('id, default_staff_id')
+        .eq('id', clientId)
+        .single();
+
+    if (fullClientError || !fullClientData) {
+        console.error('Error fetching full client details:', fullClientError);
+        return NextResponse.json({ error: 'Failed to fetch client details.' }, { status: 500 });
+    }
+    const defaultStaffId = fullClientData.default_staff_id; // Store the default staff ID
 
     // 2. Parse and Validate Input
     let inputData: {
@@ -150,59 +165,223 @@ export async function POST(request: Request) {
         );
     }
 
-    // 5. Final Availability Check & Field Assignment
-    let fieldToBook: number | null = null;
-    try {
-        // We need start/end *dates* for the DB function
-        const checkStartDate = inputData.start_time.split('T')[0];
-        const checkEndDate = inputData.end_time.split('T')[0]; // Usually the same day for one slot
+    // --- NEW Section 5: Capacity Check & Field Determination ---
+    let field_id_for_insert: number | null = null;
+    // Use the imported type ServiceAvailability
+    let availabilityRule: ServiceAvailability | undefined = undefined; // Define variable to hold the rule
+    let staffUserIdForAssignment: string | null = null; // Variable to store staff user_id for insert
+    let vehicleIdForAssignment: number | null = null; // Variable to store vehicle_id for insert
 
-        const { data: availableSlots, error: rpcError } = await supabase.rpc('calculate_available_slots', {
-            in_service_id: inputData.service_id,
-            in_start_date: checkStartDate,
-            in_end_date: checkEndDate // Check only the specific date
+    try {
+        const num_pets_requested = inputData.pet_ids.length;
+
+        // 5a. Find the relevant active service_availability rule
+        // This query needs to find a rule matching the service_id, that is active,
+        // and whose time/day constraints match the requested booking time.
+        const requestedStartTime = new Date(inputData.start_time);
+        const requestedDayOfWeek = requestedStartTime.getUTCDay(); // 0=Sun, 1=Mon,... 6=Sat
+        const requestedDate = inputData.start_time.split('T')[0];
+        const requestedTime = requestedStartTime.toISOString().substring(11, 19); // HH:mm:ss
+
+        // Fetch potentially matching rules first
+        const { data: potentialRules, error: ruleFetchError } = await supabaseAdmin
+            .from('service_availability')
+            .select('*') // Select all columns needed
+            .eq('service_id', inputData.service_id)
+            .eq('is_active', true);
+
+        if (ruleFetchError) throw new Error(`Error fetching availability rules: ${ruleFetchError.message}`);
+        if (!potentialRules || potentialRules.length === 0) throw new Error('No active availability rules found for this service.');
+
+        // Filter rules based on date/time/day matching
+        availabilityRule = potentialRules.find(rule => {
+            // Check specific date first
+            if (rule.specific_date && rule.specific_date === requestedDate) {
+                 // Check time overlap within the specific date rule
+                return requestedTime >= rule.start_time && requestedTime < rule.end_time;
+            }
+            // Check recurring days if no specific date matches
+            if (!rule.specific_date && rule.days_of_week && rule.days_of_week.includes(requestedDayOfWeek)) {
+                 // Check time overlap within the recurring rule
+                return requestedTime >= rule.start_time && requestedTime < rule.end_time;
+            }
+            return false; // No match
         });
 
-        if (rpcError) {
-            throw new Error(`Database error checking availability: ${rpcError.message}`);
+        if (!availabilityRule) {
+            throw new Error('No matching availability rule found for the requested date/time.');
         }
 
-        const matchingSlots: SingleSlotCheckResult[] = (availableSlots || [])
-             // Filter the results from DB function for the *exact* time slot
-             .filter((slot: SingleSlotCheckResult) =>
-                 slot.slot_start_time === inputData.start_time &&
-                 slot.slot_end_time === inputData.end_time &&
-                 slot.slot_remaining_capacity > 0
-             );
-
-        if (matchingSlots.length === 0) {
-            return NextResponse.json({ error: 'Sorry, this slot is no longer available.' }, { status: 409 }); // 409 Conflict
-        }
-
-        if (serviceDetails.requires_field_selection) {
-            // Specific field booking: check if the requested field_id is in the available slots
-            if (inputData.field_id === undefined) {
-                throw new Error('This service requires a specific field selection.');
+        // 5b. Calculate Max Effective Capacity based on the matched rule
+        let max_effective_capacity = 0;
+        if (availabilityRule.capacity_type === 'field') {
+            if (!availabilityRule.field_ids || availabilityRule.field_ids.length === 0) {
+                throw new Error('Availability rule with "field" capacity type has no associated field IDs.');
             }
-            const specificFieldSlot = matchingSlots.find(slot => slot.slot_field_id === inputData.field_id);
-            if (!specificFieldSlot) {
-                return NextResponse.json({ error: 'Sorry, the selected field is no longer available for this time slot.' }, { status: 409 });
+            const { data: fieldsData, error: fieldCapError } = await supabaseAdmin
+                .from('fields')
+                .select('capacity')
+                .in('id', availabilityRule.field_ids);
+
+            if (fieldCapError) throw new Error(`Error fetching field capacities: ${fieldCapError.message}`);
+            max_effective_capacity = fieldsData?.reduce((sum, field) => sum + (field.capacity || 0), 0) || 0;
+
+        } else if (availabilityRule.capacity_type === 'staff_vehicle') {
+            // --- Staff Vehicle Capacity Logic ---
+            if (!defaultStaffId) {
+                throw new Error('This service requires a default staff member assigned to your client profile, but none is set.');
             }
-            fieldToBook = specificFieldSlot.slot_field_id;
+
+            // Fetch the default staff member's details (user_id, default_vehicle_id)
+            const { data: staffDetails, error: staffError } = await supabaseAdmin
+                .from('staff')
+                .select('user_id, default_vehicle_id')
+                .eq('id', defaultStaffId)
+                .single();
+
+            if (staffError || !staffDetails) {
+                throw new Error(`Failed to fetch details for assigned staff member (ID: ${defaultStaffId}): ${staffError?.message}`);
+            }
+            if (!staffDetails.default_vehicle_id) {
+                throw new Error(`Assigned staff member (ID: ${defaultStaffId}) does not have a default vehicle assigned.`);
+            }
+            if (!staffDetails.user_id) {
+                 throw new Error(`Assigned staff member (ID: ${defaultStaffId}) does not have a user_id associated.`);
+            }
+
+            staffUserIdForAssignment = staffDetails.user_id; // Store for potential booking insert
+            vehicleIdForAssignment = staffDetails.default_vehicle_id; // Store for potential booking insert
+
+            // Check if the staff member is available according to staff_availability
+            const { data: staffAvailability, error: staffAvailError } = await supabaseAdmin
+                .from('staff_availability')
+                .select('id') // Just need to know if a matching record exists
+                .eq('staff_id', defaultStaffId)
+                .eq('is_available', true)
+                // Time check: requested slot must be within an available block
+                .lte('start_time', requestedTime) // Available block starts before or at requested time
+                .gte('end_time', requestedTime)   // Available block ends after requested time (exclusive end? Check rule insert)
+                                                  // TODO: Refine time check for full overlap if needed (start < req_end && end > req_start)
+                // Date/Day check
+                .or(`specific_date.eq.${requestedDate},and(specific_date.is.null,days_of_week.cs.{${requestedDayOfWeek}})`)
+                .limit(1);
+
+            if (staffAvailError) {
+                throw new Error(`Error checking staff availability: ${staffAvailError.message}`);
+            }
+            if (!staffAvailability || staffAvailability.length === 0) {
+                throw new Error(`Assigned staff member (ID: ${defaultStaffId}) is not scheduled to work at the requested time.`);
+            }
+
+            // Fetch the vehicle's capacity
+            const { data: vehicleData, error: vehicleCapError } = await supabaseAdmin
+                .from('vehicles')
+                .select('pet_capacity')
+                .eq('id', staffDetails.default_vehicle_id)
+                .single();
+
+            if (vehicleCapError || !vehicleData) {
+                throw new Error(`Failed to fetch capacity for vehicle (ID: ${staffDetails.default_vehicle_id}): ${vehicleCapError?.message}`);
+            }
+
+            max_effective_capacity = vehicleData.pet_capacity || 0;
+            // --- End Staff Vehicle Capacity Logic ---
         } else {
-            // Aggregated booking: assign the first available field from the matching slots
-            fieldToBook = matchingSlots[0].slot_field_id; // Simple strategy: pick the first available
+            throw new Error(`Unknown capacity_type: ${availabilityRule.capacity_type}`);
+        }
+
+        // 5c. Calculate Current Booked Pet Count for the overlapping time
+        // Find bookings that overlap the requested time slot based on resource (field/staff/vehicle - requires further refinement)
+        let overlapQuery = supabaseAdmin
+            .from('bookings')
+            .select('id', { count: 'exact' }) // Select booking IDs and count
+            .neq('status', 'cancelled') // Ignore cancelled bookings
+            .lt('start_time', inputData.end_time) // Booking starts before requested slot ends
+            .gt('end_time', inputData.start_time); // Booking ends after requested slot starts
+
+        // Refine overlap check based on capacity type
+        if (availabilityRule.capacity_type === 'field') {
+            if (field_id_for_insert !== null) {
+                 overlapQuery = overlapQuery.eq('field_id', field_id_for_insert);
+            } else {
+                 // If no specific field, check against any field in the rule? Or is field_id always non-null here?
+                 console.warn('Overlap check for field capacity type with null field_id_for_insert - check logic');
+                 // Potentially check overlap on *any* field linked to the rule?
+                 // overlapQuery = overlapQuery.in('field_id', availabilityRule.field_ids);
+            }
+        } else if (availabilityRule.capacity_type === 'staff_vehicle') {
+            if (staffUserIdForAssignment) {
+                 // Check bookings assigned to the same staff member
+                 overlapQuery = overlapQuery.eq('assigned_staff_id', staffUserIdForAssignment);
+                 // Alternatively, or additionally, check by vehicle_id if more robust?
+                 // overlapQuery = overlapQuery.eq('vehicle_id', vehicleIdForAssignment);
+            } else {
+                 // Should not happen if defaultStaffId check passed earlier
+                 throw new Error('Cannot check staff_vehicle overlap without an assigned staff member.');
+            }
+        }
+
+        const { count: overlapCount, error: overlapError } = await overlapQuery;
+
+        if (overlapError) throw new Error(`Error checking overlapping bookings: ${overlapError.message}`);
+
+        let current_booked_pet_count = 0;
+        // If overlapCount > 0, we need to sum pets from those bookings
+        if (overlapCount && overlapCount > 0) {
+             // Fetch the IDs of the overlapping bookings identified by the refined query
+             // Re-run the query but select IDs instead of count
+             const { data: overlappingBookingsData, error: overlapIdError } = await overlapQuery.select('id');
+             if (overlapIdError) throw new Error(`Error fetching overlapping booking IDs: ${overlapIdError.message}`);
+
+             const overlappingBookingIds = overlappingBookingsData?.map(b => b.id) || [];
+             if (overlappingBookingIds.length > 0) {
+                const { count: petCount, error: petCountError } = await supabaseAdmin
+                    .from('booking_pets')
+                    .select('*', { count: 'exact', head: true })
+                    .in('booking_id', overlappingBookingIds);
+
+                if (petCountError) throw new Error(`Error counting booked pets: ${petCountError.message}`);
+                current_booked_pet_count = petCount || 0;
+             }
+        }
+
+        // 5d. Perform Capacity Check
+        const current_remaining_capacity = max_effective_capacity - current_booked_pet_count;
+
+        if (num_pets_requested > current_remaining_capacity) {
+            return NextResponse.json(
+                { error: `Capacity exceeded. Requested ${num_pets_requested} pets, but only ${current_remaining_capacity} slots available (Max: ${max_effective_capacity}, Booked: ${current_booked_pet_count}).` },
+                { status: 409 } // 409 Conflict
+            );
+        }
+
+        // 5e. Determine field_id for insert
+        if (availabilityRule.capacity_type === 'staff_vehicle') {
+            field_id_for_insert = null;
+        } else if (availabilityRule.capacity_type === 'field') {
+             if (serviceDetails.requires_field_selection) {
+                if (inputData.field_id === undefined) {
+                     throw new Error('This service requires a specific field selection, but field_id was not provided.');
+                 }
+                 if (!availabilityRule.field_ids.includes(inputData.field_id)) {
+                    throw new Error(`The selected field ID (${inputData.field_id}) is not valid for this availability rule.`);
+                 }
+                 field_id_for_insert = inputData.field_id;
+             } else {
+                // Doesn't require selection, assign first field from the rule
+                field_id_for_insert = availabilityRule.field_ids[0] ?? null; // Default to null if array is somehow empty
+             }
+        } else {
+             // Should not happen due to earlier check, but good practice
+            field_id_for_insert = null;
         }
 
     } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : 'Error verifying availability.';
-        console.error('Availability check/assignment error:', e);
+        const errorMessage = e instanceof Error ? e.message : 'Error during capacity check or field assignment.';
+        console.error('Capacity/Field Assignment Error:', e);
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
-
-    if (fieldToBook === null) { // Should theoretically not happen if logic above is sound
-        return NextResponse.json({ error: 'Could not determine a field to book.' }, { status: 500 });
-    }
+    // --- END NEW Section 5 ---
 
     // 6. Database Insert (Booking, Client Link, Pet Links)
     try {
@@ -210,18 +389,23 @@ export async function POST(request: Request) {
         const { data: newBooking, error: bookingInsertError } = await supabaseAdmin
             .from('bookings')
             .insert({
-                field_id: fieldToBook,
+                // Use the determined field_id_for_insert
+                field_id: field_id_for_insert,
+                service_type: serviceDetails.name, // CORRECT column, use fetched service name
                 start_time: inputData.start_time,
                 end_time: inputData.end_time,
-                service_type: serviceDetails.name, // Store service name for simplicity, or use service_id
                 status: 'confirmed',
-                // max_capacity: null, // Or derive from rule/field?
+                assigned_staff_id: staffUserIdForAssignment, // Add assigned staff user ID
+                vehicle_id: vehicleIdForAssignment, // Add assigned vehicle ID
+                // is_paid default is FALSE in schema
+                // max_capacity: null, // Let DB handle default or calculate if needed
             })
             .select('id')
             .single();
 
         if (bookingInsertError) {
             console.error('Error inserting booking:', bookingInsertError);
+            // Check for specific errors if needed (e.g., unique constraint violation)
             throw new Error(`Failed to create booking: ${bookingInsertError.message}`);
         }
 
@@ -238,37 +422,51 @@ export async function POST(request: Request) {
 
         if (bookingClientInsertError) {
             console.error('Error inserting booking_client link:', bookingClientInsertError);
-            // Potentially attempt to delete the booking record here for atomicity if needed
-            throw new Error(`Booking created (ID: ${bookingId}) but failed to link to client: ${bookingClientInsertError.message}`);
+            // Attempt to delete the booking record for better atomicity
+            await supabaseAdmin.from('bookings').delete().eq('id', bookingId);
+            throw new Error(`Booking created (ID: ${bookingId}) but failed to link to client: ${bookingClientInsertError.message}. Booking rollbacked.`);
         }
 
         // --- Link Pets (using booking_pets junction table) ---
-        const petLinks = inputData.pet_ids.map(petId => ({ // Prepare rows for insert
+        const petLinks = inputData.pet_ids.map(petId => ({
             booking_id: bookingId,
             pet_id: petId
         }));
 
-        // **** IMPORTANT: Requires `booking_pets` table to exist ****
-        // **** Table Schema: id (pk), booking_id (fk->bookings.id), pet_id (fk->pets.id) ****
-        const { error: bookingPetInsertError } = await supabaseAdmin
-            .from('booking_pets') // Assumes table name is booking_pets
+        const { error: bookingPetsInsertError } = await supabaseAdmin
+            .from('booking_pets')
             .insert(petLinks);
 
-        if (bookingPetInsertError) {
-            console.error('Error inserting booking_pet links:', bookingPetInsertError);
-            // CRITICAL: Ideally, rollback booking and booking_client inserts here.
-            // Since true transactions aren't easy, log error and inform user of partial success.
-            // Consider returning a specific error message indicating booking succeeded but pet linking failed.
-             throw new Error(`Booking created (ID: ${bookingId}) and client linked, but failed to link pets: ${bookingPetInsertError.message}`);
+        if (bookingPetsInsertError) {
+            console.error('Error inserting booking_pets links:', bookingPetsInsertError);
+             // Attempt to delete booking and client link
+            await supabaseAdmin.from('booking_clients').delete().eq('booking_id', bookingId);
+            await supabaseAdmin.from('bookings').delete().eq('id', bookingId);
+            throw new Error(`Booking and client link created but failed to link pets: ${bookingPetsInsertError.message}. Booking rollbacked.`);
         }
-        // ---------------------------------------------------------
 
-        // 7. Return Success Response
-        return NextResponse.json({ success: true, bookingId: bookingId, message: 'Booking successful!' }, { status: 201 });
+        // --- Success ---
+        // Optionally fetch the full created booking data to return
+         const { data: finalBooking, error: fetchFinalError } = await supabaseAdmin
+            .from('bookings')
+            .select('*') // Select desired fields
+            .eq('id', bookingId)
+            .single();
+
+        if (fetchFinalError) {
+             console.error('Failed to fetch final booking details, but booking likely succeeded:', fetchFinalError);
+             // Return a minimal success response if fetching fails
+             return NextResponse.json({ success: true, booking_id: bookingId, message: "Booking created, but failed to fetch final details." }, { status: 201 });
+        }
+
+        return NextResponse.json(finalBooking, { status: 201 }); // Return the created booking details
 
     } catch (e) {
-        const errorMessage = e instanceof Error ? e.message : 'An unexpected error occurred during booking creation.';
-        console.error('Booking creation error:', e);
+        const errorMessage = e instanceof Error ? e.message : 'An unexpected error occurred during database operations.';
+        console.error('Booking Insert/Link Error:', e);
+        // Status code might depend on the error type (e.g., 409 if it was a constraint violation during insert)
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 }
+// Note: Consider adding DELETE or PUT handlers if clients need to modify/cancel bookings
+// Ensure proper authorization and business logic (e.g., cancellation deadlines)
