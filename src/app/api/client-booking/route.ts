@@ -301,6 +301,18 @@ export async function POST(request: Request) {
 
         // Refine overlap check based on capacity type
         if (availabilityRule.capacity_type === 'field') {
+            // Correctly check overlap against *all* fields associated with this rule
+            if (availabilityRule.field_ids && availabilityRule.field_ids.length > 0) {
+                overlapQuery = overlapQuery.in('field_id', availabilityRule.field_ids);
+            } else {
+                // This case should ideally be prevented by validation when creating/updating rules
+                // If a rule has type 'field' but no field_ids, it's an invalid state.
+                // Throw an error or handle as appropriate, perhaps assume 0 capacity or deny booking.
+                console.error(`Availability rule ${availabilityRule.id} has type 'field' but no field_ids.`);
+                throw new Error(`Configuration error: Availability rule for service is missing field assignments.`);
+            }
+            // NOTE: field_id_for_insert is determined *later* (step 5e) and is not relevant for calculating current booked count across all fields.
+            /* --- REMOVED OLD LOGIC ---
             if (field_id_for_insert !== null) {
                  overlapQuery = overlapQuery.eq('field_id', field_id_for_insert);
             } else {
@@ -309,6 +321,7 @@ export async function POST(request: Request) {
                  // Potentially check overlap on *any* field linked to the rule?
                  // overlapQuery = overlapQuery.in('field_id', availabilityRule.field_ids);
             }
+            */
         } else if (availabilityRule.capacity_type === 'staff_vehicle') {
             if (staffUserIdForAssignment) {
                  // Check bookings assigned to the same staff member
