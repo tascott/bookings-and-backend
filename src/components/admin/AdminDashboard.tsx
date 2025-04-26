@@ -9,6 +9,7 @@ import ServiceManagement from './ServiceManagement';
 import ServiceAvailabilityManagement from './ServiceAvailabilityManagement';
 import ClientManagement from './ClientManagement';
 import VehicleManagement from './VehicleManagement';
+import StaffAvailabilityManagement from './StaffAvailabilityManagement';
 import styles from '@/app/page.module.css';
 import type { User } from '@supabase/supabase-js';
 import { UserWithRole, Site, Field, Booking, Service, ServiceAvailability, Vehicle, Staff } from '@/types';
@@ -90,13 +91,11 @@ export default function AdminDashboard({
   handleAddBooking,
   addBookingFormRef,
   fetchBookings,
-  // Destructure paid status toggle handler
   handleToggleBookingPaidStatus,
   services,
   isLoadingServices,
   handleAddService,
   addServiceFormRef,
-  // Pass handlers down
   handleUpdateService,
   handleDeleteService,
   serviceAvailability,
@@ -104,7 +103,6 @@ export default function AdminDashboard({
   handleAddServiceAvailability,
   handleToggleServiceAvailabilityActive,
   addServiceAvailabilityFormRef,
-  // Destructure availability update/delete handlers
   handleUpdateServiceAvailability,
   handleDeleteServiceAvailability,
   error,
@@ -136,6 +134,13 @@ export default function AdminDashboard({
       ),
     },
     {
+      id: 'clients',
+      label: 'Client Management',
+      content: (
+        <ClientManagement />
+      ),
+    },
+    {
       id: 'sites',
       label: 'Sites & Fields',
       content: (
@@ -153,26 +158,6 @@ export default function AdminDashboard({
       ),
     },
     {
-      id: 'bookings',
-      label: 'Bookings',
-      content: (
-        <BookingManagement
-          role="admin"
-          bookings={bookings}
-          isLoadingBookings={isLoadingBookings}
-          sites={sites}
-          fields={fields}
-          error={error}
-          handleAddBooking={handleAddBooking}
-          addBookingFormRef={addBookingFormRef}
-          getFieldsForSite={getFieldsForSite}
-          refetchBookings={fetchBookings}
-          // Pass handler down
-          handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
-        />
-      ),
-    },
-    {
       id: 'services',
       label: 'Services',
       content: (
@@ -182,7 +167,6 @@ export default function AdminDashboard({
           error={error}
           handleAddService={handleAddService}
           addServiceFormRef={addServiceFormRef}
-          // Pass handlers down
           handleUpdateService={handleUpdateService}
           handleDeleteService={handleDeleteService}
         />
@@ -203,17 +187,28 @@ export default function AdminDashboard({
           handleToggleServiceAvailabilityActive={handleToggleServiceAvailabilityActive}
           addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
           getFieldsForSite={getFieldsForSite}
-          // Pass handlers down
           handleUpdateServiceAvailability={handleUpdateServiceAvailability}
           handleDeleteServiceAvailability={handleDeleteServiceAvailability}
         />
       ),
     },
     {
-      id: 'clients',
-      label: 'Client Management',
+      id: 'bookings',
+      label: 'Bookings',
       content: (
-        <ClientManagement />
+        <BookingManagement
+          role="admin"
+          bookings={bookings}
+          isLoadingBookings={isLoadingBookings}
+          sites={sites}
+          fields={fields}
+          error={error}
+          handleAddBooking={handleAddBooking}
+          addBookingFormRef={addBookingFormRef}
+          getFieldsForSite={getFieldsForSite}
+          refetchBookings={fetchBookings}
+          handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
+        />
       ),
     },
     {
@@ -227,6 +222,13 @@ export default function AdminDashboard({
           onAdd={handleAddVehicle}
           onDelete={handleDeleteVehicle}
         />
+      ),
+    },
+    {
+      id: 'staff_availability',
+      label: 'Staff Availability',
+      content: (
+        <StaffAvailabilityManagement />
       ),
     },
   ];
