@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
-import type { ServiceAvailability } from '@/types'
+// import type { ServiceAvailability } from '@/types' // Import is no longer used
 
 // GET available slots by calling the database function and adding pricing
 export async function GET(request: Request) {
@@ -37,44 +37,76 @@ export async function GET(request: Request) {
        return NextResponse.json({ error: 'start_date cannot be after end_date.' }, { status: 400 });
   }
 
-  // 2. Check user authentication (optional but recommended for client-specific logic later)
+  // 2. Authentication & Fetch Client Default Staff ID
   const { data: { user }, error: authError } = await supabase.auth.getUser()
   if (authError || !user) {
-    // Allow unauthenticated access for now? Or require login?
-    // For now, let's allow it, but log a warning or consider requiring auth.
-    // console.warn('Accessing available slots without authentication.');
-    // If auth is required: return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
   }
 
-  // 3. Fetch necessary data: Service default price and Relevant Availability Rules
-  let serviceDefaultPrice: number | null = null;
-  let availabilityRules: ServiceAvailability[] = []; // Use imported type
+  let clientDefaultStaffId: number | null = null;
+  try {
+      const { data: clientData, error: clientError } = await supabaseAdmin
+        .from('clients')
+        .select('default_staff_id')
+        .eq('user_id', user.id)
+        .maybeSingle(); // Use maybeSingle in case the user isn't a client yet
 
+      if (clientError) throw clientError;
+      if (!clientData) {
+          // Handle case where authenticated user is not found in clients table (e.g., admin/staff)
+          // For now, we'll proceed with null staff ID, RPC should handle this appropriately (e.g., return 0 staff capacity)
+          console.warn(`User ${user.id} not found in clients table when fetching available slots.`);
+      } else {
+          clientDefaultStaffId = clientData.default_staff_id; // Can be null if not assigned
+          if (!clientDefaultStaffId) {
+               console.log(`Client associated with user ${user.id} has no default_staff_id assigned.`);
+               // Proceed with null - RPC will need to handle this for staff-based capacity rules
+          }
+      }
+  } catch (e) {
+       console.error('Error fetching client default staff ID:', e);
+       const message = e instanceof Error ? e.message : 'Failed to retrieve client information';
+       return NextResponse.json({ error: message }, { status: 500 });
+  }
+
+  // --- MODIFICATION: Define type for fetched rules ---
+  type FetchedAvailabilityRule = {
+    id: number;
+    days_of_week: number[] | null;
+    specific_date: string | null;
+    start_time: string; // HH:MM
+    end_time: string;   // HH:MM
+    override_price: number | null;
+  }
+
+  // 3. Fetch necessary data for pricing
+  let serviceDefaultPrice: number | null = null;
+  let availabilityRules: FetchedAvailabilityRule[] = []; // Use defined type
   try {
     // Fetch service default price
     const { data: serviceData, error: serviceError } = await supabaseAdmin
       .from('services')
       .select('default_price')
       .eq('id', serviceId)
-      .maybeSingle(); // Use maybeSingle to handle service not found gracefully
-
+      .maybeSingle();
     if (serviceError) throw serviceError;
     serviceDefaultPrice = serviceData?.default_price ?? null;
+    console.log(`Service ${serviceId} default price: ${serviceDefaultPrice}`); // Log default price
 
-    // Fetch potentially relevant active availability rules for the service and date range
-    // We fetch rules here to access override_price, even though RPC calculates slots
+    // Fetch potentially relevant active availability rules for the service
     const { data: rulesData, error: rulesError } = await supabaseAdmin
       .from('service_availability')
-      .select('*') // Select all columns to match the type
+      .select('id, days_of_week, specific_date, start_time, end_time, override_price') // Select needed fields
       .eq('service_id', serviceId)
       .eq('is_active', true)
-      // Add date range filter (needs careful logic for recurring vs specific)
-      // This basic filter might fetch more than needed but ensures we don't miss rules
+      // Basic filter: Fetch rules that *could* apply within the date range
+      // More precise matching will happen in the mapping logic below
       .or(`specific_date.gte.${startDate},specific_date.is.null`)
       .or(`specific_date.lte.${endDate},specific_date.is.null`);
 
     if (rulesError) throw rulesError;
     availabilityRules = rulesData || [];
+    console.log(`Fetched ${availabilityRules.length} active rules for service ${serviceId}`); // Log fetched rules count
 
   } catch (dbError) {
     console.error('Database error fetching service/availability rules:', dbError);
@@ -82,29 +114,26 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  // 4. Call the database function
+  // 4. Call the database function, passing the client's default staff ID
   try {
     // Define the expected structure of a slot returned by the RPC
-    // Ensure this matches the actual return type from your calculate_available_slots function
     type CalculatedSlot = {
-        slot_field_id: number;
-        slot_field_name: string;
         slot_start_time: string; // ISO String from TIMESTAMPTZ
         slot_end_time: string;   // ISO String from TIMESTAMPTZ
-        slot_remaining_capacity: number;
+        slot_remaining_capacity: number | null; // Allow null for infinite/staff-based
+        rule_uses_staff_capacity: boolean;
+        associated_field_ids: number[]; // Added
     }
 
-    // Explicitly type the expected return structure of the RPC call
-    // Provide function name as first type argument, expected return as second
     const { data: slots, error: rpcError } = await supabase.rpc(
         'calculate_available_slots',
         {
           in_service_id: serviceId,
           in_start_date: startDate,
-          in_end_date: endDate
-        },
-        { /* Optional: Add count option if needed */ }
-      ).returns<CalculatedSlot[]>() // Use .returns<T>() method
+          in_end_date: endDate,
+          in_client_default_staff_id: clientDefaultStaffId
+        }
+      ).returns<CalculatedSlot[]>()
 
     if (rpcError) {
       console.error('Error calling calculate_available_slots RPC:', rpcError);
@@ -123,31 +152,80 @@ export async function GET(request: Request) {
     // Now TypeScript knows slots is definitely CalculatedSlot[] here
     const fetchedSlots: CalculatedSlot[] = slots;
 
-    // 5. Process slots: Add price and filter out today's slots
+    // 5. Process slots: Filter out today's slots, format capacity, and calculate price
     const todayUTC = new Date().toISOString().split('T')[0];
     const processedSlots = fetchedSlots
         .map(slot => {
-            // Find the matching availability rule to determine price
-            // This matching logic needs to be robust (time, date/day, field)
-            // For simplicity now, we assume a direct match based on time/field is sufficient
-            // WARNING: This requires the RPC to ideally return the originating rule ID
-            // or requires complex matching here based on slot time/field against fetched rules.
-            // Placeholder: Assume we can find the rule (NEEDS REFINEMENT)
-            const rule = availabilityRules.find(r =>
-                r.field_ids.includes(slot.slot_field_id) &&
-                // Basic time match (ignoring date/day for now - needs improvement)
-                r.start_time === slot.slot_start_time.split('T')[1].substring(0, 8) &&
-                r.end_time === slot.slot_end_time.split('T')[1].substring(0, 8)
-            );
+            // --- MODIFICATION: Add Price Calculation Logic ---
+            const slotStart = new Date(slot.slot_start_time);
+            const slotDateStr = slot.slot_start_time.split('T')[0]; // YYYY-MM-DD
+            const slotDayOfWeek = (slotStart.getUTCDay() + 6) % 7 + 1; // Monday=1, Sunday=7
+            const slotStartTimeStr = slot.slot_start_time.split('T')[1].substring(0, 5); // HH:MM
 
-            const pricePerPet = rule?.override_price ?? serviceDefaultPrice ?? 0; // Default to 0 if no prices set
+            let slotPrice = serviceDefaultPrice ?? 0; // Start with default
+
+            // Find best matching rule (specific date takes precedence over recurring)
+            let bestMatchRule = null;
+            // --- MODIFICATION: Add detailed logging inside rule loop ---
+            console.log(`--- Checking rules for slot ${slot.slot_start_time} (Day ${slotDayOfWeek}, Date ${slotDateStr}, Time ${slotStartTimeStr}) ---`);
+            for (const rule of availabilityRules) {
+                console.log(`  Rule ${rule.id}: Start=${rule.start_time}, End=${rule.end_time}, Date=${rule.specific_date}, Days=${rule.days_of_week}, Price=${rule.override_price}`);
+                // --- MODIFICATION: Truncate rule times to HH:MM ---
+                const ruleStartTimeHHMM = rule.start_time.substring(0, 5);
+                const ruleEndTimeHHMM = rule.end_time.substring(0, 5);
+                // Check time overlap using truncated times
+                const timeMatches = slotStartTimeStr >= ruleStartTimeHHMM && slotStartTimeStr < ruleEndTimeHHMM;
+                console.log(`    Time comparison (${slotStartTimeStr} >= ${ruleStartTimeHHMM} && ${slotStartTimeStr} < ${ruleEndTimeHHMM}): ${timeMatches}`);
+                // --- END MODIFICATION ---
+
+                if (timeMatches) {
+                    // Check specific date match
+                    const specificDateMatches = rule.specific_date === slotDateStr;
+                    console.log(`    Specific date comparison (${rule.specific_date} === ${slotDateStr}): ${specificDateMatches}`);
+                    if (specificDateMatches) {
+                        bestMatchRule = rule; // Exact date match is best
+                        console.log(`    -> Best Match Found (Specific Date): Rule ${rule.id}`);
+                        break; // Stop searching
+                    }
+                    // Check recurring day match (only if rule is not specific date)
+                    const isRecurring = !rule.specific_date;
+                    const dayMatches = isRecurring && rule.days_of_week?.includes(slotDayOfWeek);
+                    console.log(`    Recurring day comparison (IsRecurring=${isRecurring}, Day=${slotDayOfWeek} in [${rule.days_of_week}]): ${dayMatches}`);
+                    if (dayMatches) {
+                         // Only update if no specific match was found earlier
+                        if (!bestMatchRule || !bestMatchRule.specific_date) {
+                             bestMatchRule = rule; // Recurring match
+                             console.log(`    -> Match Found (Recurring Day): Rule ${rule.id}`);
+                        }
+                    }
+                } else {
+                     console.log(`    -> No Match (Time mismatch)`);
+                }
+            }
+            // --- END MODIFICATION ---
+
+            if (bestMatchRule && bestMatchRule.override_price !== null) {
+                slotPrice = bestMatchRule.override_price;
+                console.log(`Slot ${slot.slot_start_time}: Using override price ${slotPrice} from rule ${bestMatchRule.id}`);
+            } else {
+                 console.log(`Slot ${slot.slot_start_time}: Using default price ${slotPrice}`);
+            }
+            // --- END MODIFICATION ---
 
             return {
-                ...slot,
-                price_per_pet: pricePerPet
+                start_time: slot.slot_start_time,
+                end_time: slot.slot_end_time,
+                remaining_capacity: slot.slot_remaining_capacity,
+                uses_staff_capacity: slot.rule_uses_staff_capacity,
+                field_ids: slot.associated_field_ids,
+                price_per_pet: slotPrice, // Add the calculated price
+                // Add a simple capacity display string for UI
+                capacity_display: slot.rule_uses_staff_capacity
+                    ? (slot.slot_remaining_capacity !== null ? `${slot.slot_remaining_capacity} (Staff)` : 'Staff Limited - Check Booking') // Modified display
+                    : (slot.slot_remaining_capacity !== null ? `${slot.slot_remaining_capacity}` : 'Unlimited')
             };
         })
-        .filter(slot => slot.slot_start_time.split('T')[0] > todayUTC);
+        .filter(slot => slot.start_time.split('T')[0] > todayUTC);
 
     // 6. Return the processed slots
     return NextResponse.json(processedSlots);

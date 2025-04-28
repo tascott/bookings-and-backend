@@ -29,11 +29,11 @@ Project Summary for AI Assistant (booking-and-accounts)
   - **Vehicle Management:**
     - Admins can view/add/delete vehicles and assign them to staff.
     - Staff can view their own vehicles.
-  - **Staff Availability Management (TODO):** UI needed to manage staff working hours/days off via `staff_availability` table.
+  - **Staff Availability Management:** UI needed to manage staff working hours/days off via `staff_availability` table.
 - **Client UI:**
   - **Booking Interface (`src/components/client/ClientBooking.tsx`):**
     - Select service/date, view available slots (`/api/available-slots`).
-    - Book services (no same-day bookings). Handles capacity checks based on field capacity or assigned default staff's vehicle capacity and availability.
+    - Book services (no same-day bookings). Performs capacity/availability checks based on the rules defined in `service_availability` (using `use_staff_vehicle_capacity` flag) and `staff_availability`.
   - **Pet Management:**
     - Add/edit/delete pets, view all pets.
   - **My Bookings:**
@@ -49,9 +49,21 @@ Project Summary for AI Assistant (booking-and-accounts)
 
 **Table Details:**
 - **sites:** id, name, address, is_active
-- **fields:** id, site_id (FK), name, capacity, field_type
+- **fields:** id, site_id (FK), name, field_type
 - **services:** id, name, description, created_at, requires_field_selection, default_price
-- **service_availability:** id, service_id (FK), field_ids (array), start_time, end_time, days_of_week (array), specific_date, base_capacity, is_active, created_at, override_price, capacity_type ('field' | 'staff_vehicle').
+- **service_availability:**
+    - id (bigint PK)
+    - service_id (FK)
+    - field_ids (integer[] NOT NULL) -- Now always required
+    - start_time, end_time (time without timezone)
+    - days_of_week (integer[] | null) -- Array of numbers 1-7 (Mon-Sun)
+    - specific_date (date | null)
+    - base_capacity (integer | null) -- Optional base limit, used if use_staff_vehicle_capacity=FALSE. NULL = unlimited.
+    - use_staff_vehicle_capacity (boolean NOT NULL DEFAULT FALSE) -- If TRUE, capacity uses assigned staff vehicle; otherwise uses base_capacity.
+    - is_active (boolean)
+    - created_at (timestamptz)
+    - override_price (numeric | null)
+    - CHECK constraint: `use_staff_vehicle_capacity = TRUE OR (field_ids IS NOT NULL AND array_length(field_ids, 1) > 0)`
 - **bookings:** id, field_id (FK), start_time, end_time, service_type (varchar), status, max_capacity, assigned_staff_id (uuid, FK to auth.users), vehicle_id (integer, FK to vehicles.id), assignment_notes, is_paid (boolean).
 - **booking_clients:** id, booking_id (FK), client_id (FK)
 - **pets:** id, client_id (FK), name, breed, size, is_confirmed
@@ -104,11 +116,54 @@ Project Summary for AI Assistant (booking-and-accounts)
   - CRUD for pets, linked to clients.
 - **/api/bookings**, **/api/client-booking**, **/api/my-bookings**, **/api/bookings/[bookingId]/status**:
   - Bookings CRUD, client booking flow, viewing client bookings, updating payment status.
-  - `POST /api/client-booking`: Handles client-initiated bookings, performs capacity checks based on `service_availability.capacity_type` ('field' or 'staff_vehicle'), checks `staff_availability` for the client's default staff member, performs resource-specific overlap checks, and inserts booking details including `assigned_staff_id` and `vehicle_id` for 'staff_vehicle' services.
+  - `POST /api/client-booking`: Handles client-initiated bookings. Performs capacity checks based on the matched `service_availability` rule:
+      - Finds the active rule matching service/date/time.
+      - If `use_staff_vehicle_capacity` is TRUE:
+          - Checks client's `default_staff_id` is set, available (`staff_availability`), and has a default vehicle.
+          - Sets `max_effective_capacity` to the vehicle's `pet_capacity`.
+          - Checks overlaps based on bookings assigned to that specific staff member (`assigned_staff_id`).
+          - Finds an available field from the rule's `field_ids` not fully booked by other services/staff.
+          - Assigns the determined `field_id`, `assigned_staff_id`, and `vehicle_id` to the new booking.
+      - If `use_staff_vehicle_capacity` is FALSE:
+          - Sets `max_effective_capacity` based on the rule's `base_capacity` (treating NULL as very high/unlimited).
+          - Checks overlaps based on bookings in *any* of the rule's `field_ids`.
+          - Determines `field_id` based on client selection (if `requires_field_selection`) or assigns the first available.
+          - Sets `assigned_staff_id` and `vehicle_id` to `null`.
+  - Compares requested pets against remaining capacity (respecting NULL base_capacity as unlimited).
 - **/api/available-slots:**
-  - Returns available booking slots for a service/date.
+  - Returns available booking slots for a service/date, requires auth.
+  - Calls `calculate_available_slots` RPC, passing client's `default_staff_id`.
+  - RPC returns one row per logical time slot, including:
+      - `slot_start_time`, `slot_end_time`
+      - `slot_remaining_capacity`: Calculated based on the rules below (NULL if unlimited).
+      - `rule_uses_staff_capacity`: Boolean flag.
+      - `associated_field_ids`: Array of field IDs for the slot.
+  - RPC Capacity Logic:
+      - If `rule_uses_staff_capacity`=TRUE: Checks availability/vehicle capacity/overlaps for the passed-in `in_client_default_staff_id`. Returns remaining vehicle capacity, or 0 if staff unavailable/no vehicle/all associated fields booked.
+      - If `rule_uses_staff_capacity`=FALSE: Uses rule's `base_capacity` (NULL treated as unlimited) and subtracts pets booked across all `associated_field_ids`.
+  - API formats capacity for display, filters out past slots, and returns the list.
+  - Returns available booking slots for a service/date range, requires auth.
+  - Fetches the service's `default_price`.
+  - Fetches active `service_availability` rules for the service that could apply.
+  - Calls `calculate_available_slots` RPC, passing client's `default_staff_id`.
+  - RPC returns potential time slots based on rules, including:
+      - `slot_start_time`, `slot_end_time`
+      - `slot_remaining_capacity`: Calculated capacity based on rules/overlaps (NULL if unlimited).
+      - `rule_uses_staff_capacity`: Boolean flag.
+      - `associated_field_ids`: Array of field IDs for the slot.
+  - RPC Capacity Logic:
+      - If `rule_uses_staff_capacity`=TRUE: Checks availability/vehicle capacity/overlaps for the passed-in `in_client_default_staff_id`. Returns remaining vehicle capacity, or 0 if staff unavailable/no vehicle/all associated fields booked.
+      - If `rule_uses_staff_capacity`=FALSE: Uses rule's `base_capacity` (NULL treated as unlimited) and subtracts pets booked across all `associated_field_ids`.
+  - **API Route Processing:**
+      - For each slot returned by the RPC, the API route determines the applicable price:
+          - Finds the best matching active `service_availability` rule (specific date rule > recurring day rule).
+          - Uses the rule's `override_price` if set, otherwise uses the service's `default_price` (defaults to 0 if neither is set).
+      - Formats a `capacity_display` string for the UI.
+      - Filters out slots starting today or earlier.
+      - Returns the list of slots, including the calculated `price_per_pet`.
 - **/api/fields, /api/sites, /api/services, /api/service-availability, /api/service-availability/[ruleId]**:
   - CRUD for fields, sites, services, and service availability rules.
+  - `service-availability` endpoints now handle `use_staff_vehicle_capacity` (boolean) instead of `capacity_type` and require `field_ids` (array).
 
 **Component/File Structure:**
 - **src/app/page.tsx:** Main entry point, renders UI based on auth/role, displays welcome message with user name.
@@ -117,7 +172,7 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **src/components/admin/BookingManagement.tsx:** Create/manage bookings (potentially allows override).
 - **src/components/admin/ServiceManagement.tsx:** Manage services.
 - **src/components/admin/SiteFieldManagement.tsx:** Manage sites/fields.
-- **src/components/admin/ServiceAvailabilityManagement.tsx:** Manage service availability rules.
+- **src/components/admin/ServiceAvailabilityManagement.tsx:** Manage service availability rules. UI updated to use `use_staff_vehicle_capacity` checkbox instead of `capacity_type` radios; field selection is always present.
 - **src/components/client/ClientBooking.tsx:** Client booking UI.
 - **src/components/client/PetManagement.tsx:** Client pet management UI.
 - **src/components/client/MyBookings.tsx:** Client booking history/upcoming bookings.
@@ -135,3 +190,4 @@ Project Summary for AI Assistant (booking-and-accounts)
 - Use `/api/clients` for client-only lists/search in UI.
 - Use `/api/users` for role management and mixed user lists.
 - Check schema and this document before writing SQL or API code.
+- Check `service_availability` rules for the `use_staff_vehicle_capacity` flag to understand how capacity and overlap checks are performed for a given service/time.

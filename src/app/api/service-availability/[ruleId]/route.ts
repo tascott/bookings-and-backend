@@ -6,6 +6,12 @@ import type { ServiceAvailability } from '@/types'; // Import the specific type
 // Define the type for the Supabase client instance if possible, otherwise use ReturnType
 // type SupabaseClientType = ReturnType<typeof createServerClient>; // Removed unused alias
 
+// Updated type definition reflecting the new schema
+type ServiceAvailabilityUpdateData = Partial<Omit<ServiceAvailability, 'id' | 'created_at' | 'capacity_type'>> & {
+    use_staff_vehicle_capacity?: boolean; // Ensure this can be received
+    field_ids?: number[]; // Field IDs are expected now
+};
+
 // Helper function to check admin role
 async function isAdmin(supabasePromise: ReturnType<typeof createServerClient>): Promise<boolean> {
     const supabase = await supabasePromise; // Await inside the helper
@@ -36,21 +42,25 @@ export async function PUT(request: Request, { params }: { params: { ruleId: stri
     }
 
     // Parse request body
-    let availabilityData: Partial<ServiceAvailability>; // Use Partial for update
+    let availabilityData: ServiceAvailabilityUpdateData;
     try {
         const body = await request.json();
-        availabilityData = body; // Assign directly, validation follows
+        availabilityData = body;
 
         // --- Validation ---
-        // Ensure required fields are present for an update (maybe allow partial updates?)
-        // For now, assuming all fields are sent for PUT, similar to POST validation
-        if (availabilityData.service_id === undefined || availabilityData.field_ids === undefined || availabilityData.start_time === undefined || availabilityData.end_time === undefined) {
-             throw new Error('Missing required fields for update: service_id, field_ids, start_time, end_time');
+        if (availabilityData.service_id === undefined || !Array.isArray(availabilityData.field_ids) || availabilityData.field_ids.length === 0 || availabilityData.start_time === undefined || availabilityData.end_time === undefined) {
+             throw new Error('Missing required fields for update: service_id, field_ids (non-empty array), start_time, end_time');
         }
-        availabilityData.service_id = parseInt(String(availabilityData.service_id), 10);
+
+        // Validate field_ids (always required now)
         availabilityData.field_ids = availabilityData.field_ids.map((id: string | number) => parseInt(String(id), 10));
-        if (isNaN(availabilityData.service_id) || availabilityData.field_ids.some(isNaN)) {
-            throw new Error('Invalid service_id or field_id.');
+        if (availabilityData.field_ids.some(isNaN)) {
+            throw new Error('Invalid field_id found in field_ids array.');
+        }
+
+        availabilityData.service_id = parseInt(String(availabilityData.service_id), 10);
+        if (isNaN(availabilityData.service_id)) {
+            throw new Error('Invalid service_id.');
         }
         const timeRegex = /^([01]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$/;
         if (!timeRegex.test(availabilityData.start_time) || !timeRegex.test(availabilityData.end_time)) throw new Error('Invalid time format');
@@ -66,7 +76,7 @@ export async function PUT(request: Request, { params }: { params: { ruleId: stri
              availabilityData.days_of_week = null;
         }
         if (availabilityData.base_capacity != null) {
-             const parsedCap = parseInt(String(availabilityData.base_capacity), 10); // Ensure string conversion
+             const parsedCap = parseInt(String(availabilityData.base_capacity), 10);
              availabilityData.base_capacity = isNaN(parsedCap) ? null : parsedCap;
         } else {
             availabilityData.base_capacity = null;
@@ -75,14 +85,15 @@ export async function PUT(request: Request, { params }: { params: { ruleId: stri
         if (availabilityData.specific_date != null && availabilityData.specific_date !== '' && !dateRegex.test(availabilityData.specific_date)) throw new Error('Invalid specific_date format');
 
         if (availabilityData.override_price !== undefined && availabilityData.override_price !== null) {
-            const parsedPrice = parseFloat(String(availabilityData.override_price)); // Ensure string conversion
+            const parsedPrice = parseFloat(String(availabilityData.override_price));
             availabilityData.override_price = isNaN(parsedPrice) ? null : parsedPrice;
         } else {
              availabilityData.override_price = null;
         }
-        // Handle is_active, default to true if not provided in PUT
         availabilityData.is_active = typeof availabilityData.is_active === 'boolean' ? availabilityData.is_active : true;
         availabilityData.specific_date = availabilityData.specific_date || null;
+        // Validate use_staff_vehicle_capacity (ensure boolean, default false)
+        availabilityData.use_staff_vehicle_capacity = typeof availabilityData.use_staff_vehicle_capacity === 'boolean' ? availabilityData.use_staff_vehicle_capacity : false;
         // --- End Validation ---
 
     } catch (e) {
@@ -91,9 +102,38 @@ export async function PUT(request: Request, { params }: { params: { ruleId: stri
     }
 
     // Perform update
+    // Define the type for the update payload matching the NEW table columns
+    type DbUpdatePayload = {
+        service_id?: number;
+        field_ids?: number[]; // Not nullable in payload type, validation ensures it's array
+        start_time?: string;
+        end_time?: string;
+        days_of_week?: number[] | null;
+        specific_date?: string | null;
+        base_capacity?: number | null;
+        use_staff_vehicle_capacity?: boolean;
+        is_active?: boolean;
+        override_price?: number | null;
+    };
+
+    const updatePayload: DbUpdatePayload = {};
+    // Build payload from validated data
+    if (availabilityData.service_id !== undefined) updatePayload.service_id = availabilityData.service_id;
+    if (availabilityData.field_ids !== undefined) updatePayload.field_ids = availabilityData.field_ids; // Always send field_ids
+    if (availabilityData.start_time !== undefined) updatePayload.start_time = availabilityData.start_time;
+    if (availabilityData.end_time !== undefined) updatePayload.end_time = availabilityData.end_time;
+    if (availabilityData.days_of_week !== undefined) updatePayload.days_of_week = availabilityData.days_of_week;
+    if (availabilityData.specific_date !== undefined) updatePayload.specific_date = availabilityData.specific_date;
+    if (availabilityData.base_capacity !== undefined) updatePayload.base_capacity = availabilityData.base_capacity;
+    // Ensure use_staff_vehicle_capacity is included
+    updatePayload.use_staff_vehicle_capacity = availabilityData.use_staff_vehicle_capacity;
+    if (availabilityData.is_active !== undefined) updatePayload.is_active = availabilityData.is_active;
+    if (availabilityData.override_price !== undefined) updatePayload.override_price = availabilityData.override_price;
+
+
     const { data: updatedRule, error: updateError } = await supabaseAdmin
         .from('service_availability')
-        .update(availabilityData) // Removed 'as any' assertion
+        .update(updatePayload)
         .eq('id', ruleId)
         .select()
         .single();
@@ -101,10 +141,12 @@ export async function PUT(request: Request, { params }: { params: { ruleId: stri
     if (updateError) {
         console.error(`Error updating availability rule ${ruleId}:`, updateError);
         if (updateError.code === '23503') { // FK violation
+             // Error message might need adjustment if field_ids causes the issue
              return NextResponse.json({ error: `Invalid service_id (${availabilityData.service_id}) or one of the field_ids.` }, { status: 400 });
         }
          if (updateError.code === '23514') { // Check constraint
-             return NextResponse.json({ error: `Check constraint failed: ${updateError.message}` }, { status: 400 });
+             // This might now fire if use_staff_vehicle_capacity=false and field_ids is empty/null
+             return NextResponse.json({ error: `Check constraint failed: ${updateError.message}. Ensure field_ids are provided when not using staff vehicle capacity.` }, { status: 400 });
         }
         return NextResponse.json({ error: updateError.message }, { status: 500 });
     }

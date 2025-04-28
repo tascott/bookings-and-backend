@@ -13,13 +13,24 @@ type Service = {
   default_price?: number | null; // Add price
 }
 
+// Updated to match actual API response structure from console log
 type CalculatedSlot = {
-    slot_field_id: number;
-    slot_field_name: string;
-    slot_start_time: string;
-    slot_end_time: string;
-    slot_remaining_capacity: number;
-    price_per_pet: number; // Price from API
+    // These fields might still be useful if requires_field_selection is true,
+    // but are not used in aggregation logic based on console logs.
+    // Keep them commented or remove if definitely unused.
+    // slot_field_id?: number;
+    // slot_field_name?: string;
+
+    // Fields actually used in aggregation, based on console log and required logic
+    start_time: string;           // API key: start_time
+    end_time: string;             // API key: end_time
+    remaining_capacity: number;   // API key: remaining_capacity
+    price_per_pet?: number | null; // API key: price_per_pet (optional)
+
+    // Optional fields seen in the log, keep if needed elsewhere
+    capacity_display?: string;
+    field_ids?: number[];
+    uses_staff_capacity?: boolean;
 }
 
 // Define a new type for the aggregated data used for display
@@ -91,30 +102,82 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     // Define helper here to be accessible throughout the component
     const getServiceName = (id: number) => services.find(s => s.id === id)?.name || `Service ID ${id}`;
 
+    // --- MODIFICATION START ---
+    // Basic formatter functions (replace with library or more robust logic if needed)
+    const formatDateRange = (startStr: string, endStr: string): string => {
+        try {
+            const start = new Date(startStr);
+            const end = new Date(endStr);
+            // Example: "Wed, May 1, 10:00 AM - 12:00 PM (UTC)"
+            const options: Intl.DateTimeFormatOptions = {
+                timeZone: 'UTC', // Assuming API returns UTC
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+            };
+            const endOptions: Intl.DateTimeFormatOptions = {
+                timeZone: 'UTC',
+                hour: 'numeric',
+                minute: '2-digit',
+                hour12: true,
+            };
+            return `${start.toLocaleString([], options)} - ${end.toLocaleString([], endOptions)}`;
+        } catch (e) {
+            console.error("Date formatting error:", e);
+            return "Invalid Date Range";
+        }
+    };
+
+    const formatPrice = (price: number | null | undefined): string => {
+        // Handle null/undefined, default to 0
+        const numPrice = price ?? 0;
+        // Example: £15.00
+        return `£${numPrice.toFixed(2)}`;
+    };
+    // --- MODIFICATION END ---
+
     // Helper function to aggregate raw slots
     const aggregateSlots = (slots: CalculatedSlot[], serviceId: number): AggregatedSlot[] => {
         if (!slots || slots.length === 0) return [];
 
         const grouped: { [key: string]: { serviceId: number; serviceName: string; startTime: string; endTime: string; totalCapacity: number; price: number } } = {};
 
-        // Use the helper defined outside
         const currentServiceName = getServiceName(serviceId);
 
         slots.forEach(slot => {
+            // Use the actual keys from the API response (now matching the type)
+            const startTime = slot.start_time;
+            const endTime = slot.end_time;
+            const remainingCapacity = slot.remaining_capacity;
+            // Use the optional price_per_pet from the type, default to 0.
+            const pricePerPet = slot.price_per_pet ?? 0;
+
+            // --- MODIFICATION: Log individual slot price ---
+            console.log(`Raw slot time: ${startTime}, Price from API: ${slot.price_per_pet}, Used price: ${pricePerPet}`);
+
+            // Check if essential data is present
+            if (!startTime || !endTime || typeof remainingCapacity !== 'number') {
+                console.warn("Skipping slot due to missing/invalid data:", slot);
+                return; // Skip this slot if essential data is missing
+            }
+
             // Key based on service and time block
-            const key = `${serviceId}-${slot.slot_start_time}-${slot.slot_end_time}`;
+            const key = `${serviceId}-${startTime}-${endTime}`;
 
             if (!grouped[key]) {
                 grouped[key] = {
                     serviceId: serviceId,
-                    serviceName: currentServiceName, // Use looked-up name
-                    startTime: slot.slot_start_time,
-                    endTime: slot.slot_end_time,
+                    serviceName: currentServiceName,
+                    startTime: startTime, // Use variable
+                    endTime: endTime,     // Use variable
                     totalCapacity: 0,
-                    price: slot.price_per_pet // Take the price from the first slot in the group
+                    price: pricePerPet // Use variable, defaulting to 0 if missing
                 };
             }
-            grouped[key].totalCapacity += slot.slot_remaining_capacity;
+            grouped[key].totalCapacity += remainingCapacity;
         });
 
         // Convert grouped object back to an array
@@ -205,8 +268,14 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             let slotPrice = 0;
             if (requiresFieldSelection) {
                 // Key is fieldId-startTime
-                const [fieldIdStr, startTime] = slotKey.split('-');
-                const slot = rawCalculatedSlots.find(s => s.slot_field_id === parseInt(fieldIdStr, 10) && s.slot_start_time === startTime);
+                // NOTE: This part assumes field-specific booking is implemented differently
+                // and might need adjustment based on how field IDs are stored/retrieved.
+                // For now, let's assume the key directly relates to a raw slot if needed.
+                const startTime = slotKey.includes('-') ? slotKey.split('-')[1] : slotKey; // Assume key might just be startTime now
+                const slot = rawCalculatedSlots.find(s => {
+                    // If key is just startTime and we pick *any* raw slot matching:
+                    return s.start_time === startTime;
+                });
                 slotPrice = slot?.price_per_pet ?? 0;
             } else {
                 // Key is startTime
@@ -341,11 +410,13 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             }
 
             const data: CalculatedSlot[] = await response.json();
+            console.log("Raw data from /api/available-slots:", data); // Log raw data
             setRawCalculatedSlots(data); // Always store raw data
 
             // Aggregate the data for display ONLY IF service doesn't require field selection
             if (!selectedService.requires_field_selection) {
                 const aggregated = aggregateSlots(data, serviceIdNum);
+                console.log("Aggregated data:", aggregated); // Log aggregated data
                 setAggregatedSlots(aggregated);
             } else {
                 setAggregatedSlots([]); // Ensure aggregated is empty if showing raw
@@ -450,103 +521,95 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 
                 <button
                     onClick={fetchCalculatedSlots}
-                    disabled={!selectedServiceId || !selectedStartDate || !selectedEndDate || isLoadingCalculatedSlots}
+                    disabled={isLoadingCalculatedSlots || !selectedServiceId || !selectedStartDate || !selectedEndDate}
                     style={{ marginTop: '1rem' }}
                 >
-                    {isLoadingCalculatedSlots ? 'Finding Slots...' : 'Find Slots'}
+                    {isLoadingCalculatedSlots ? 'Searching...' : 'Find Slots'}
                 </button>
             </div>
 
-            {/* Display Area - Shows calculated slots conditionally */}
-            <div className={styles.slotResultsArea}>
-                <h3>Available Slots</h3>
+            {/* Display Error Messages */}
+            {error && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
+
+            {/* Results Section */}
+            <div style={{ marginTop: '1.5rem' }}>
                 {isLoadingCalculatedSlots ? (
-                    <p>Loading slots...</p>
-                ) : error ? (
-                    <p style={{ color: 'red' }}>Error: {error}</p>
-                ) : /* Check which mode to display */ (
-                    (() => {
-                        const serviceIdNum = parseInt(selectedServiceId, 10);
-                        const selectedService = services.find(s => s.id === serviceIdNum);
-                        const showAggregated = selectedService && !selectedService.requires_field_selection;
+                    <p>Loading available slots...</p>
+                ) : (
+                    <>
+                        <h3>Available Slots</h3>
+                        {(() => {
+                            // Find the selected service details again for the flag
+                            const selectedService = services.find(s => s.id === parseInt(selectedServiceId || '0', 10));
 
-                        // Determine which array to map over
-                        const slotsToDisplay = showAggregated ? aggregatedSlots : rawCalculatedSlots;
-                        const noSlotsFound = slotsToDisplay.length === 0 && !isLoadingCalculatedSlots; // Check after deciding which list to use
-
-                        if (noSlotsFound && selectedServiceId) { // Only show 'no slots' if a search was actually performed
-                             return <p>No available slots found for the selected criteria. Try different dates or services.</p>;
-                        } else if (!selectedServiceId) {
-                             return <p>Select a service and date range to find slots.</p>; // Initial state
-                        }
-
-                        return (
-                            <div className={styles.calculatedSlotsList}>
-                                {showAggregated
-                                    ? /* Render Aggregated Slots */
-                                      aggregatedSlots.map((aggSlot /*, index*/) => {
-                                        const slotKey = aggSlot.startTime;
-                                        const isSelected = selectedSlots.has(slotKey);
-                                        return (
-                                            <div
-                                                key={`agg-${slotKey}`}
-                                                className={`${styles.calculatedSlotCard} ${isSelected ? styles.selectedSlot : ''}`}
-                                                style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}
-                                                onClick={() => handleSlotSelectionToggle(slotKey)}
-                                            >
-                                                <p><strong>Service:</strong> {aggSlot.serviceName}</p>
-                                                <p>
-                                                    <strong>Start:</strong> {new Date(aggSlot.startTime).toLocaleString([], { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' })} |
-                                                    <strong> End:</strong> {new Date(aggSlot.endTime).toLocaleString([], { timeZone: 'UTC', timeStyle: 'short' })}
-                                                </p>
-                                                <p><strong>Total Remaining Capacity:</strong> {aggSlot.totalRemainingCapacity}</p>
-                                                <p><strong>Price per Pet:</strong> £{aggSlot.price_per_pet.toFixed(2)}</p>
-                                            </div>
-                                        )
-                                      })
-                                    : /* Render Per-Field Slots */
-                                      rawCalculatedSlots.map((slot /*, index*/) => {
-                                        const slotKey = `${slot.slot_field_id}-${slot.slot_start_time}`;
-                                        const isSelected = selectedSlots.has(slotKey);
-                                        // Find the service name for this slot's service ID (needed if mixing results)
-                                        const serviceName = getServiceName(parseInt(selectedServiceId, 10)) || `Service ID ${selectedServiceId}`;
-                                        return (
-                                            <div
-                                                key={`field-${slot.slot_field_id}-${slot.slot_start_time}`}
-                                                className={`${styles.calculatedSlotCard} ${isSelected ? styles.selectedSlot : ''}`}
-                                                style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}
-                                                onClick={() => handleSlotSelectionToggle(slotKey)}
-                                            >
-                                                {/* Add Service Name */}
-                                                <p><strong>Service:</strong> {serviceName}</p>
-                                                {/* Display field name prominently */}
-                                                <p><strong>Field:</strong> {slot.slot_field_name || `ID: ${slot.slot_field_id}`}</p>
-                                                <p>
-                                                    <strong>Start:</strong> {new Date(slot.slot_start_time).toLocaleString([], { timeZone: 'UTC', dateStyle: 'short', timeStyle: 'short' })} |
-                                                    <strong> End:</strong> {new Date(slot.slot_end_time).toLocaleString([], { timeZone: 'UTC', timeStyle: 'short' })}
-                                                </p>
-                                                {/* Show individual field capacity */}
-                                                <p><strong>Remaining Capacity:</strong> {slot.slot_remaining_capacity}</p>
-                                                <p><strong>Price per Pet:</strong> £{slot.price_per_pet.toFixed(2)}</p>
-                                            </div>
-                                        );
-                                    })
+                            // Case 1: Service requires field selection - Render Raw Slots
+                            if (selectedService?.requires_field_selection) {
+                                if (rawCalculatedSlots.length === 0) {
+                                    return <p>No specific field slots found for the selected criteria. Try different dates or services.</p>;
                                 }
-                            </div>
-                        );
-                    })()
+                                // Render raw slots grouped by field? Or just list? Let's list for now.
+                                // TODO: Improve rendering for field-specific slots if needed
+                                return (
+                                    <div>
+                                        {rawCalculatedSlots.map((slot, index) => (
+                                            <div key={`${slot.start_time}-${index}`} style={{ border: '1px solid #444', padding: '10px', marginBottom: '10px', borderRadius: '4px' }}>
+                                                {/* Display relevant info from raw slot */}
+                                                {/* --- MODIFICATION: Removed slot_field_name as it's not in type --- */}
+                                                {/* <p><strong>Field:</strong> {slot.slot_field_name || 'N/A'}</p> */}
+                                                <p><strong>Time:</strong> {formatDateRange(slot.start_time, slot.end_time)}</p>
+                                                <p><strong>Capacity:</strong> {slot.remaining_capacity}</p>
+                                                <p><strong>Price:</strong> {formatPrice(slot.price_per_pet ?? selectedService.default_price ?? 0)}</p>
+                                                {/* Add selection mechanism if needed */}
+                                            </div>
+                                        ))}
+                                    </div>
+                                );
+                            }
+                            // Case 2: Service does NOT require field selection - Render Aggregated Slots
+                            else {
+                                if (aggregatedSlots.length === 0) {
+                                    return <p>No available slots found for the selected criteria. Try different dates or services.</p>;
+                                }
+                                return (
+                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
+                                        {aggregatedSlots.map((slot) => {
+                                            const slotKey = slot.startTime; // Key for selection when not field-specific
+                                            const isSelected = selectedSlots.has(slotKey);
+                                            return (
+                                                <div
+                                                    key={slotKey}
+                                                    style={{
+                                                        border: `2px solid ${isSelected ? '#00aaff' : '#555'}`,
+                                                        padding: '1rem',
+                                                        borderRadius: '4px',
+                                                        cursor: slot.totalRemainingCapacity > 0 ? 'pointer' : 'not-allowed',
+                                                        opacity: slot.totalRemainingCapacity > 0 ? 1 : 0.6,
+                                                        background: isSelected ? '#003366' : '#333'
+                                                    }}
+                                                    onClick={() => slot.totalRemainingCapacity > 0 && handleSlotSelectionToggle(slotKey)}
+                                                >
+                                                    {/* <p><strong>Service:</strong> {slot.serviceName}</p> */}
+                                                    <p><strong>Time:</strong> {formatDateRange(slot.startTime, slot.endTime)}</p>
+                                                    <p><strong>Total Remaining Capacity:</strong> {slot.totalRemainingCapacity}</p>
+                                                    <p><strong>Price per Pet:</strong> {formatPrice(slot.price_per_pet)}</p>
+                                                    {isSelected && <p style={{ color: '#00aaff', fontWeight: 'bold' }}>Selected</p>}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                );
+                            }
+                        })()}
+                    </>
                 )}
             </div>
-
-            {/* Error Display */}
-            {error && <p className={styles.errorText}>{error}</p>}
 
             {/* Total Price and Booking Button */}
             {(rawCalculatedSlots.length > 0 || aggregatedSlots.length > 0) && (
                 <div className={styles.bookingSummary}>
                      <p><strong>Selected Pets:</strong> {selectedPetIds.length}</p>
                      <p><strong>Selected Slots:</strong> {selectedSlots.size}</p>
-                     <p><strong>Total Price:</strong> £{totalPrice.toFixed(2)}</p>
+                     <p><strong>Total Price:</strong> £{(totalPrice ?? 0).toFixed(2)}</p>
                      <button
                         onClick={handleBookSelectedSlots}
                         disabled={selectedSlots.size === 0 || selectedPetIds.length === 0}
