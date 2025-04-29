@@ -74,7 +74,7 @@ Current TODOS:
 
 - booking cancellations
 
-- email confirmations of bookings (client and admin
+- email confirmations of bookings (client and admin)
 
 - stripe integration (supabase) linked to bookings via the `payments` table.
 
