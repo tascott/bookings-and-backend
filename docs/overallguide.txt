@@ -141,6 +141,7 @@ Project Summary for AI Assistant (booking-and-accounts)
   - RPC Capacity Logic:
       - If `rule_uses_staff_capacity`=TRUE: Checks availability/vehicle capacity/overlaps for the passed-in `in_client_default_staff_id`. Returns remaining vehicle capacity, or 0 if staff unavailable/no vehicle/all associated fields booked.
       - If `rule_uses_staff_capacity`=FALSE: Uses rule's `base_capacity` (NULL treated as unlimited) and subtracts pets booked across all `associated_field_ids`.
+      - **Note:** The RPC returns slots even if the calculated `slot_remaining_capacity` is 0.
   - API formats capacity for display, filters out past slots, and returns the list.
   - Returns available booking slots for a service/date range, requires auth.
   - Fetches the service's `default_price`.
@@ -154,6 +155,7 @@ Project Summary for AI Assistant (booking-and-accounts)
   - RPC Capacity Logic:
       - If `rule_uses_staff_capacity`=TRUE: Checks availability/vehicle capacity/overlaps for the passed-in `in_client_default_staff_id`. Returns remaining vehicle capacity, or 0 if staff unavailable/no vehicle/all associated fields booked.
       - If `rule_uses_staff_capacity`=FALSE: Uses rule's `base_capacity` (NULL treated as unlimited) and subtracts pets booked across all `associated_field_ids`.
+      - **Note:** The RPC returns slots even if the calculated `slot_remaining_capacity` is 0.
   - **API Route Processing:**
       - For each slot returned by the RPC, the API route determines the applicable price:
           - Finds the best matching active `service_availability` rule (specific date rule > recurring day rule).

@@ -26,6 +26,7 @@ type CalculatedSlot = {
     end_time: string;             // API key: end_time
     remaining_capacity: number;   // API key: remaining_capacity
     price_per_pet?: number | null; // API key: price_per_pet (optional)
+    zero_capacity_reason?: string | null; // 'staff_full', 'no_staff', 'base_full', or null
 
     // Optional fields seen in the log, keep if needed elsewhere
     capacity_display?: string;
@@ -41,6 +42,8 @@ type AggregatedSlot = {
     endTime: string;   // ISO string
     totalRemainingCapacity: number;
     price_per_pet: number; // Use the lowest price found for this time block?
+    uses_staff_capacity: boolean; // Indicates if capacity is staff-based
+    zero_capacity_reason: string | null; // 'staff_full', 'no_staff', 'base_full', or null
     // Keep track of contributing fields/slots if needed for booking later?
     // contributingSlots: CalculatedSlot[];
 }
@@ -155,11 +158,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     };
     // --- MODIFICATION END ---
 
-    // --- MODIFICATION: Helper to check if a slot is booked by selected pets ---
     const isSlotBookedBySelectedPets = (slotStartTime: string): boolean => {
-        // --- MODIFICATION: Log state at function entry ---
-        console.log(`isSlotBookedBySelectedPets called for ${slotStartTime}. Selected IDs: [${selectedPetIds.join(', ')}], Bookings loaded: ${clientBookings.length > 0}`);
-
         if (selectedPetIds.length === 0 || clientBookings.length === 0) {
             return false;
         }
@@ -168,14 +167,15 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         // 1. Matches the slot's start time.
         // 2. Includes AT LEAST ONE of the currently selected pets.
         return clientBookings.some(booking => {
-            // Ensure start times match (compare ISO strings directly)
-            if (new Date(booking.start_time).getTime() !== new Date(slotStartTime).getTime()) {
+            // --- MODIFICATION: Standardize date strings before comparing ---
+            // Ensure both strings are treated as UTC. Assume API might sometimes omit offset.
+            const bookingStartTimeStr = booking.start_time.endsWith('+00:00') ? booking.start_time : booking.start_time + '+00:00';
+            const slotStartTimeStr = slotStartTime.endsWith('+00:00') ? slotStartTime : slotStartTime + '+00:00';
+
+            // Compare Date objects derived from standardized UTC strings
+            if (new Date(bookingStartTimeStr).getTime() !== new Date(slotStartTimeStr).getTime()) {
                 return false;
             }
-            // --- MODIFICATION: Log comparison details ---
-            console.log(`Checking booking ID ${booking.booking_id} for slot ${slotStartTime}:`);
-            console.log(`  Selected Pet IDs: [${selectedPetIds.join(', ')}]`);
-            console.log(`  Booking Pets:`, booking.pets);
             // --- END MODIFICATION ---
 
             // Check if any pet in this booking is also in the selectedPetIds list
@@ -196,7 +196,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     const aggregateSlots = (slots: CalculatedSlot[], serviceId: number): AggregatedSlot[] => {
         if (!slots || slots.length === 0) return [];
 
-        const grouped: { [key: string]: { serviceId: number; serviceName: string; startTime: string; endTime: string; totalCapacity: number; price: number } } = {};
+        const grouped: { [key: string]: { serviceId: number; serviceName: string; startTime: string; endTime: string; totalCapacity: number; price: number; uses_staff_capacity: boolean; zero_capacity_reason: string | null; } } = {};
 
         const currentServiceName = getServiceName(serviceId);
 
@@ -205,11 +205,12 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             const startTime = slot.start_time;
             const endTime = slot.end_time;
             const remainingCapacity = slot.remaining_capacity;
-            // Use the optional price_per_pet from the type, default to 0.
             const pricePerPet = slot.price_per_pet ?? 0;
+            const usesStaffCapacity = slot.uses_staff_capacity ?? false;
+            const zeroCapacityReason = slot.zero_capacity_reason ?? null;
 
-            // --- MODIFICATION: Log individual slot price ---
-            console.log(`Raw slot time: ${startTime}, Price from API: ${slot.price_per_pet}, Used price: ${pricePerPet}`);
+            // Log individual slot price
+            console.log(`Raw slot time: ${startTime}, Price from API: ${slot.price_per_pet}, Used price: ${pricePerPet}, Uses Staff Cap: ${usesStaffCapacity}, Reason: ${zeroCapacityReason}`);
 
             // Check if essential data is present
             if (!startTime || !endTime || typeof remainingCapacity !== 'number') {
@@ -227,10 +228,17 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                     startTime: startTime, // Use variable
                     endTime: endTime,     // Use variable
                     totalCapacity: 0,
-                    price: pricePerPet // Use variable, defaulting to 0 if missing
+                    price: pricePerPet, // Use variable, defaulting to 0 if missing
+                    uses_staff_capacity: usesStaffCapacity, // Assume consistent within group
+                    zero_capacity_reason: zeroCapacityReason, // Assume consistent for time slot
                 };
             }
+            // Add capacity. Ensure uses_staff_capacity is consistent if already grouped.
             grouped[key].totalCapacity += remainingCapacity;
+            if (grouped[key].uses_staff_capacity !== usesStaffCapacity) {
+                // This case shouldn't happen if API/DB logic is correct (all slots for one service/time rule use same capacity type)
+                console.warn(`Inconsistent uses_staff_capacity flag within aggregated slot ${key}. Sticking with first value.`);
+            }
         });
 
         // Convert grouped object back to an array
@@ -240,7 +248,9 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             startTime: group.startTime,
             endTime: group.endTime,
             totalRemainingCapacity: group.totalCapacity,
-            price_per_pet: group.price // Assign the stored price
+            price_per_pet: group.price, // Assign the stored price
+            uses_staff_capacity: group.uses_staff_capacity,
+            zero_capacity_reason: group.zero_capacity_reason,
         }));
     };
 
@@ -492,7 +502,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             // Aggregate the data for display ONLY IF service doesn't require field selection
             if (!selectedService.requires_field_selection) {
                 const aggregated = aggregateSlots(data, serviceIdNum);
-                console.log("Aggregated data:", aggregated);
                 setAggregatedSlots(aggregated);
             } else {
                 setAggregatedSlots([]); // Ensure aggregated is empty if showing raw
@@ -669,32 +678,51 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                         {aggregatedSlots.map((slot) => {
                                             const slotKey = slot.startTime; // Key for selection when not field-specific
                                             const isSelected = selectedSlots.has(slotKey);
-                                            // --- MODIFICATION: Check if booked ---
                                             const isBooked = isSlotBookedBySelectedPets(slot.startTime);
                                             const canSelect = slot.totalRemainingCapacity > 0 && !isBooked;
+
+                                            // --- MODIFICATION: Log slot properties before checks ---
+                                            console.log(`Rendering slot ${slotKey}: Capacity=${slot.totalRemainingCapacity}, isBooked=${isBooked}, usesStaffCap=${slot.uses_staff_capacity}`);
+
+                                            // Differentiate reason for zero capacity
+                                            const isUnavailable = slot.zero_capacity_reason === 'no_staff';
+                                            const isFull = slot.zero_capacity_reason === 'staff_full' || slot.zero_capacity_reason === 'base_full';
 
                                             return (
                                                 <div
                                                     key={slotKey}
                                                     style={{
-                                                        border: `2px solid ${isSelected && !isBooked ? '#00aaff' : (isBooked ? '#888' : '#555')}`,
+                                                        // Adjust border/background/opacity for unavailable/full states
+                                                        border: `2px solid ${isSelected && !isBooked ? '#00aaff' : (isBooked ? '#888' : (isUnavailable ? '#777' : (isFull ? '#666' : '#555' )))}`,
                                                         padding: '1rem',
                                                         borderRadius: '4px',
-                                                        // --- MODIFICATION: Update cursor/opacity ---
                                                         cursor: canSelect ? 'pointer' : 'not-allowed',
-                                                        opacity: canSelect ? 1 : (isBooked ? 0.5 : 0.6),
-                                                        background: isSelected && !isBooked ? '#003366' : (isBooked ? '#444' : '#333')
+                                                        opacity: canSelect ? 1 : (isBooked ? 0.5 : (isUnavailable ? 0.6 : (isFull ? 0.7 : 0.6))), // Adjust opacity levels
+                                                        background: isSelected && !isBooked ? '#003366' : (isBooked ? '#444' : (isUnavailable ? '#333' : (isFull ? '#3a3a3f' : '#333')))// Adjust background levels
                                                     }}
-                                                    // --- MODIFICATION: Prevent click if booked ---
                                                     onClick={() => canSelect && handleSlotSelectionToggle(slotKey)}
                                                 >
                                                     {/* <p><strong>Service:</strong> {slot.serviceName}</p> */}
                                                     <p><strong>Time:</strong> {formatDateRange(slot.startTime, slot.endTime)}</p>
                                                     <p><strong>Total Remaining Capacity:</strong> {slot.totalRemainingCapacity}</p>
                                                     <p><strong>Price per Pet:</strong> {formatPrice(slot.price_per_pet)}</p>
-                                                    {/* --- MODIFICATION: Show Booked/Selected status --- */}
+                                                    {/* --- MODIFICATION: Show Booked/Selected/Unavailable/Full status --- */}
                                                     {isBooked && <p style={{ color: '#aaa', fontWeight: 'bold' }}>Booked by You</p>}
                                                     {isSelected && !isBooked && <p style={{ color: '#00aaff', fontWeight: 'bold' }}>Selected</p>}
+                                                    {isUnavailable && <p style={{ color: '#bbb', fontWeight: 'bold' }}>Unavailable</p>}
+                                                    {isFull && (
+                                                        <>
+                                                            <p style={{ color: '#bbb', fontWeight: 'bold' }}>Fully Booked</p>
+                                                            {/* Keep Notify Me only if truly full */}
+                                                            <button
+                                                                className="secondary"
+                                                                style={{fontSize: '0.8rem', padding: '0.3rem 0.6rem', marginTop: '0.5rem'}}
+                                                                onClick={(e) => { e.stopPropagation(); alert('Notify Me feature coming soon!'); }}
+                                                            >
+                                                                Notify Me
+                                                            </button>
+                                                        </>
+                                                    )}
                                                 </div>
                                             );
                                         })}

@@ -2,17 +2,6 @@ import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 
-// Define the structure expected from the DB function for a single slot - REMOVED as RPC is removed
-/*
-type SingleSlotCheckResult = {
-    slot_field_id: number;
-    slot_field_name: string;
-    slot_start_time: string; // ISO string
-    slot_end_time: string;   // ISO string
-    slot_remaining_capacity: number;
-}
-*/
-
 export async function POST(request: Request) {
     const supabase = await createServerClient();
     const supabaseAdmin = await createAdminClient();

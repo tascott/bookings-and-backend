@@ -77,6 +77,7 @@ export async function GET(request: Request) {
     start_time: string; // HH:MM
     end_time: string;   // HH:MM
     override_price: number | null;
+    use_staff_vehicle_capacity: boolean;
   }
 
   // 3. Fetch necessary data for pricing
@@ -96,7 +97,7 @@ export async function GET(request: Request) {
     // Fetch potentially relevant active availability rules for the service
     const { data: rulesData, error: rulesError } = await supabaseAdmin
       .from('service_availability')
-      .select('id, days_of_week, specific_date, start_time, end_time, override_price') // Select needed fields
+      .select('id, days_of_week, specific_date, start_time, end_time, override_price, use_staff_vehicle_capacity') // Select needed fields
       .eq('service_id', serviceId)
       .eq('is_active', true)
       // Basic filter: Fetch rules that *could* apply within the date range
@@ -123,6 +124,7 @@ export async function GET(request: Request) {
         slot_remaining_capacity: number | null; // Allow null for infinite/staff-based
         rule_uses_staff_capacity: boolean;
         associated_field_ids: number[]; // Added
+        zero_capacity_reason: string | null; // 'staff_full', 'no_staff', 'base_full', or null
     }
 
     const { data: slots, error: rpcError } = await supabase.rpc(
@@ -169,7 +171,7 @@ export async function GET(request: Request) {
             // --- MODIFICATION: Add detailed logging inside rule loop ---
             console.log(`--- Checking rules for slot ${slot.slot_start_time} (Day ${slotDayOfWeek}, Date ${slotDateStr}, Time ${slotStartTimeStr}) ---`);
             for (const rule of availabilityRules) {
-                console.log(`  Rule ${rule.id}: Start=${rule.start_time}, End=${rule.end_time}, Date=${rule.specific_date}, Days=${rule.days_of_week}, Price=${rule.override_price}`);
+                console.log(`  Rule ${rule.id}: Start=${rule.start_time}, End=${rule.end_time}, Date=${rule.specific_date}, Days=${rule.days_of_week}, Price=${rule.override_price}, UsesStaffCap=${rule.use_staff_vehicle_capacity}`);
                 // --- MODIFICATION: Truncate rule times to HH:MM ---
                 const ruleStartTimeHHMM = rule.start_time.substring(0, 5);
                 const ruleEndTimeHHMM = rule.end_time.substring(0, 5);
@@ -219,13 +221,22 @@ export async function GET(request: Request) {
                 uses_staff_capacity: slot.rule_uses_staff_capacity,
                 field_ids: slot.associated_field_ids,
                 price_per_pet: slotPrice, // Add the calculated price
+                zero_capacity_reason: slot.zero_capacity_reason,
                 // Add a simple capacity display string for UI
                 capacity_display: slot.rule_uses_staff_capacity
                     ? (slot.slot_remaining_capacity !== null ? `${slot.slot_remaining_capacity} (Staff)` : 'Staff Limited - Check Booking') // Modified display
                     : (slot.slot_remaining_capacity !== null ? `${slot.slot_remaining_capacity}` : 'Unlimited')
             };
         })
-        .filter(slot => slot.start_time.split('T')[0] > todayUTC);
+        // --- MODIFICATION: Log filter values ---
+        .filter(slot => {
+            const slotDate = slot.start_time.split('T')[0];
+            const isAfterToday = slotDate > todayUTC;
+            console.log(`Filtering slot ${slot.start_time}: SlotDate=${slotDate}, TodayUTC=${todayUTC}, IsAfterToday=${isAfterToday}`);
+            return isAfterToday;
+        });
+        // Original filter: .filter(slot => slot.start_time.split('T')[0] > todayUTC);
+        // --- END MODIFICATION ---
 
     // 6. Return the processed slots
     return NextResponse.json(processedSlots);

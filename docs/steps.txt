@@ -58,30 +58,6 @@ Purpose: A doggy daycare booking and multi-site management platform.
 _Refer to the existing SQL schema (not included here) for data definitions._
 
 
-Current TODOS:
-
-- Add pricing to each service, per pet, add a discount feature for additionals but set to 0% for now
-
-- Amend the new booking area on admin side, to have a search-to-find user then modal to edit - or paginated list - then can edit user to say they are 'accepted' or whatever (new column)
-
-- calendar view for bookings (client)
-
-- addresses/map view/multi-map view (staff/admin)
-
-- calendar view for admin
-
-- assign staff, populates their dashboard for the day/week
-
-- booking cancellations
-
-- email confirmations of bookings (client and admin)
-
-- stripe integration (supabase) linked to bookings via the `payments` table.
-
-- refactor code, reduce codebase, update docs
-
-- error handling, tests
-
 ## UI Structure: Role-Based Tabbed Dashboards
 
 The application features a tabbed interface structure to provide role-appropriate dashboards for each user type. Each dashboard shows only the relevant features to that user role:
@@ -107,3 +83,30 @@ The application features a tabbed interface structure to provide role-appropriat
 
 ## Implementation Details
 The tabbed interface is built as a reusable component (`TabNavigation`) that can be configured for each user role. This provides consistent UX across the application while displaying only the permissions-appropriate content to each user type.
+
+
+Current TODOS:
+
+- Add pricing to each service, per pet, add a discount feature for additionals but set to 0% for now
+
+- Amend the new booking area on admin side, to have a search-to-find user then modal to edit - or paginated list - then can edit user to say they are 'accepted' or whatever (new column)
+
+- calendar view for bookings (client)
+
+- addresses/map view/multi-map view (staff/admin)
+
+- calendar view for admin
+
+- edit vehicles
+
+- assign staff, populates their dashboard for the day/week
+
+- booking refunds
+
+- email confirmations of bookings (client and admin)
+
+- stripe integration (supabase) linked to bookings via the `payments` table.
+
+- refactor code, reduce codebase, update docs
+
+- error handling, tests

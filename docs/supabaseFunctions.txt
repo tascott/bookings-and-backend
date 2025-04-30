@@ -1,0 +1,226 @@
+calculate_available_slots
+
+  -- Input validation
+  SELECT NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, NULL::INT, NULL::BOOLEAN, NULL::INT[], NULL::TEXT WHERE in_start_date IS NULL OR in_end_date IS NULL OR in_service_id IS NULL OR in_start_date > in_end_date LIMIT 0;
+
+  -- Generate relevant dates
+  WITH RelevantDates AS (
+      SELECT generate_series(in_start_date, in_end_date, interval '1 day')::date AS potential_date
+  ),
+  -- Identify potential slots based on service availability rules
+  PotentialRuleSlots AS (
+      SELECT
+          r.id AS rule_id,
+          r.field_ids,
+          r.start_time AS rule_start_time,
+          r.end_time AS rule_end_time,
+          r.base_capacity,
+          r.use_staff_vehicle_capacity,
+          rd.potential_date,
+          (rd.potential_date::timestamp AT TIME ZONE 'UTC' + r.start_time)::timestamptz AS potential_start,
+          (rd.potential_date::timestamp AT TIME ZONE 'UTC' + r.end_time)::timestamptz AS potential_end
+      FROM RelevantDates rd
+      JOIN public.service_availability r ON r.service_id = in_service_id AND r.is_active = true
+      WHERE (r.specific_date = rd.potential_date OR (r.specific_date IS NULL AND EXTRACT(ISODOW FROM rd.potential_date) = ANY(r.days_of_week)))
+  ),
+  -- Calculate booked spots aggregated per time slot per field
+  BookedFieldSpots AS (
+       SELECT
+          prs.potential_start,
+          prs.potential_end,
+          f.id as field_id,
+          COUNT(bp.id) AS booked_pet_spots
+      FROM PotentialRuleSlots prs
+      JOIN public.fields f ON f.id = ANY(prs.field_ids)
+      LEFT JOIN public.bookings b ON f.id = b.field_id
+                         AND TSTZRANGE(b.start_time, b.end_time, '()') && TSTZRANGE(prs.potential_start, prs.potential_end, '()')
+                         AND b.status != 'cancelled'
+      LEFT JOIN public.booking_pets bp ON b.id = bp.booking_id
+      GROUP BY prs.potential_start, prs.potential_end, f.id
+  ),
+  -- Check if all fields for a rule slot are booked (only relevant for staff capacity rules where staff might be available but fields blocked)
+  AggregatedFieldAvailability AS (
+      SELECT
+          prs.potential_start,
+          prs.potential_end,
+          COUNT(bfs.field_id) FILTER (WHERE bfs.booked_pet_spots > 0) AS booked_field_count,
+          ARRAY_LENGTH(prs.field_ids, 1) AS total_field_count
+      FROM PotentialRuleSlots prs
+      LEFT JOIN BookedFieldSpots bfs ON prs.potential_start = bfs.potential_start
+                                      AND prs.potential_end = bfs.potential_end
+                                      AND bfs.field_id = ANY(prs.field_ids)
+      WHERE prs.use_staff_vehicle_capacity = TRUE
+      GROUP BY prs.potential_start, prs.potential_end, prs.field_ids
+  ),
+  -- Determine staff availability and calculate their potential remaining capacity
+  StaffCapacity AS (
+    SELECT
+      prs.potential_start,
+      prs.potential_end,
+      -- Determine if staff could theoretically be available
+      (CASE
+         WHEN prs.use_staff_vehicle_capacity = FALSE THEN FALSE -- Rule doesn't use staff
+         WHEN in_client_default_staff_id IS NULL THEN FALSE     -- No staff assigned to client
+         ELSE EXISTS ( -- Check staff exists, is available, and has vehicle
+           SELECT 1
+           FROM public.staff s
+           JOIN public.staff_availability sa ON s.id = sa.staff_id
+           WHERE s.id = in_client_default_staff_id
+             AND s.default_vehicle_id IS NOT NULL -- Staff must have a vehicle
+             AND sa.is_available = TRUE
+             AND sa.start_time <= prs.rule_start_time AND sa.end_time >= prs.rule_end_time
+             AND (sa.specific_date = prs.potential_date OR (sa.specific_date IS NULL AND EXTRACT(ISODOW FROM prs.potential_date) = ANY(sa.days_of_week)))
+         )
+       END) AS is_staff_available,
+      -- Calculate capacity only if staff are available
+      CASE
+        WHEN prs.use_staff_vehicle_capacity = FALSE THEN NULL -- Not applicable
+        WHEN in_client_default_staff_id IS NULL THEN 0      -- No staff assigned
+        ELSE (
+          WITH StaffAvailCheck AS (
+             SELECT 1 FROM public.staff_availability sa WHERE sa.staff_id = in_client_default_staff_id AND sa.is_available = TRUE AND sa.start_time <= prs.rule_start_time AND sa.end_time >= prs.rule_end_time AND (sa.specific_date = prs.potential_date OR (sa.specific_date IS NULL AND EXTRACT(ISODOW FROM prs.potential_date) = ANY(sa.days_of_week))) LIMIT 1
+          ), VehicleCapCheck AS (
+             SELECT v.pet_capacity FROM public.staff s JOIN public.vehicles v ON s.default_vehicle_id = v.id WHERE s.id = in_client_default_staff_id LIMIT 1
+          ), StaffBookedCount AS (
+              SELECT COUNT(bp.id) AS count FROM public.bookings b JOIN public.booking_pets bp ON b.id = bp.booking_id JOIN public.staff st ON st.id = in_client_default_staff_id WHERE b.assigned_staff_id = st.user_id AND TSTZRANGE(b.start_time, b.end_time, '()') && TSTZRANGE(prs.potential_start, prs.potential_end, '()') AND b.status != 'cancelled'
+          )
+          SELECT CASE
+                   WHEN EXISTS (SELECT 1 FROM StaffAvailCheck) AND EXISTS (SELECT 1 FROM VehicleCapCheck)
+                   THEN GREATEST(0, (SELECT pet_capacity FROM VehicleCapCheck) - (SELECT count FROM StaffBookedCount))
+                   ELSE 0 -- Capacity is 0 if staff not available or no vehicle
+                 END
+        )
+      END::INT AS calculated_capacity
+    FROM PotentialRuleSlots prs
+    -- WHERE prs.use_staff_vehicle_capacity = TRUE -- Compute for all, join later will filter
+  ),
+  -- Calculate booked spots aggregated per timeslot for non-staff rules
+  TotalBookedFieldCapacity AS (
+       SELECT
+          prs.potential_start,
+          prs.potential_end,
+          SUM(bfs.booked_pet_spots) AS total_booked_spots
+      FROM PotentialRuleSlots prs
+      JOIN BookedFieldSpots bfs ON prs.potential_start = bfs.potential_start
+                                AND prs.potential_end = bfs.potential_end
+                                AND bfs.field_id = ANY(prs.field_ids)
+      WHERE prs.use_staff_vehicle_capacity = FALSE
+      GROUP BY prs.potential_start, prs.potential_end
+  )
+
+  -- Final Aggregation per Time Slot
+  SELECT
+      prs.potential_start AS slot_start_time,
+      prs.potential_end AS slot_end_time,
+      -- Determine final remaining capacity
+      CASE
+          WHEN prs.use_staff_vehicle_capacity = TRUE THEN
+              CASE
+                  -- If all associated fields are booked by *other* staff/services, capacity is 0 regardless of *this* staff
+                  WHEN COALESCE(afa.booked_field_count, 0) = COALESCE(afa.total_field_count, 0) AND COALESCE(afa.total_field_count, 0) > 0 THEN 0
+                  -- Otherwise, use the calculated capacity for the specific staff member
+                  ELSE COALESCE(sc.calculated_capacity, 0)
+              END
+          ELSE -- Use field/base capacity logic
+              CASE
+                  WHEN prs.base_capacity IS NULL THEN NULL -- Indicate unlimited
+                  ELSE GREATEST(0, (prs.base_capacity - COALESCE(tbfc.total_booked_spots, 0)))
+              END
+      END::INT AS slot_remaining_capacity,
+      prs.use_staff_vehicle_capacity AS rule_uses_staff_capacity,
+      prs.field_ids AS associated_field_ids,
+      -- Calculate zero_capacity_reason
+      CASE
+          -- If capacity > 0 or unlimited, reason is null
+          WHEN (
+               CASE
+                  WHEN prs.use_staff_vehicle_capacity = TRUE THEN
+                      CASE WHEN COALESCE(afa.booked_field_count, 0) = COALESCE(afa.total_field_count, 0) AND COALESCE(afa.total_field_count, 0) > 0 THEN 0 ELSE COALESCE(sc.calculated_capacity, 0) END
+                  ELSE
+                      CASE WHEN prs.base_capacity IS NULL THEN 999999 -- Represent unlimited as large number for comparison
+                           ELSE GREATEST(0, (prs.base_capacity - COALESCE(tbfc.total_booked_spots, 0)))
+                      END
+               END
+          ) > 0 THEN NULL
+          -- If capacity is 0
+          ELSE
+              CASE
+                  WHEN prs.use_staff_vehicle_capacity = TRUE THEN
+                      CASE
+                          -- Check if staff *could* have been available (from CTE) but capacity is now 0
+                          WHEN sc.is_staff_available = TRUE THEN 'staff_full'::text
+                          -- Otherwise, capacity is 0 because staff weren't available/assigned/had vehicle
+                          ELSE 'no_staff'::text
+                      END
+                  ELSE 'base_full'::text -- Base capacity rule and capacity is 0
+              END
+      END AS zero_capacity_reason
+  FROM
+      PotentialRuleSlots prs
+  LEFT JOIN -- Join StaffCapacity always
+      StaffCapacity sc ON prs.potential_start = sc.potential_start
+                       AND prs.potential_end = sc.potential_end
+                      -- AND prs.use_staff_vehicle_capacity = TRUE -- Join computed values even if rule uses base capacity, needed for reason calc maybe? Simpler to join always.
+  LEFT JOIN
+      TotalBookedFieldCapacity tbfc ON prs.potential_start = tbfc.potential_start
+                                    AND prs.potential_end = tbfc.potential_end
+                                    AND prs.use_staff_vehicle_capacity = FALSE
+  LEFT JOIN
+      AggregatedFieldAvailability afa ON prs.potential_start = afa.potential_start
+                                      AND prs.potential_end = afa.potential_end
+                                      AND prs.use_staff_vehicle_capacity = TRUE
+  ORDER BY
+      slot_start_time;
+z
+////////////////////////////////////////
+
+check_array_elements_range
+
+DECLARE
+  el INTEGER;
+BEGIN
+  IF arr IS NULL THEN
+    RETURN TRUE; -- Null arrays satisfy the check
+  END IF;
+  IF array_length(arr, 1) = 0 THEN
+    RETURN TRUE; -- Empty arrays satisfy the check
+  END IF;
+  FOREACH el IN ARRAY arr LOOP
+    IF el < min_val OR el > max_val THEN
+      RETURN FALSE; -- Element out of range
+    END IF;
+  END LOOP;
+  RETURN TRUE; -- All elements are within range
+END;
+
+/////////////////////////////////////////
+
+
+handle_new_user
+
+BEGIN
+  -- Insert into profiles table using metadata passed during signup
+  INSERT INTO public.profiles (user_id, first_name, last_name, phone)
+  VALUES (
+    NEW.id,
+    NEW.raw_user_meta_data ->> 'first_name',
+    NEW.raw_user_meta_data ->> 'last_name',
+    NEW.raw_user_meta_data ->> 'phone'
+  );
+
+  -- Optionally, insert into clients with just user_id and email
+  INSERT INTO public.clients (user_id, email)
+  VALUES (NEW.id, NEW.email);
+
+  RETURN NEW;
+END;
+
+
+
+update_staff_availability_updated_at
+
+
+BEGIN
+   NEW.updated_at = NOW();
+   RETURN NEW;
+END;

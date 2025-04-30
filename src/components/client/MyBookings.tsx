@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import styles from "@/app/page.module.css"; // Or dedicated styles
 
 // Type matching the API response structure from /api/my-bookings
 type ClientBookingDetails = {
@@ -46,39 +45,75 @@ export default function MyBookings() {
         fetchMyBookings();
     }, [fetchMyBookings]);
 
+    // --- MODIFICATION: Filter bookings ---
+    const now = new Date().getTime();
+    const upcomingBookings = bookings.filter(b => new Date(b.end_time).getTime() > now);
+    const pastBookings = bookings.filter(b => new Date(b.end_time).getTime() <= now);
+
+    // Helper function to render a single booking card (to avoid repetition)
+    const renderBookingCard = (booking: ClientBookingDetails) => (
+        <div key={booking.booking_id} /* className={styles.bookingCard} - Use dashboard styles */ style={{ border: '1px solid #444', background: '#333', padding: '1rem', marginBottom: '1rem', borderRadius: '6px' }}>
+             {/* Use specific classes for better targeting if needed */}
+            <p>
+                <strong>Service:</strong> {booking.service_type || 'N/A'} |
+                <strong>Status:</strong> {booking.status} |
+                <strong>Field ID:</strong> {booking.field_id}
+            </p>
+            <p>
+                <strong>From:</strong> {new Date(booking.start_time).toLocaleString()} |
+                <strong>To:</strong> {new Date(booking.end_time).toLocaleString()}
+            </p>
+            {booking.pets && booking.pets.length > 0 && (
+                <p>
+                    <strong>Pet(s):</strong> {booking.pets.map(p => p.name).join(', ')}
+                </p>
+            )}
+            {/* Add cancellation button/logic later for upcoming? */}
+        </div>
+    );
+
     return (
-        <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
+        // --- MODIFICATION: Update structure for sections ---
+        <section className="dashboard-section" style={{ marginTop: '2rem' }}>
             <h2>My Bookings</h2>
 
             {isLoading && <p>Loading your bookings...</p>}
-            {error && <p style={{ color: 'red' }}>Error loading bookings: {error}</p>}
+            {error && <p className="error-message">Error loading bookings: {error}</p>}
 
             {!isLoading && !error && bookings.length === 0 && (
                 <p>You have no past or upcoming bookings.</p>
             )}
 
             {!isLoading && !error && bookings.length > 0 && (
-                <div className={styles.bookingList}> {/* Reuse existing style or create new */}
-                    {bookings.map(booking => (
-                        <div key={booking.booking_id} className={styles.bookingCard} style={{ border: '1px solid #eee', padding: '1rem', marginBottom: '1rem', borderRadius: '4px' }}>
-                            <p>
-                                <strong>Service:</strong> {booking.service_type || 'N/A'} |
-                                <strong>Status:</strong> {booking.status} |
-                                <strong>Field ID:</strong> {booking.field_id} {/* Add field name lookup later if needed */}
-                            </p>
-                            <p>
-                                <strong>From:</strong> {new Date(booking.start_time).toLocaleString()} |
-                                <strong>To:</strong> {new Date(booking.end_time).toLocaleString()}
-                            </p>
-                            {booking.pets && booking.pets.length > 0 && (
-                                <p>
-                                    <strong>Pet(s):</strong> {booking.pets.map(p => p.name).join(', ')}
-                                </p>
-                            )}
-                            {/* Add cancellation button/logic later? */}
+                <>
+                    {/* Upcoming Bookings Section */}
+                    {upcomingBookings.length > 0 && (
+                        <div style={{ marginBottom: '2rem' }}>
+                            <h3>Upcoming Bookings</h3>
+                            <div /* className={styles.bookingList} */>
+                                {upcomingBookings.map(renderBookingCard)}
+                            </div>
                         </div>
-                    ))}
-                </div>
+                    )}
+
+                    {/* Past Bookings Section */}
+                    {pastBookings.length > 0 && (
+                        <div>
+                            <h3>Booking History</h3>
+                            <div /* className={styles.bookingList} */>
+                                {pastBookings.map(renderBookingCard)}
+                            </div>
+                        </div>
+                    )}
+
+                     {/* Message if only past/upcoming exist but total bookings > 0 */}
+                     {upcomingBookings.length === 0 && pastBookings.length > 0 && (
+                         <p>You have no upcoming bookings.</p>
+                     )}
+                     {pastBookings.length === 0 && upcomingBookings.length > 0 && (
+                         <p>You have no past booking history.</p>
+                     )}
+                </>
             )}
         </section>
     );
