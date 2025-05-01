@@ -103,6 +103,7 @@ Project Summary for AI Assistant (booking-and-accounts)
     - Usage: Used for client lists and management in the UI.
     - Excludes users who are also present in the `staff` table.
     - Supports `search`, `limit`, `offset` query params. Returns `{ clients: [...], total: N }`. Includes flattened profile and `default_staff_name`.
+    - Supports `assigned_staff_id=me` query param. If present and the user is authenticated staff, returns only clients where `clients.default_staff_id` matches the staff member's ID. Excludes `default_staff_name` in this mode.
   - **POST:** Create a new client record (Admin only).
 - **/api/clients/[clientId]**
     - **GET:** Fetch specific client details including pets.
@@ -191,6 +192,7 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **src/components/client/PetManagement.tsx:** Client pet management UI.
 - **src/components/client/MyBookings.tsx:** Client booking history/upcoming bookings.
 - **src/components/staff/StaffDashboard.tsx:** Container for staff features. Fetches and manages state for bookings, services etc., needed for its child components.
+  - **My Clients Tab:** Displays a list of clients for whom the logged-in staff member is the `default_staff_id`. Fetches data via `/api/clients?assigned_staff_id=me`. Shows client name, email, phone, and a nested list of their pets.
 - **src/utils/auth-helpers.ts:** Centralized authentication/authorization helpers.
 - **src/utils/supabase/client.ts, server.ts, admin.ts:** Supabase client initializers.
 

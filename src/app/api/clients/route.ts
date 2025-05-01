@@ -3,123 +3,170 @@ import { createClient as createServerClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 import { getUserAuthInfo } from '@/utils/auth-helpers'
 
-// GET all clients (admin only)
+// GET clients (admin: all non-staff clients with search/pagination; staff: clients assigned to them)
 export async function GET(request: Request) {
   const supabase = await createServerClient()
   const supabaseAdmin = await createAdminClient()
 
-  // Get user auth info from our helper
-  const { isAdmin, error, status } = await getUserAuthInfo(supabase);
+  // --- Get user auth info and role FIRST ---
+  const { user, isAdmin, isStaff, error: authError, status: authStatus } = await getUserAuthInfo(supabase);
 
-  // Return early if there was an auth error
-  if (error) {
-    return NextResponse.json({ error }, { status: status || 401 });
+  // Return early if there was an auth error or no user
+  if (authError || !user) {
+    return NextResponse.json({ error: authError || 'Authentication required' }, { status: authStatus || 401 });
   }
 
-  // Only admins can list all clients
-  if (!isAdmin) {
-    return NextResponse.json({ error: 'Forbidden: Requires admin role' }, { status: 403 });
-  }
-
-  // --- Minimal search & pagination ---
+  // --- Read query parameters ---
   const { searchParams } = new URL(request.url);
+  const assignedStaffIdParam = searchParams.get('assigned_staff_id');
   const search = searchParams.get('search')?.trim() || '';
   const limit = parseInt(searchParams.get('limit') || '0', 10);
   const offset = parseInt(searchParams.get('offset') || '0', 10);
 
+
   try {
-    // Fetch all user IDs from the staff table first
-    const { data: staffUsers, error: staffFetchError } = await supabaseAdmin
-      .from('staff')
-      .select('user_id');
+    // --- Logic Branching based on Role and Parameter ---
 
-    if (staffFetchError) {
-        console.error('Error fetching staff user IDs:', staffFetchError);
-        throw new Error(`Failed to fetch staff data: ${staffFetchError.message}`);
-    }
-    const staffUserIds = staffUsers?.map(s => s.user_id).filter(id => id) || []; // Filter out nulls just in case
+    // CASE 1: Staff requesting their assigned clients
+    if (assignedStaffIdParam === 'me' && isStaff) {
+      // Get the staff ID associated with this user
+      const { data: staffInfo, error: staffInfoError } = await supabaseAdmin
+        .from('staff')
+        .select('id')
+        .eq('user_id', user.id)
+        .single();
 
-    // Now build the client query
-    let query = supabaseAdmin
-      .from('clients')
-      .select(`
-        id,
-        user_id,
-        email,
-        default_staff_id,
-        profiles ( first_name, last_name, phone ),
-        pets ( id, name, breed, size, is_confirmed ),
-        staff ( profiles ( first_name, last_name ) )
-      `, { count: 'exact' })
-      .order('id');
-
-    // <<< Filter out users who are also in the staff table >>>
-    if (staffUserIds.length > 0) {
-      query = query.not('user_id', 'in', `(${staffUserIds.join(',')})`);
-    }
-
-    if (search) {
-      // Filter by email only (joined fields not supported in .or())
-      // Note: This search might still include staff if their email matches, before the user_id filter is applied by the DB.
-      // Consider searching profiles.first_name, profiles.last_name if possible and needed.
-      query = query.ilike('email', `%${search}%`);
-    }
-    if (limit > 0) {
-      query = query.range(offset, offset + limit - 1);
-    }
-
-    const { data: clients, error: clientsError, count } = await query;
-    if (clientsError) {
-      console.error('Error fetching clients:', clientsError);
-      throw clientsError;
-    }
-    // Flatten the joined profile and staff profile fields
-    const clientsWithDetails = (clients || []).map(c => {
-      const clientProfile = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
-
-      // --- Safely extract nested staff profile ---
-      type StaffProfile = { first_name: string | null, last_name: string | null };
-      type StaffWithProfile = { profiles: StaffProfile | StaffProfile[] | null };
-
-      let staffProfile: StaffProfile | null = null;
-      // Check if c.staff exists and is not null
-      if (c.staff) {
-          // Type assertion for staff (could be object or array)
-          const staffData = c.staff as StaffWithProfile | StaffWithProfile[];
-          // Get the first staff member if it's an array
-          const singleStaff = Array.isArray(staffData) ? staffData[0] : staffData;
-
-          // Check if staff member and their profiles exist
-          if (singleStaff?.profiles) {
-              // Type assertion for profiles (could be object or array)
-              const profilesData = singleStaff.profiles;
-              // Get the first profile if it's an array
-              staffProfile = Array.isArray(profilesData) ? profilesData[0] : profilesData;
-          }
+      if (staffInfoError || !staffInfo) {
+        console.error('Error fetching staff ID for user:', user.id, staffInfoError);
+        return NextResponse.json({ error: 'Failed to verify staff identity.' }, { status: 500 });
       }
-      // --- End safe extraction ---
+      const staffId = staffInfo.id;
 
-      const defaultStaffName = staffProfile ? `${staffProfile.first_name || ''} ${staffProfile.last_name || ''}`.trim() : null;
+      // Fetch clients assigned to this staff member
+      const { data: clients, error: clientsError, count } = await supabaseAdmin
+        .from('clients')
+        .select(`
+          id,
+          user_id,
+          email,
+          default_staff_id,
+          profiles ( first_name, last_name, phone ),
+          pets ( id, name, breed, size, is_confirmed )
+        `, { count: 'exact' }) // Keep count if needed for UI
+        .eq('default_staff_id', staffId)
+        .order('id'); // Optional ordering
 
-      return {
-        // Omit the nested staff/profiles objects from the final client object if desired
-        id: c.id,
-        user_id: c.user_id,
-        email: c.email,
-        default_staff_id: c.default_staff_id,
-        // Include flattened client profile fields
-        first_name: clientProfile?.first_name ?? null,
-        last_name: clientProfile?.last_name ?? null,
-        phone: clientProfile?.phone ?? null,
-        // Include pets
-        pets: c.pets || [],
-        // Include the derived staff name
-        default_staff_name: defaultStaffName || null
-      };
-    });
-    return NextResponse.json({ clients: clientsWithDetails, total: count ?? clientsWithDetails.length });
+      if (clientsError) {
+        console.error('Error fetching assigned clients:', clientsError);
+        throw clientsError;
+      }
+
+       // Flatten the profile and pets (simplified for this case)
+      const clientsWithDetails = (clients || []).map(c => {
+        const clientProfile = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
+        return {
+          id: c.id,
+          user_id: c.user_id,
+          email: c.email,
+          default_staff_id: c.default_staff_id,
+          first_name: clientProfile?.first_name ?? null,
+          last_name: clientProfile?.last_name ?? null,
+          phone: clientProfile?.phone ?? null,
+          pets: c.pets || [],
+          // default_staff_name is omitted as it's implicitly the current staff user
+        };
+      });
+      // Return only the clients and total count for the staff view
+      return NextResponse.json({ clients: clientsWithDetails, total: count ?? clientsWithDetails.length });
+
+    }
+    // CASE 2: Admin requesting general client list
+    else if (isAdmin) {
+      // Fetch all user IDs from the staff table first (existing admin logic)
+      const { data: staffUsers, error: staffFetchError } = await supabaseAdmin
+        .from('staff')
+        .select('user_id');
+
+      if (staffFetchError) {
+          console.error('Error fetching staff user IDs:', staffFetchError);
+          throw new Error(`Failed to fetch staff data: ${staffFetchError.message}`);
+      }
+      const staffUserIds = staffUsers?.map(s => s.user_id).filter(id => id) || [];
+
+      // Build the client query (existing admin logic)
+      let query = supabaseAdmin
+        .from('clients')
+        .select(`
+          id,
+          user_id,
+          email,
+          default_staff_id,
+          profiles ( first_name, last_name, phone ),
+          pets ( id, name, breed, size, is_confirmed ),
+          staff ( profiles ( first_name, last_name ) )
+        `, { count: 'exact' })
+        .order('id');
+
+      // Filter out users who are also in the staff table
+      if (staffUserIds.length > 0) {
+        query = query.not('user_id', 'in', `(${staffUserIds.join(',')})`);
+      }
+
+      // Apply search and pagination (existing admin logic)
+      if (search) {
+        query = query.ilike('email', `%${search}%`); // Keep existing simple search
+      }
+      if (limit > 0) {
+        query = query.range(offset, offset + limit - 1);
+      }
+
+      const { data: clients, error: clientsError, count } = await query;
+      if (clientsError) {
+        console.error('Error fetching clients (admin):', clientsError);
+        throw clientsError;
+      }
+
+      // Flatten the joined profile and staff profile fields (existing admin logic)
+      const clientsWithDetails = (clients || []).map(c => {
+        const clientProfile = Array.isArray(c.profiles) ? c.profiles[0] : c.profiles;
+
+        // Safely extract nested staff profile (existing admin logic)
+        type StaffProfile = { first_name: string | null, last_name: string | null };
+        type StaffWithProfile = { profiles: StaffProfile | StaffProfile[] | null };
+        let staffProfile: StaffProfile | null = null;
+        if (c.staff) {
+            const staffData = c.staff as StaffWithProfile | StaffWithProfile[];
+            const singleStaff = Array.isArray(staffData) ? staffData[0] : staffData;
+            if (singleStaff?.profiles) {
+                const profilesData = singleStaff.profiles;
+                staffProfile = Array.isArray(profilesData) ? profilesData[0] : profilesData;
+            }
+        }
+        const defaultStaffName = staffProfile ? `${staffProfile.first_name || ''} ${staffProfile.last_name || ''}`.trim() : null;
+
+        return {
+          id: c.id,
+          user_id: c.user_id,
+          email: c.email,
+          default_staff_id: c.default_staff_id,
+          first_name: clientProfile?.first_name ?? null,
+          last_name: clientProfile?.last_name ?? null,
+          phone: clientProfile?.phone ?? null,
+          pets: c.pets || [],
+          default_staff_name: defaultStaffName || null
+        };
+      });
+      // Return clients, total count for admin view
+      return NextResponse.json({ clients: clientsWithDetails, total: count ?? clientsWithDetails.length });
+
+    }
+    // CASE 3: Non-admin attempting to access without the 'me' param, or other forbidden cases
+    else {
+      return NextResponse.json({ error: 'Forbidden: Access denied' }, { status: 403 });
+    }
+
   } catch (error) {
-    console.error('Error fetching clients:', error);
+    console.error('API Error in GET /api/clients:', error);
     const message = error instanceof Error ? error.message : 'Failed to fetch clients';
     return NextResponse.json({ error: message }, { status: 500 });
   }

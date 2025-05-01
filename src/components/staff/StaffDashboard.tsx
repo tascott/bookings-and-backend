@@ -1,32 +1,39 @@
 'use client';
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import SidebarNavigation from '@/components/SidebarNavigation';
 import BookingManagement from '@/components/admin/BookingManagement';
-import { createClient } from '@/utils/supabase/client';
+// import { createClient } from '@/utils/supabase/client'; // Unused
 import type { User } from '@supabase/supabase-js';
-import type { Site, Field, Booking, Service } from '@/types';
+// Removed Site, Field from import as they are unused now
+import type { Booking, Service, Client, Pet } from '@/types';
+
+// Define a type for the client data we expect for this view
+// (Subset of what the API returns, excluding nested/redundant fields)
+type StaffAssignedClient = Omit<Client, 'profiles' | 'staff' | 'default_staff_name'> & {
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  pets: Pet[];
+};
 
 // Define props for the staff dashboard - Only needs user now
 interface StaffDashboardProps {
   user: User;
-  // REMOVED all other props
 }
 
 export default function StaffDashboard({
   user,
-  // REMOVED all other props from destructuring
 }: StaffDashboardProps) {
-  const supabase = createClient(); // Initialize Supabase client
+  // const supabase = createClient(); // Unused
 
   // === State Hooks ===
   const [bookings, setBookings] = useState<Booking[]>([]);
-  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
-  const [sites, setSites] = useState<Site[]>([]);
-  const [fields, setFields] = useState<Field[]>([]);
-  const [services, setServices] = useState<Service[]>([]); // Add services state
-  const [isLoadingData, setIsLoadingData] = useState(true); // Consolidated loading state
-  const [error, setError] = useState<string | null>(null); // Consolidated error state
+  // const [sites, setSites] = useState<Site[]>([]); // Removed unused state
+  // const [fields, setFields] = useState<Field[]>([]); // Removed unused state
+  const [services, setServices] = useState<Service[]>([]);
+  const [isLoadingData, setIsLoadingData] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   // Profile state (keep as is)
   const [profile, setProfile] = useState<{ first_name: string; last_name: string; phone: string } | null>(null);
@@ -36,39 +43,33 @@ export default function StaffDashboard({
   const [editFields, setEditFields] = useState({ first_name: '', last_name: '', phone: '' });
   const [isSaving, setIsSaving] = useState(false);
 
-  // Ref for booking form (if needed by BookingManagement or a future staff booking form)
-  const addBookingFormRef = useRef<HTMLFormElement>(null);
+  // === NEW State for My Clients tab ===
+  const [myClients, setMyClients] = useState<StaffAssignedClient[]>([]);
+  const [isLoadingMyClients, setIsLoadingMyClients] = useState(true);
+  const [myClientsError, setMyClientsError] = useState<string | null>(null);
 
   // === Fetching Functions ===
   const fetchData = useCallback(async () => {
     setIsLoadingData(true);
     setError(null);
     try {
-      // Fetch bookings (likely filtered for the specific staff member? API needs adjustment?)
-      // For now, assume /api/bookings returns all, or adjust API endpoint/params
+      // Fetch bookings
       const bookingsRes = await fetch('/api/bookings'); // TODO: Filter by staff ID? `/api/bookings?staff_id=${user.id}`?
       if (!bookingsRes.ok) throw new Error(`Failed to fetch bookings: ${bookingsRes.statusText}`);
       const bookingsData: Booking[] = await bookingsRes.json();
       setBookings(bookingsData);
 
-      // Fetch sites, fields, services (needed for booking management display/dropdowns)
-      const [sitesRes, fieldsRes, servicesRes] = await Promise.all([
-        fetch('/api/sites'),
-        fetch('/api/fields'),
-        fetch('/api/services') // Fetch services
-      ]);
+      // Fetch services (needed for booking management display/dropdowns)
+      // Removed sites and fields fetches
+      const servicesRes = await fetch('/api/services');
 
-      if (!sitesRes.ok) throw new Error(`Failed to fetch sites: ${sitesRes.statusText}`);
-      if (!fieldsRes.ok) throw new Error(`Failed to fetch fields: ${fieldsRes.statusText}`);
       if (!servicesRes.ok) throw new Error(`Failed to fetch services: ${servicesRes.statusText}`);
 
-      const sitesData: Site[] = await sitesRes.json();
-      const fieldsData: Field[] = await fieldsRes.json();
-      const servicesData: Service[] = await servicesRes.json(); // Set services
+      const servicesData: Service[] = await servicesRes.json();
 
-      setSites(sitesData);
-      setFields(fieldsData);
-      setServices(servicesData); // Store services
+      // setSites(sitesData); // Removed
+      // setFields(fieldsData); // Removed
+      setServices(servicesData);
 
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to load dashboard data';
@@ -76,18 +77,47 @@ export default function StaffDashboard({
       setError(errorMessage);
       // Clear data on error
       setBookings([]);
-      setSites([]);
-      setFields([]);
+      // setSites([]); // Removed
+      // setFields([]); // Removed
       setServices([]);
     } finally {
       setIsLoadingData(false);
     }
   }, [user.id]); // Dependency on user.id if used in fetch path
 
+  // === NEW Fetch Function for My Clients ===
+  const fetchMyClients = useCallback(async () => {
+    setIsLoadingMyClients(true);
+    setMyClientsError(null);
+    try {
+      const res = await fetch('/api/clients?assigned_staff_id=me');
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || `Failed to fetch assigned clients: ${res.statusText}`);
+      }
+      const data: { clients: StaffAssignedClient[], total: number } = await res.json();
+      // Log the received data structure - REMOVED
+      // console.log('Fetched assigned clients data:', JSON.stringify(data, null, 2));
+      setMyClients(data.clients || []);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Failed to load assigned clients';
+      console.error(errorMessage, e);
+      setMyClientsError(errorMessage);
+      setMyClients([]); // Clear data on error
+    } finally {
+      setIsLoadingMyClients(false);
+    }
+  }, []);
+
   // Fetch dashboard data on mount
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+
+  // Fetch assigned clients on mount
+  useEffect(() => {
+    fetchMyClients();
+  }, [fetchMyClients]);
 
   // Fetch profile data (keep as is)
   useEffect(() => {
@@ -110,25 +140,9 @@ export default function StaffDashboard({
 
   // === Action Handlers ===
 
-  // handleAddBooking might need to be defined here if Staff can create bookings
-  // Or potentially passed through to BookingManagement if it handles its own adds
-  const handleAddBooking = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
-      // Placeholder: Implement staff booking logic if needed
-      event.preventDefault();
-      alert('Staff booking creation not implemented yet.');
-      // Example using /api/admin-booking (if staff use that endpoint)
-      // const formData = new FormData(event.currentTarget);
-      // try {
-      //   const res = await fetch('/api/admin-booking', { method: 'POST', body: formData });
-      //   if (!res.ok) throw new Error(await res.text());
-      //   fetchData(); // Refetch data after booking
-      //   addBookingFormRef.current?.reset();
-      // } catch(e) { setError(...) }
-  }, [fetchData]); // Depends on refetch
-
   // handleToggleBookingPaidStatus - Staff might not have permission? Check API/requirements
   // Assuming staff *can* toggle status for now, mimicking AdminDashboard
-   const handleToggleBookingPaidStatus = useCallback(async (bookingId: number, currentStatus: boolean) => {
+  const handleToggleBookingPaidStatus = useCallback(async (bookingId: number, currentStatus: boolean) => {
     setError(null);
     const newStatus = !currentStatus;
     try {
@@ -154,9 +168,6 @@ export default function StaffDashboard({
   }, []);
 
   // === Helper Functions ===
-  const getFieldsForSite = useCallback((siteId: number): Field[] => {
-      return fields.filter(f => f.site_id === siteId);
-  }, [fields]); // Depends on fields state
 
   // Profile edit functions (keep as is)
   const startEdit = () => {
@@ -206,16 +217,10 @@ export default function StaffDashboard({
           role="staff"
           bookings={bookings} // Pass local state
           isLoadingBookings={isLoadingData} // Use consolidated loading state
-          sites={sites} // Pass local state
-          fields={fields} // Pass local state
           services={services} // Pass local state
           error={error} // Pass local state
           refetchBookings={fetchData} // Pass main data fetcher
           handleToggleBookingPaidStatus={handleToggleBookingPaidStatus} // Pass handler
-          // Pass other potentially needed props if BookingManagement requires them
-          // handleAddBooking={handleAddBooking} // Pass if staff can add via this component
-          // addBookingFormRef={addBookingFormRef}
-          // getFieldsForSite={getFieldsForSite}
         />
       ),
     },
@@ -239,10 +244,34 @@ export default function StaffDashboard({
       content: (
         <div>
           <h3>My Assigned Clients</h3>
-          <p>View details of clients assigned to your bookings.</p>
-          <div /* className={styles.comingSoon} */ >
-            <p>Coming soon - view client and pet details for your scheduled shifts</p>
-          </div>
+          <p>Clients for whom you are the default assigned staff member.</p>
+          {isLoadingMyClients && <p>Loading clients...</p>}
+          {myClientsError && <p style={{ color: 'red' }}>Error: {myClientsError}</p>}
+          {!isLoadingMyClients && !myClientsError && (
+            myClients.length > 0 ? (
+              <ul style={{ listStyleType: 'disc', paddingLeft: '20px' }}>
+                {myClients.map(client => (
+                  <li key={client.id} style={{ marginBottom: '10px' }}>
+                    <div>
+                      <strong>{client.first_name || ''} {client.last_name || ''}</strong> ({client.email})
+                      {client.phone && <span> - Phone: {client.phone}</span>}
+                    </div>
+                    {client.pets && client.pets.length > 0 && (
+                      <ul style={{ listStyleType: 'circle', paddingLeft: '20px', marginTop: '5px' }}>
+                        {client.pets.map(pet => (
+                           <li key={pet.id} style={{ fontSize: '0.9em' }}>
+                             {pet.name} ({pet.breed})
+                           </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p>No clients are currently assigned to you.</p>
+            )
+          )}
         </div>
       ),
     },
