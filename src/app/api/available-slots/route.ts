@@ -69,7 +69,6 @@ export async function GET(request: Request) {
        return NextResponse.json({ error: message }, { status: 500 });
   }
 
-  // --- MODIFICATION: Define type for fetched rules ---
   type FetchedAvailabilityRule = {
     id: number;
     days_of_week: number[] | null;
@@ -158,7 +157,6 @@ export async function GET(request: Request) {
     const todayUTC = new Date().toISOString().split('T')[0];
     const processedSlots = fetchedSlots
         .map(slot => {
-            // --- MODIFICATION: Add Price Calculation Logic ---
             const slotStart = new Date(slot.slot_start_time);
             const slotDateStr = slot.slot_start_time.split('T')[0]; // YYYY-MM-DD
             const slotDayOfWeek = (slotStart.getUTCDay() + 6) % 7 + 1; // Monday=1, Sunday=7
@@ -168,17 +166,12 @@ export async function GET(request: Request) {
 
             // Find best matching rule (specific date takes precedence over recurring)
             let bestMatchRule = null;
-            // --- MODIFICATION: Add detailed logging inside rule loop ---
-            console.log(`--- Checking rules for slot ${slot.slot_start_time} (Day ${slotDayOfWeek}, Date ${slotDateStr}, Time ${slotStartTimeStr}) ---`);
             for (const rule of availabilityRules) {
                 console.log(`  Rule ${rule.id}: Start=${rule.start_time}, End=${rule.end_time}, Date=${rule.specific_date}, Days=${rule.days_of_week}, Price=${rule.override_price}, UsesStaffCap=${rule.use_staff_vehicle_capacity}`);
-                // --- MODIFICATION: Truncate rule times to HH:MM ---
                 const ruleStartTimeHHMM = rule.start_time.substring(0, 5);
                 const ruleEndTimeHHMM = rule.end_time.substring(0, 5);
                 // Check time overlap using truncated times
                 const timeMatches = slotStartTimeStr >= ruleStartTimeHHMM && slotStartTimeStr < ruleEndTimeHHMM;
-                console.log(`    Time comparison (${slotStartTimeStr} >= ${ruleStartTimeHHMM} && ${slotStartTimeStr} < ${ruleEndTimeHHMM}): ${timeMatches}`);
-                // --- END MODIFICATION ---
 
                 if (timeMatches) {
                     // Check specific date match
@@ -204,7 +197,6 @@ export async function GET(request: Request) {
                      console.log(`    -> No Match (Time mismatch)`);
                 }
             }
-            // --- END MODIFICATION ---
 
             if (bestMatchRule && bestMatchRule.override_price !== null) {
                 slotPrice = bestMatchRule.override_price;
@@ -212,7 +204,6 @@ export async function GET(request: Request) {
             } else {
                  console.log(`Slot ${slot.slot_start_time}: Using default price ${slotPrice}`);
             }
-            // --- END MODIFICATION ---
 
             return {
                 start_time: slot.slot_start_time,
@@ -228,15 +219,12 @@ export async function GET(request: Request) {
                     : (slot.slot_remaining_capacity !== null ? `${slot.slot_remaining_capacity}` : 'Unlimited')
             };
         })
-        // --- MODIFICATION: Log filter values ---
         .filter(slot => {
             const slotDate = slot.start_time.split('T')[0];
             const isAfterToday = slotDate > todayUTC;
             console.log(`Filtering slot ${slot.start_time}: SlotDate=${slotDate}, TodayUTC=${todayUTC}, IsAfterToday=${isAfterToday}`);
             return isAfterToday;
         });
-        // Original filter: .filter(slot => slot.start_time.split('T')[0] > todayUTC);
-        // --- END MODIFICATION ---
 
     // 6. Return the processed slots
     return NextResponse.json(processedSlots);

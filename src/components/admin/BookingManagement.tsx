@@ -7,12 +7,11 @@ import TabNavigation from '@/components/TabNavigation'; // Import TabNavigation
 // Define types (or import from shared location)
 type Booking = {
   id: number;
-  field_id: number;
+  booking_field_ids?: number[]; // Added new array
   start_time: string;
   end_time: string;
   service_type: string | null;
   status: string;
-  max_capacity: number | null;
   is_paid: boolean;
   // Add fields returned by the updated API
   client_id?: number | null;
@@ -85,22 +84,18 @@ export default function BookingManagement({
 
     // State for editing a booking
     const [editingBooking, setEditingBooking] = useState<Booking | null>(null);
-    const [editFormFieldId, setEditFormFieldId] = useState<string>('');
     const [editFormStartTime, setEditFormStartTime] = useState<string>('');
     const [editFormEndTime, setEditFormEndTime] = useState<string>('');
     const [editFormServiceType, setEditFormServiceType] = useState<string>('');
     const [editFormStatus, setEditFormStatus] = useState<string>('');
-    const [editFormMaxCapacity, setEditFormMaxCapacity] = useState<string>('');
 
     // --- Edit Booking Handlers ---
     const handleEditBookingClick = useCallback((booking: Booking) => {
         setEditingBooking(booking);
-        setEditFormFieldId(String(booking.field_id));
         setEditFormStartTime(formatDateTimeLocal(booking.start_time));
         setEditFormEndTime(formatDateTimeLocal(booking.end_time));
         setEditFormServiceType(booking.service_type || '');
         setEditFormStatus(booking.status || '');
-        setEditFormMaxCapacity(booking.max_capacity !== null ? String(booking.max_capacity) : '');
         setLocalError(null);
     }, []);
 
@@ -117,27 +112,20 @@ export default function BookingManagement({
 
         // Construct payload with only the fields being updated (match PUT API)
         const payload = {
-            field_id: editFormFieldId,
             start_time: editFormStartTime ? new Date(editFormStartTime).toISOString() : undefined,
             end_time: editFormEndTime ? new Date(editFormEndTime).toISOString() : undefined,
             service_type: editFormServiceType || undefined,
             status: editFormStatus || undefined,
-            max_capacity: editFormMaxCapacity === '' ? null : parseInt(editFormMaxCapacity, 10),
         };
 
         // Basic validation
-        if (!payload.field_id || !payload.start_time || !payload.end_time) {
-            setLocalError('Field, Start Time, and End Time are required during update.');
+        if (!payload.start_time || !payload.end_time) {
+            setLocalError('Start Time and End Time are required during update.');
             setIsSubmitting(false);
             return;
         }
          if (new Date(payload.end_time) <= new Date(payload.start_time)) {
             setLocalError('End time must be after start time.');
-             setIsSubmitting(false);
-            return;
-        }
-         if (payload.max_capacity !== null && (isNaN(payload.max_capacity))) {
-             setLocalError('Invalid Max Capacity value.');
              setIsSubmitting(false);
             return;
         }
@@ -165,7 +153,7 @@ export default function BookingManagement({
         } finally {
             setIsSubmitting(false);
         }
-    }, [editingBooking, editFormFieldId, editFormStartTime, editFormEndTime, editFormServiceType, editFormStatus, editFormMaxCapacity, refetchBookings]);
+    }, [editingBooking, editFormStartTime, editFormEndTime, editFormServiceType, editFormStatus, refetchBookings]);
 
      // --- Delete Booking Handler ---
     const handleDeleteBooking = useCallback(async (bookingId: number) => {
@@ -215,7 +203,7 @@ export default function BookingManagement({
                         <div>Client</div>
                         <div>Pet(s)</div>
                         <div>Service</div>
-                        <div>Field</div>
+                        <div>Field(s)</div>
                         <div>Time</div>
                         {role === 'admin' && <> {/* Admin only columns */}
                             <div>Status</div>
@@ -228,7 +216,7 @@ export default function BookingManagement({
                             <div>{booking.client_name || (booking.client_id ? `Client ID ${booking.client_id}` : 'N/A')}</div>
                             <div>{booking.pet_names?.join(', ') || 'N/A'}</div>
                             <div>{booking.service_type || 'N/A'}</div>
-                            <div>{fields.find(f => f.id === booking.field_id)?.name || `Field ID ${booking.field_id}`}</div>
+                            <div>{booking.booking_field_ids && booking.booking_field_ids.length > 0 ? booking.booking_field_ids.join(', ') : 'N/A'}</div>
                             <div>
                                 {formatDateTimeLocal(booking.start_time).replace('T', ' ')} -
                                 {formatDateTimeLocal(booking.end_time).replace('T', ' ')}
@@ -327,50 +315,33 @@ export default function BookingManagement({
                     <div style={{ background: '#2a2a2e', padding: '2rem', borderRadius: 8, color: '#fff', width: '90%', maxWidth: '500px' }}>
                         <h3>Edit Booking ID: {editingBooking.id}</h3>
                         {localError && <p style={{ color: '#f87171' }}>{localError}</p>}
-                        <form onSubmit={handleUpdateBookingSubmit}>
-                             <div style={{ marginBottom: '1rem' }}>
-                                <label>Field:</label>
-                                <select value={editFormFieldId} onChange={(e) => setEditFormFieldId(e.target.value)} required className="input">
-                                    <option value="">-- Select Field --</option>
-                                    {sites.map(site => (
-                                        <optgroup key={site.id} label={site.name}>
-                                            {getFieldsForSite(site.id).map(field => (
-                                                <option key={field.id} value={field.id}>
-                                                    {field.name || `Field ID ${field.id}`}
-                                                </option>
-                                            ))}
-                                        </optgroup>
-                                    ))}
-                                </select>
-                            </div>
-                            <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                                <div style={{flex: 1}}>
-                                    <label>Start Time:</label>
-                                    <input type="datetime-local" value={editFormStartTime} onChange={(e) => setEditFormStartTime(e.target.value)} required className="input" />
+                        <div className={styles.editFormContainer} style={{ marginTop: '2rem', padding: '1.5rem', border: '1px solid #555', borderRadius: '8px', background: '#3a3a3e' }}>
+                            <h4>Edit Booking ID: {editingBooking.id}</h4>
+                            <form onSubmit={handleUpdateBookingSubmit}>
+                                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label htmlFor="edit_start_time">Start Time:</label>
+                                        <input type="datetime-local" id="edit_start_time" value={editFormStartTime} onChange={(e) => setEditFormStartTime(e.target.value)} required className="input" />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label htmlFor="edit_end_time">End Time:</label>
+                                        <input type="datetime-local" id="edit_end_time" value={editFormEndTime} onChange={(e) => setEditFormEndTime(e.target.value)} required className="input" />
+                                    </div>
                                 </div>
-                                <div style={{flex: 1}}>
-                                    <label>End Time:</label>
-                                    <input type="datetime-local" value={editFormEndTime} onChange={(e) => setEditFormEndTime(e.target.value)} required className="input" />
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <label htmlFor="edit_service_type">Service Type:</label>
+                                    <input type="text" id="edit_service_type" value={editFormServiceType} onChange={(e) => setEditFormServiceType(e.target.value)} className="input" />
                                 </div>
-                            </div>
-                             <div style={{ marginBottom: '1rem' }}>
-                                <label>Service Type:</label>
-                                <input type="text" value={editFormServiceType} onChange={(e) => setEditFormServiceType(e.target.value)} className="input" />
-                            </div>
-                             <div style={{ marginBottom: '1rem' }}>
-                                <label>Status:</label>
-                                <input type="text" value={editFormStatus} onChange={(e) => setEditFormStatus(e.target.value)} className="input" />
-                            </div>
-                             <div style={{ marginBottom: '1rem' }}>
-                                <label>Max Capacity (Optional):</label>
-                                <input type="number" value={editFormMaxCapacity} onChange={(e) => setEditFormMaxCapacity(e.target.value)} min="0" className="input" />
-                            </div>
-
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
-                                <button type="button" onClick={handleCancelEditBooking} className="button secondary" disabled={isSubmitting}>Cancel</button>
-                                <button type="submit" className="button primary" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Changes'}</button>
-                            </div>
-                        </form>
+                                <div style={{ marginBottom: '1rem' }}>
+                                    <label htmlFor="edit_status">Status:</label>
+                                    <input type="text" id="edit_status" value={editFormStatus} onChange={(e) => setEditFormStatus(e.target.value)} className="input" />
+                                </div>
+                                <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
+                                    <button onClick={handleCancelEditBooking} className="button secondary" style={{ marginRight: '1rem' }} disabled={isSubmitting}>Cancel</button>
+                                    <button type="submit" className="button primary" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Changes'}</button>
+                                </div>
+                            </form>
+                        </div>
                     </div>
                 </div>
             )}

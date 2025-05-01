@@ -59,7 +59,6 @@ type Pet = {
     is_confirmed?: boolean;
 }
 
-// --- MODIFICATION: Add type for Client Booking Details ---
 // Type definition based on /api/my-bookings response
 type ClientBookingDetails = {
     booking_id: number;
@@ -70,17 +69,6 @@ type ClientBookingDetails = {
     field_id: number;
     pets: { id: number; name: string }[]; // Array of pets linked to this booking
 }
-
-// Type for the payload sent to the booking API
-/* // Removed unused type for now
-interface BookingPayload {
-    service_id: number;
-    start_time: string;
-    end_time: string;
-    field_id?: number;
-    pet_ids: number[]; // Added selected pet IDs
-}
-*/
 
 // Define props for the component
 interface ClientBookingProps {
@@ -114,14 +102,12 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     // State for slots and selections
     const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set()); // Use Set for easy add/remove, key = `${startTime}` or `${fieldId}-${startTime}`
 
-    // --- MODIFICATION: State for client's existing bookings ---
     const [clientBookings, setClientBookings] = useState<ClientBookingDetails[]>([]);
     const [isLoadingBookings, setIsLoadingBookings] = useState(false);
 
     // Define helper here to be accessible throughout the component
     const getServiceName = (id: number) => services.find(s => s.id === id)?.name || `Service ID ${id}`;
 
-    // --- MODIFICATION START ---
     // Basic formatter functions (replace with library or more robust logic if needed)
     const formatDateRange = (startStr: string, endStr: string): string => {
         try {
@@ -156,7 +142,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         // Example: £15.00
         return `£${numPrice.toFixed(2)}`;
     };
-    // --- MODIFICATION END ---
 
     const isSlotBookedBySelectedPets = (slotStartTime: string): boolean => {
         if (selectedPetIds.length === 0 || clientBookings.length === 0) {
@@ -167,7 +152,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         // 1. Matches the slot's start time.
         // 2. Includes AT LEAST ONE of the currently selected pets.
         return clientBookings.some(booking => {
-            // --- MODIFICATION: Standardize date strings before comparing ---
             // Ensure both strings are treated as UTC. Assume API might sometimes omit offset.
             const bookingStartTimeStr = booking.start_time.endsWith('+00:00') ? booking.start_time : booking.start_time + '+00:00';
             const slotStartTimeStr = slotStartTime.endsWith('+00:00') ? slotStartTime : slotStartTime + '+00:00';
@@ -176,17 +160,14 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             if (new Date(bookingStartTimeStr).getTime() !== new Date(slotStartTimeStr).getTime()) {
                 return false;
             }
-            // --- END MODIFICATION ---
 
             // Check if any pet in this booking is also in the selectedPetIds list
             const overlaps = booking.pets.some(bookedPet => {
-                // --- MODIFICATION: Log individual pet check ---
                 const isSelected = selectedPetIds.includes(bookedPet.id);
-                console.log(`    Comparing booked pet ID ${bookedPet.id} (${bookedPet.name}) against selected IDs: ${isSelected}`);
                 return isSelected;
             });
             if (overlaps) {
-                console.log(`Slot ${slotStartTime} is already booked by selected pet(s). Booking ID: ${booking.booking_id}`);
+                console.log(`Slot ${slotStartTime} is already booked by selected pet(s).`);
             }
             return overlaps;
         });
@@ -208,9 +189,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             const pricePerPet = slot.price_per_pet ?? 0;
             const usesStaffCapacity = slot.uses_staff_capacity ?? false;
             const zeroCapacityReason = slot.zero_capacity_reason ?? null;
-
-            // Log individual slot price
-            console.log(`Raw slot time: ${startTime}, Price from API: ${slot.price_per_pet}, Used price: ${pricePerPet}, Uses Staff Cap: ${usesStaffCapacity}, Reason: ${zeroCapacityReason}`);
 
             // Check if essential data is present
             if (!startTime || !endTime || typeof remainingCapacity !== 'number') {
@@ -254,7 +232,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         }));
     };
 
-    // --- MODIFICATION: Fetch Client Bookings Function ---
     const fetchClientBookings = async () => {
         setIsLoadingBookings(true);
         // Don't clear error here, let fetchCalculatedSlots handle slot errors
@@ -268,7 +245,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             }
             const data: ClientBookingDetails[] = await response.json();
             setClientBookings(data);
-             console.log("Fetched client bookings:", data);
         } catch (e) {
             console.error("Error fetching client bookings:", e);
             setClientBookings([]); // Set empty on error
@@ -496,7 +472,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             }
 
             const data: CalculatedSlot[] = await response.json();
-            console.log("Raw data from /api/available-slots:", data); // Log raw data
             setRawCalculatedSlots(data); // Always store raw data
 
             // Aggregate the data for display ONLY IF service doesn't require field selection
@@ -507,7 +482,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                 setAggregatedSlots([]); // Ensure aggregated is empty if showing raw
             }
 
-            // --- MODIFICATION: Fetch client bookings after fetching slots ---
             await fetchClientBookings();
 
         } catch (e) {
@@ -640,7 +614,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                 return (
                                     <div>
                                         {rawCalculatedSlots.map((slot, index) => {
-                                            // --- MODIFICATION: Check if booked ---
                                             const isBooked = isSlotBookedBySelectedPets(slot.start_time);
                                             return (
                                                 <div
@@ -650,14 +623,10 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                                         padding: '10px',
                                                         marginBottom: '10px',
                                                         borderRadius: '4px',
-                                                        // --- MODIFICATION: Visual indication ---
                                                         opacity: isBooked ? 0.5 : 1,
                                                         cursor: isBooked ? 'not-allowed' : 'default' // Raw slots not clickable yet
                                                     }}
                                                 >
-                                                    {/* Display relevant info from raw slot */}
-                                                    {/* --- MODIFICATION: Removed slot_field_name as it's not in type --- */}
-                                                    {/* <p><strong>Field:</strong> {slot.slot_field_name || 'N/A'}</p> */}
                                                     <p><strong>Time:</strong> {formatDateRange(slot.start_time, slot.end_time)}</p>
                                                     <p><strong>Capacity:</strong> {slot.remaining_capacity}</p>
                                                     <p><strong>Price:</strong> {formatPrice(slot.price_per_pet ?? selectedService.default_price ?? 0)}</p>
@@ -681,9 +650,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                             const isBooked = isSlotBookedBySelectedPets(slot.startTime);
                                             const canSelect = slot.totalRemainingCapacity > 0 && !isBooked;
 
-                                            // --- MODIFICATION: Log slot properties before checks ---
-                                            console.log(`Rendering slot ${slotKey}: Capacity=${slot.totalRemainingCapacity}, isBooked=${isBooked}, usesStaffCap=${slot.uses_staff_capacity}`);
-
                                             // Differentiate reason for zero capacity
                                             const isUnavailable = slot.zero_capacity_reason === 'no_staff';
                                             const isFull = slot.zero_capacity_reason === 'staff_full' || slot.zero_capacity_reason === 'base_full';
@@ -706,7 +672,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                                                     <p><strong>Time:</strong> {formatDateRange(slot.startTime, slot.endTime)}</p>
                                                     <p><strong>Total Remaining Capacity:</strong> {slot.totalRemainingCapacity}</p>
                                                     <p><strong>Price per Pet:</strong> {formatPrice(slot.price_per_pet)}</p>
-                                                    {/* --- MODIFICATION: Show Booked/Selected/Unavailable/Full status --- */}
                                                     {isBooked && <p style={{ color: '#aaa', fontWeight: 'bold' }}>Booked by You</p>}
                                                     {isSelected && !isBooked && <p style={{ color: '#00aaff', fontWeight: 'bold' }}>Selected</p>}
                                                     {isUnavailable && <p style={{ color: '#bbb', fontWeight: 'bold' }}>Unavailable</p>}

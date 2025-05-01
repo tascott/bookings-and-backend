@@ -76,7 +76,6 @@ export default function SiteFieldManagement({
                                             {getFieldsForSite(site.id).map(field => (
                                                 <li key={field.id}>
                                                     {field.name || 'Unnamed Field'} (ID: {field.id}) -
-                                                    Capacity: {field.capacity ?? 'N/A'},
                                                     Type: {field.field_type || 'N/A'}
                                                 </li>
                                             ))}
@@ -129,10 +128,6 @@ export default function SiteFieldManagement({
                                 <div style={{ marginBottom: '0.5rem' }}>
                                     <label htmlFor="fieldName">Field Name:</label>
                                     <input type="text" id="fieldName" name="fieldName" className="input"/>
-                                </div>
-                                <div style={{ marginBottom: '0.5rem' }}>
-                                    <label htmlFor="fieldCapacity">Capacity:</label>
-                                    <input type="number" id="fieldCapacity" name="fieldCapacity" min="0" className="input"/>
                                 </div>
                                 <div style={{ marginBottom: '0.5rem' }}>
                                     <label htmlFor="fieldType">Field Type:</label>

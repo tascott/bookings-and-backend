@@ -6,7 +6,7 @@ import { createAdminClient } from '@/utils/supabase/admin'
 // Includes original booking data plus linked client and pet names
 type EnrichedBooking = {
   id: number;
-  field_id: number;
+  booking_field_ids?: number[];
   start_time: string;
   end_time: string;
   service_type: string | null;
@@ -162,7 +162,7 @@ export async function GET() {
       return {
         // Spread existing booking fields (ensure EnrichedBooking matches)
         id: booking.id,
-        field_id: booking.field_id,
+        booking_field_ids: booking.booking_field_ids,
         start_time: booking.start_time,
         end_time: booking.end_time,
         service_type: booking.service_type,
@@ -212,11 +212,15 @@ export async function POST(request: Request) {
   }
 
   // Parse request body
-  let bookingData: { field_id: number; start_time: string; end_time: string; service_type?: string; status?: string; max_capacity?: number };
+  let bookingData: { booking_field_ids: number[]; start_time: string; end_time: string; service_type?: string; status?: string; max_capacity?: number };
   try {
     const body = await request.json();
-    if (!body.field_id || !body.start_time || !body.end_time) {
-        throw new Error('Missing required fields: field_id, start_time, end_time');
+    if (!Array.isArray(body.booking_field_ids) || body.booking_field_ids.length === 0 || !body.start_time || !body.end_time) {
+        throw new Error('Missing required fields: booking_field_ids (must be a non-empty array), start_time, end_time');
+    }
+    // Validate all IDs in the array are numbers
+    if (body.booking_field_ids.some((id: unknown) => typeof id !== 'number' || isNaN(id))) {
+        throw new Error('Invalid booking_field_ids: Array must contain only numbers.');
     }
 
     const startTime = new Date(body.start_time);
@@ -230,7 +234,7 @@ export async function POST(request: Request) {
     }
 
     bookingData = {
-        field_id: parseInt(body.field_id, 10),
+        booking_field_ids: body.booking_field_ids,
         start_time: startTime.toISOString(), // Store as ISO string UTC
         end_time: endTime.toISOString(), // Store as ISO string UTC
         service_type: body.service_type,
@@ -238,12 +242,9 @@ export async function POST(request: Request) {
         max_capacity: body.max_capacity ? parseInt(body.max_capacity, 10) : undefined
     };
 
-     if (isNaN(bookingData.field_id)) {
-       throw new Error('Invalid field_id');
-     }
-     if (bookingData.max_capacity !== undefined && isNaN(bookingData.max_capacity)) {
+    if (bookingData.max_capacity !== undefined && isNaN(bookingData.max_capacity)) {
        throw new Error('Invalid max_capacity');
-     }
+    }
 
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : 'Invalid request body';
@@ -254,13 +255,13 @@ export async function POST(request: Request) {
   const { data: newBooking, error: insertError } = await supabaseAdmin
     .from('bookings')
     .insert(bookingData)
-    .select()
-    .single(); // Return the new booking
+    .select('id') // Select only the ID after insert
+    .single();
 
   if (insertError) {
     console.error('Error creating booking:', insertError)
     if (insertError.code === '23503') { // Foreign key violation
-         return NextResponse.json({ error: `Invalid field_id: ${bookingData.field_id} does not exist.` }, { status: 400 });
+         return NextResponse.json({ error: `Invalid booking_field_ids: ${bookingData.booking_field_ids.join(', ')} do not exist.` }, { status: 400 });
     }
     // TODO: Add check for overlapping bookings later?
     return NextResponse.json({ error: insertError.message }, { status: 500 })

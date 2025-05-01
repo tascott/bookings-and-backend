@@ -14,20 +14,22 @@ export type Field = {
   id: number;
   site_id: number;
   name: string | null;
-  capacity: number | null;
   field_type: string | null;
 }
 
 // Booking type
 export type Booking = {
   id: number;
-  field_id: number;
-  start_time: string; // ISO string format from DB
-  end_time: string; // ISO string format from DB
+  booking_field_ids?: number[];
+  start_time: string;
+  end_time: string;
   service_type: string | null;
   status: string;
-  max_capacity: number | null;
-  is_paid: boolean; // Add paid status
+  is_paid: boolean;
+  client_id?: number | null;
+  client_name?: string | null;
+  pet_names?: string[];
+  created_at?: string;
 }
 
 // Service type
@@ -49,11 +51,10 @@ export type ServiceAvailability = {
   end_time: string;
   days_of_week: number[] | null;
   specific_date: string | null;
-  base_capacity: number | null;
-  capacity_type: 'field' | 'staff_vehicle'; // Added based on DB schema
+  use_staff_vehicle_capacity: boolean;
   is_active: boolean;
   created_at: string;
-  override_price?: number | null; // Add override price
+  override_price?: number | null;
 }
 
 // User with role information

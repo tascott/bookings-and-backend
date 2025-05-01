@@ -3,12 +3,12 @@
 import React, { useState, useEffect } from 'react';
 import SidebarNavigation from '@/components/SidebarNavigation';
 import BookingManagement from '@/components/admin/BookingManagement';
-// import type { User } from '@supabase/supabase-js'; // Type not used
+import type { User } from '@supabase/supabase-js';
 import type { Site, Field, Booking /*, Service */ } from '@/types'; // Service type not used
 
 // Define props for the staff dashboard
 interface StaffDashboardProps {
-  // user: User; // Removed unused prop
+  user: User;
   // Booking management
   bookings: Booking[];
   isLoadingBookings: boolean;
@@ -26,7 +26,7 @@ interface StaffDashboardProps {
 }
 
 export default function StaffDashboard({
-  // _user, // Prop is unused
+  user,
   bookings,
   isLoadingBookings,
   sites,

@@ -59,8 +59,7 @@ type ServiceAvailabilityEditFields = {
     field_ids: string[]; // Required
     start_time: string;
     end_time: string;
-    base_capacity: string;
-    use_staff_vehicle_capacity: boolean; // Added new flag
+    use_staff_vehicle_capacity: boolean;
     is_active: boolean;
     days_of_week: string[];
     specific_date: string;
@@ -85,8 +84,8 @@ export default function ServiceAvailabilityManagement({
     // Edit Modal State
     const [editingRule, setEditingRule] = useState<ServiceAvailability | null>(null);
     const [editFields, setEditFields] = useState<ServiceAvailabilityEditFields>({
-        service_id: '', field_ids: [], start_time: '', end_time: '', base_capacity: '',
-        use_staff_vehicle_capacity: false, // Added new flag state
+        service_id: '', field_ids: [], start_time: '', end_time: '',
+        use_staff_vehicle_capacity: false,
         is_active: true, days_of_week: [], specific_date: '', override_price: ''
     });
     const [isSaving, setIsSaving] = useState(false);
@@ -106,11 +105,10 @@ export default function ServiceAvailabilityManagement({
         setEditingRule(rule);
         setEditFields({
             service_id: rule.service_id.toString(),
-            field_ids: (rule.field_ids || []).map(id => id.toString()), // Field IDs always present now
+            field_ids: (rule.field_ids || []).map(id => id.toString()),
             start_time: rule.start_time,
             end_time: rule.end_time,
-            base_capacity: rule.base_capacity?.toString() || '',
-            use_staff_vehicle_capacity: rule.use_staff_vehicle_capacity || false, // Use new flag
+            use_staff_vehicle_capacity: rule.use_staff_vehicle_capacity || false,
             is_active: rule.is_active,
             days_of_week: rule.days_of_week?.map(d => d.toString()) || [],
             specific_date: rule.specific_date || '',
@@ -132,10 +130,9 @@ export default function ServiceAvailabilityManagement({
             const { checked } = e.target as HTMLInputElement;
             if (name === 'is_active') {
                  setEditFields(prev => ({ ...prev, is_active: checked }));
-            } else if (name === 'use_staff_vehicle_capacity') { // Handle new checkbox
+            } else if (name === 'use_staff_vehicle_capacity') {
                  setEditFields(prev => ({ ...prev, use_staff_vehicle_capacity: checked }));
             } else if (name === 'availabilityFieldIds') {
-                 // Field IDs are always relevant now
                  const currentFieldIds = editFields.field_ids;
                  if (checked) {
                      setEditFields(prev => ({ ...prev, field_ids: [...currentFieldIds, value] }));
@@ -158,8 +155,6 @@ export default function ServiceAvailabilityManagement({
 
     const handleSaveEdit = async () => {
         if (!editingRule) return;
-
-        // --- Validation and Data Preparation (Similar to API POST/PUT) ---
         setEditError(null);
         try {
             let overridePrice: number | null = null;
@@ -169,17 +164,9 @@ export default function ServiceAvailabilityManagement({
                 overridePrice = parsed;
             }
 
-             let baseCapacity: number | null = null;
-            if (editFields.base_capacity) {
-                const parsed = parseInt(editFields.base_capacity, 10);
-                if (isNaN(parsed)) throw new Error('Invalid Base Capacity format');
-                baseCapacity = parsed;
-            }
-
             const serviceIdNum = parseInt(editFields.service_id, 10);
             if(isNaN(serviceIdNum)) throw new Error('Invalid Service ID');
 
-            // Field IDs are now always required
             const fieldIdsNum = editFields.field_ids.map(id => parseInt(id, 10));
             if (fieldIdsNum.some(isNaN)) throw new Error('Invalid Field ID selected');
             if (fieldIdsNum.length === 0) throw new Error('At least one Field must be selected.');
@@ -189,18 +176,16 @@ export default function ServiceAvailabilityManagement({
 
             const updateData: Partial<Omit<ServiceAvailability, 'id' | 'created_at'>> = {
                 service_id: serviceIdNum,
-                field_ids: fieldIdsNum, // Always include field IDs
+                field_ids: fieldIdsNum,
                 start_time: editFields.start_time,
                 end_time: editFields.end_time,
-                base_capacity: baseCapacity,
-                use_staff_vehicle_capacity: editFields.use_staff_vehicle_capacity, // Include new flag
+                use_staff_vehicle_capacity: editFields.use_staff_vehicle_capacity,
                 is_active: editFields.is_active,
                 days_of_week: daysOfWeekNum.length > 0 ? daysOfWeekNum : null,
                 specific_date: editFields.specific_date || null,
                 override_price: overridePrice,
             };
 
-            // Further validation matching API (time order, date format, day/date conflict)
             if (updateData.end_time! <= updateData.start_time!) throw new Error("End time must be after start time.");
             if (updateData.days_of_week && updateData.specific_date) throw new Error("Cannot set both recurring days and specific date.");
             const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
@@ -215,7 +200,6 @@ export default function ServiceAvailabilityManagement({
         } finally {
              setIsSaving(false);
         }
-        // --- End Validation & Save ---
     };
 
     // Define Tabs
@@ -239,12 +223,12 @@ export default function ServiceAvailabilityManagement({
                                 const defaultServicePrice = getServiceDefaultPrice(rule.service_id);
                                 return (
                                     <li key={rule.id} style={{
-                                        border: '1px solid #ccc', // Slightly darker border for better visibility
+                                        border: '1px solid #ccc',
                                         padding: '1rem',
                                         marginBottom: '0.8rem',
                                         borderRadius: '4px',
                                         background: rule.is_active ? '#fff' : '#f8f8f8',
-                                        color: '#212529' // Explicitly set dark text color
+                                        color: '#212529'
                                     }}>
                                         <div><strong>Service:</strong> {getServiceName(rule.service_id)} (Rule ID: {rule.id})</div>
                                         <div><strong>Status:</strong> {rule.is_active ? 'Active' : 'Inactive'}</div>
@@ -269,7 +253,7 @@ export default function ServiceAvailabilityManagement({
                                         </div>
                                         <div>
                                             <strong>Capacity:</strong>
-                                             {rule.use_staff_vehicle_capacity ? ' Uses Staff Vehicle Capacity' : ` Base: ${rule.base_capacity ?? 'N/A'}`}
+                                             {rule.use_staff_vehicle_capacity ? 'Uses Staff Vehicle Capacity' : 'No Capacity Limit'}
                                         </div>
                                         <div>
                                             <strong>Price:</strong>
@@ -288,7 +272,6 @@ export default function ServiceAvailabilityManagement({
                             })}
                         </ul>
                     )}
-                    {/* Display global error if needed */}
                     {error && serviceAvailability.length > 0 && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
                 </>
             )
@@ -298,7 +281,6 @@ export default function ServiceAvailabilityManagement({
             label: 'Add New Rule',
             content: (
                 <>
-                    {/* Add New Availability Rule Form */}
                     <form ref={addServiceAvailabilityFormRef} onSubmit={handleAddServiceAvailability} style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
                         <h3>Add New Availability Rule</h3>
                         {(services.length === 0) ? (
@@ -315,7 +297,6 @@ export default function ServiceAvailabilityManagement({
                                     </select>
                                 </div>
 
-                                {/* Field Selection */}
                                 {(sites.length === 0 || fields.length === 0) ? (
                                     <p style={{ color: 'orange' }}>Please add Sites and Fields first.</p>
                                 ) : (
@@ -366,17 +347,13 @@ export default function ServiceAvailabilityManagement({
                                 </div>
 
                                 <div style={{ border: '1px dashed #ccc', padding: '0.5rem', marginBottom: '0.5rem' }}>
-                                     <label>Capacity Type (Select One):</label>
+                                     <label>Capacity Control:</label>
                                      <div style={{ marginLeft: '1rem' }}>
                                          <label>
                                              <input type="checkbox" name="use_staff_vehicle_capacity" /> Use Staff Vehicle Capacity
-                                             <span style={{fontSize: '0.8em', color: '#777'}}>(Ignores Base Capacity)</span>
+                                             <span style={{fontSize: '0.8em', color: '#777'}}>(Only check if capacity should be limited by assigned staff&apos;s vehicle)</span>
                                          </label>
                                      </div>
-                                     <div style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
-                                        <label htmlFor="availabilityBaseCapacity">Base Capacity (if not using staff vehicle):</label>
-                                        <input type="number" id="availabilityBaseCapacity" name="availabilityBaseCapacity" min="0" placeholder="Leave blank if unlimited" className="input" style={{width: '80px', marginLeft: '0.5rem'}}/>
-                                    </div>
                                 </div>
 
                                 <div style={{ marginTop: '0.5rem' }}>
@@ -396,23 +373,18 @@ export default function ServiceAvailabilityManagement({
     return (
         <section>
             <h2>Service Availability Rules (Admin)</h2>
-            {/* Removed Add/View sections from here */}
 
-            {/* Render Tabs */}
             <TabNavigation tabs={availabilityMgmtTabs} />
 
-            {/* Keep Edit Modal outside tabs */}
             {editingRule && (
                  <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
                     <div style={{ background: '#2a2a2e', padding: '2rem', borderRadius: 8, color: '#fff', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
                         <h3>Edit Availability Rule (ID: {editingRule.id})</h3>
                         {editError && <p style={{ color: '#f87171' }}>{editError}</p>}
 
-                        {/* Edit Form Fields - structured similar to Add form */}
                         <div style={{ marginBottom: '0.5rem' }}>
                             <label>Service:</label>
                             <select name="service_id" value={editFields.service_id} onChange={handleEditFieldChange} required className="input">
-                                {/* Options populated from services prop */}
                                 {services.map(service => (
                                     <option key={service.id} value={service.id}>{service.name}</option>
                                 ))}
@@ -420,7 +392,6 @@ export default function ServiceAvailabilityManagement({
                         </div>
                         <div style={{ marginBottom: '0.5rem', border: '1px dashed #ccc', padding: '0.5rem' }}>
                              <label>Applies to Field(s): (Required)</label>
-                            {/* Logic to show checkboxes for fields, checked based on editFields.field_ids */}
                             {sites.map(site => (
                                 <div key={`edit-avail-site-group-${site.id}`} style={{ marginLeft: '1rem', marginBottom: '0.5rem' }}>
                                     <strong>{site.name}:</strong>
@@ -474,7 +445,7 @@ export default function ServiceAvailabilityManagement({
                             </div>
                         </div>
                         <div style={{ border: '1px dashed #ccc', padding: '0.5rem', marginBottom: '0.5rem' }}>
-                             <label>Capacity Type:</label>
+                             <label>Capacity Control:</label>
                               <div style={{ marginLeft: '1rem' }}>
                                  <label>
                                      <input
@@ -485,10 +456,6 @@ export default function ServiceAvailabilityManagement({
                                      /> Use Staff Vehicle Capacity
                                  </label>
                              </div>
-                             <div style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
-                                <label>Base Capacity:</label>
-                                <input type="number" name="base_capacity" value={editFields.base_capacity} onChange={handleEditFieldChange} min="0" placeholder="Blank = unlimited" className="input" style={{width: '80px', marginLeft: '0.5rem'}}/>
-                            </div>
                         </div>
                         <div style={{ marginBottom: '1rem' }}>
                             <label>Override Price (£):</label>

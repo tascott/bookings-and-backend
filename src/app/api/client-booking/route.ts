@@ -41,8 +41,7 @@ export async function POST(request: Request) {
         service_id: number;
         start_time: string;
         end_time: string;
-        field_id?: number;
-        pet_ids: number[]; // Added pet_ids
+        pet_ids: number[];
     };
     try {
         const body = await request.json();
@@ -50,8 +49,7 @@ export async function POST(request: Request) {
             service_id: parseInt(body.service_id, 10),
             start_time: body.start_time,
             end_time: body.end_time,
-            field_id: body.field_id ? parseInt(body.field_id, 10) : undefined,
-            pet_ids: body.pet_ids, // Get pet_ids from body
+            pet_ids: body.pet_ids,
         };
 
         // --- Add Pet ID Validation ---
@@ -66,9 +64,6 @@ export async function POST(request: Request) {
 
         if (isNaN(inputData.service_id) || !inputData.start_time || !inputData.end_time) {
             throw new Error('Missing or invalid required fields: service_id, start_time, end_time');
-        }
-        if (inputData.field_id !== undefined && isNaN(inputData.field_id)) {
-            throw new Error('Invalid optional field_id format.');
         }
         // Validate that the received strings can be parsed into valid Dates
         if (isNaN(new Date(inputData.start_time).getTime()) || isNaN(new Date(inputData.end_time).getTime())) {
@@ -106,10 +101,10 @@ export async function POST(request: Request) {
          return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
 
-    // 3. Fetch Service Details (to check requires_field_selection)
+    // 3. Fetch Service Details
     const { data: serviceDetails, error: serviceError } = await supabaseAdmin
         .from('services')
-        .select('name, requires_field_selection')
+        .select('name')
         .eq('id', inputData.service_id)
         .single();
 
@@ -117,8 +112,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: `Service with ID ${inputData.service_id} not found.` }, { status: 404 });
     }
 
-    // 4. Validate the pets
-    // a. Check if all pets belong to the client
+    // 4. Validate pets (belong to client, are confirmed)
     const { data: clientPets, error: clientPetsError } = await supabase
         .from('pets')
         .select('id, is_confirmed')
@@ -153,11 +147,10 @@ export async function POST(request: Request) {
         );
     }
 
-    // --- NEW Section 5: Capacity Check & Field/Staff Assignment ---
-    let field_id_for_insert: number | null = null;
+    // --- UPDATED Section 5: Capacity Check & Field Assignment ---
+    let booking_field_ids_for_insert: number[] = []; // Changed to array
     let assigned_staff_user_id: string | null = null;
     let assigned_vehicle_id: number | null = null;
-    let available_field_id: number | null = null;
 
     try {
         const num_pets_requested = inputData.pet_ids.length;
@@ -172,7 +165,7 @@ export async function POST(request: Request) {
         // Fetch potentially matching rules first
         const { data: potentialRules, error: ruleFetchError } = await supabaseAdmin
             .from('service_availability')
-            .select('*')
+            .select('*') // Select all needed fields
             .eq('service_id', inputData.service_id)
             .eq('is_active', true);
 
@@ -196,20 +189,20 @@ export async function POST(request: Request) {
             throw new Error('No matching availability rule found for the requested date and time range.');
         }
         if (!availabilityRule.field_ids || availabilityRule.field_ids.length === 0) {
-             // This should be prevented by the new check constraint, but good to double-check
              throw new Error(`Configuration error: Availability rule ${availabilityRule.id} is missing required field_ids.`);
         }
 
-        // 5b. Determine Capacity & Perform Checks based on the rule's flag
-        let max_effective_capacity = 0;
+        // --- Assign ALL relevant field IDs ---
+        booking_field_ids_for_insert = availabilityRule.field_ids;
+        console.log(`Booking will be associated with fields: ${booking_field_ids_for_insert.join(', ')}`);
+
+        // 5b. Capacity Checks (Simplified)
+        let max_effective_capacity: number | null = null; // Can be null if no limit
         let current_booked_pet_count = 0;
 
-        // --- Scenario 1: Use Staff Vehicle Capacity ---
         if (availabilityRule.use_staff_vehicle_capacity) {
             console.log(`Rule ${availabilityRule.id} uses staff vehicle capacity.`);
-            if (!defaultStaffId) {
-                throw new Error('This service requires a default staff member assigned to your client profile, but none is set.');
-            }
+            if (!defaultStaffId) throw new Error('This service requires a default staff member assigned to your client profile, but none is set.');
             const { data: staffDetails, error: staffError } = await supabaseAdmin
                 .from('staff')
                 .select('user_id, default_vehicle_id')
@@ -239,7 +232,7 @@ export async function POST(request: Request) {
                 .eq('id', assigned_vehicle_id)
                 .single();
             if (vehicleCapError || !vehicleData) throw new Error(`Failed to fetch capacity for vehicle (ID: ${assigned_vehicle_id}).`);
-            max_effective_capacity = vehicleData.pet_capacity || 0;
+            max_effective_capacity = vehicleData.pet_capacity || 0; // Use 0 if null/undefined
 
             // Check Overlapping Bookings for THIS STAFF MEMBER
             const { data: staffOverlaps, error: staffOverlapError } = await supabaseAdmin
@@ -251,92 +244,36 @@ export async function POST(request: Request) {
                 .neq('status', 'cancelled'); // Filter out cancelled
 
             if (staffOverlapError) throw new Error(`Error checking staff overlaps: ${staffOverlapError.message}`);
-            // Explicitly type the reduce parameters
             current_booked_pet_count = staffOverlaps?.reduce((sum: number, booking: { booking_pets: { count: number }[] }) => sum + (booking.booking_pets[0]?.count || 0), 0) || 0;
 
-            // Find an available field among the rule's fields
-            // Check which fields are booked *at all* during the requested time by *any* service/staff
-            const { data: bookedFieldsData, error: bookedFieldsError } = await supabaseAdmin
-                .from('bookings')
-                .select('field_id') // Need distinct field_id
-                .in('field_id', availabilityRule.field_ids) // Filter by relevant fields
-                .lt('start_time', inputData.end_time) // Overlap time condition
-                .gt('end_time', inputData.start_time) // Overlap time condition
-                .neq('status', 'cancelled'); // Filter out cancelled
+            // No need to find an available field anymore
+             console.log(`Staff capacity check: Max=${max_effective_capacity}, Booked=${current_booked_pet_count}, Requested=${num_pets_requested}`);
 
-            if (bookedFieldsError) throw new Error(`Error checking booked fields: ${bookedFieldsError.message}`);
-            // Explicitly type map/filter parameter
-            const bookedFieldIds = new Set(bookedFieldsData?.map((b: { field_id: number | null }) => b.field_id).filter((id): id is number => id !== null) || []);
-
-            // Find the first field from the rule that is NOT in the bookedFieldIds set
-            available_field_id = availabilityRule.field_ids.find((id: number) => !bookedFieldIds.has(id)) || null;
-            if (available_field_id === null) {
-                throw new Error('All suitable fields are already booked during the requested time, even though staff has capacity.');
-            }
-            field_id_for_insert = available_field_id;
-
-        // --- Scenario 2: Use Field Capacity ---
-        } else { // use_staff_vehicle_capacity is false
-            console.log(`Rule ${availabilityRule.id} uses field capacity.`);
-            // Capacity is now determined by the rule's base_capacity
-            // If base_capacity is null, we treat it as effectively unlimited for this check
-            // The check later will use the calculated current_booked_pet_count
-            max_effective_capacity = availabilityRule.base_capacity ?? 9999; // Use a large number if base_capacity is null
-            if (availabilityRule.base_capacity === null) {
-                console.log(`Rule ${availabilityRule.id} has NULL base_capacity, treating as unlimited.`);
-            }
-
-            // Check Overlapping Bookings in ANY of the rule's fields
-            const { data: fieldOverlaps, error: fieldOverlapError } = await supabaseAdmin
-                .from('bookings')
-                .select('id, booking_pets(count)') // Need pet count
-                .in('field_id', availabilityRule.field_ids) // Filter by relevant fields
-                .lt('start_time', inputData.end_time) // Overlap time condition
-                .gt('end_time', inputData.start_time) // Overlap time condition
-                .neq('status', 'cancelled'); // Filter out cancelled
-
-            if (fieldOverlapError) throw new Error(`Error checking field overlaps: ${fieldOverlapError.message}`);
-            current_booked_pet_count = fieldOverlaps?.reduce((sum: number, booking: { booking_pets: { count: number }[] }) => sum + (booking.booking_pets[0]?.count || 0), 0) || 0;
-
-            // Determine field_id for insert (respecting client choice if service requires it)
-            if (serviceDetails.requires_field_selection) {
-                if (inputData.field_id === undefined) {
-                    throw new Error('This service requires a specific field selection, but field_id was not provided.');
-                }
-                if (!availabilityRule.field_ids.includes(inputData.field_id)) {
-                    throw new Error(`The selected field ID (${inputData.field_id}) is not valid for this availability rule.`);
-                }
-                field_id_for_insert = inputData.field_id;
-            } else {
-                // Simple approach: Assign to the first field in the rule.
-                // TODO: Could enhance this to find the first field with specific remaining capacity if needed, based on base_capacity.
-                field_id_for_insert = availabilityRule.field_ids[0];
-            }
+        } else {
+            // If not using staff vehicle capacity, there's no capacity limit enforced by this rule anymore.
+            // We assume staff assignment/availability is handled elsewhere or isn't relevant.
+            console.log(`Rule ${availabilityRule.id} does not use staff vehicle capacity. No capacity check performed.`);
+            max_effective_capacity = null; // Indicate no limit from the rule
+            current_booked_pet_count = 0; // Not relevant for this check
             assigned_staff_user_id = null;
             assigned_vehicle_id = null;
         }
 
-        // 5c. Perform Final Capacity Check
-        let current_remaining_capacity: number | null;
-        if (availabilityRule.base_capacity === null && !availabilityRule.use_staff_vehicle_capacity) {
-            // If base capacity is null (unlimited) and not using staff capacity, remaining is null (infinite)
-            current_remaining_capacity = null;
-        } else {
-            // Otherwise calculate remaining based on the determined max and booked count
-            current_remaining_capacity = max_effective_capacity - current_booked_pet_count;
+        // 5c. Perform Final Capacity Check (only if max_effective_capacity is not null)
+        if (max_effective_capacity !== null) {
+            const current_remaining_capacity = max_effective_capacity - current_booked_pet_count;
+            if (num_pets_requested > current_remaining_capacity) {
+                return NextResponse.json(
+                    { error: `Capacity exceeded. Requested ${num_pets_requested} pets, but only ${current_remaining_capacity} slots available (Based on staff vehicle capacity). Max: ${max_effective_capacity}, Booked: ${current_booked_pet_count}).` },
+                    { status: 409 } // Conflict
+                );
+            }
         }
 
-        // Check capacity ONLY if remaining capacity is not null (i.e., not unlimited)
-        if (current_remaining_capacity !== null && num_pets_requested > current_remaining_capacity) {
-            return NextResponse.json(
-                { error: `Capacity exceeded. Requested ${num_pets_requested} pets, but only ${current_remaining_capacity} slots available (Based on ${availabilityRule.use_staff_vehicle_capacity ? 'staff vehicle' : 'rule base capacity'}). Max: ${max_effective_capacity}, Booked: ${current_booked_pet_count}).` },
-                { status: 409 }
-            );
-        }
-
-        // Ensure a field ID was determined for insertion
-        if (field_id_for_insert === null) {
-            throw new Error('Failed to determine a suitable field for the booking.');
+        // Ensure field IDs were determined
+        if (booking_field_ids_for_insert.length === 0) {
+            // This shouldn't happen due to earlier check, but good safeguard
+            throw new Error('Failed to determine associated fields for the booking.');
         }
 
     } catch (e) {
@@ -344,21 +281,21 @@ export async function POST(request: Request) {
         console.error('Capacity/Field Assignment Error:', e);
         return NextResponse.json({ error: errorMessage }, { status: 500 });
     }
-    // --- END NEW Section 5 ---
+    // --- END UPDATED Section 5 ---
 
-    // 6. Database Insert (Booking, Client Link, Pet Links)
+    // 6. Database Insert
     try {
         // --- Create Booking ---
         const { data: newBooking, error: bookingInsertError } = await supabaseAdmin
             .from('bookings')
             .insert({
-                field_id: field_id_for_insert, // Use the determined field ID
+                booking_field_ids: booking_field_ids_for_insert, // ADDED
                 service_type: serviceDetails.name,
                 start_time: inputData.start_time,
                 end_time: inputData.end_time,
                 status: 'confirmed',
-                assigned_staff_id: assigned_staff_user_id, // Use determined staff (null if field-based)
-                vehicle_id: assigned_vehicle_id,        // Use determined vehicle (null if field-based)
+                assigned_staff_id: assigned_staff_user_id,
+                vehicle_id: assigned_vehicle_id,
             })
             .select('id')
             .single();

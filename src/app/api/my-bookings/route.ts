@@ -10,7 +10,7 @@ type ClientBookingDetails = {
     end_time: string;
     service_type: string | null;
     status: string;
-    field_id: number;
+    booking_field_ids?: number[];
     // Add field name if needed by joining?
     // field_name: string | null;
     pets: { id: number; name: string }[]; // Array of pets linked to this booking
@@ -23,7 +23,7 @@ type BookingWithNestedPets = {
     end_time: string;
     service_type: string | null;
     status: string;
-    field_id: number;
+    booking_field_ids?: number[];
     booking_pets: {
         pets: {
             id: number;
@@ -72,7 +72,7 @@ export async function GET() {
                 end_time,
                 service_type,
                 status,
-                field_id,
+                booking_field_ids,
                 booking_pets ( pets ( id, name ) )
             `)
             .in('id', bookingIds)
@@ -88,7 +88,7 @@ export async function GET() {
             end_time: booking.end_time,
             service_type: booking.service_type,
             status: booking.status,
-            field_id: booking.field_id,
+            booking_field_ids: booking.booking_field_ids,
             // Extract pet info using the defined types
             pets: booking.booking_pets
                     .map(bp => bp.pets) // Get the pet object (or null)

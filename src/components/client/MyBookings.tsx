@@ -9,7 +9,7 @@ type ClientBookingDetails = {
     end_time: string;
     service_type: string | null;
     status: string;
-    field_id: number;
+    booking_field_ids?: number[];
     pets: { id: number; name: string }[];
 }
 
@@ -45,7 +45,6 @@ export default function MyBookings() {
         fetchMyBookings();
     }, [fetchMyBookings]);
 
-    // --- MODIFICATION: Filter bookings ---
     const now = new Date().getTime();
     const upcomingBookings = bookings.filter(b => new Date(b.end_time).getTime() > now);
     const pastBookings = bookings.filter(b => new Date(b.end_time).getTime() <= now);
@@ -57,7 +56,7 @@ export default function MyBookings() {
             <p>
                 <strong>Service:</strong> {booking.service_type || 'N/A'} |
                 <strong>Status:</strong> {booking.status} |
-                <strong>Field ID:</strong> {booking.field_id}
+                <strong>Field(s):</strong> {booking.booking_field_ids && booking.booking_field_ids.length > 0 ? booking.booking_field_ids.join(', ') : 'N/A'}
             </p>
             <p>
                 <strong>From:</strong> {new Date(booking.start_time).toLocaleString()} |
@@ -73,7 +72,6 @@ export default function MyBookings() {
     );
 
     return (
-        // --- MODIFICATION: Update structure for sections ---
         <section className="dashboard-section" style={{ marginTop: '2rem' }}>
             <h2>My Bookings</h2>
 

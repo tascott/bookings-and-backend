@@ -353,7 +353,7 @@ export default function Home() {
   };
 
   // Function to handle role assignment
-  const handleAssignRole = async (userId: string, targetRole: 'client' | 'staff' | 'admin') => {
+  const handleAssignRole = async (userId: string, targetRole: string) => {
     if (!user || role !== 'admin') {
       setError('Permission denied.');
       return;
@@ -413,25 +413,31 @@ export default function Home() {
     event.preventDefault();
     setError(null);
     const formData = new FormData(event.currentTarget);
-    const field_id = formData.get('bookingFieldId') as string;
+    const field_id_str = formData.get('bookingFieldId') as string;
     const start_time = formData.get('bookingStartTime') as string;
     const end_time = formData.get('bookingEndTime') as string;
     const service_type = formData.get('bookingServiceType') as string;
     // Optional fields
     const max_capacity = formData.get('bookingMaxCapacity') as string;
 
-    if (!field_id || !start_time || !end_time) {
+    if (!field_id_str || !start_time || !end_time) {
       setError('Field, start time, and end time are required.');
       return;
     }
 
+    const field_id = parseInt(field_id_str, 10);
+    if (isNaN(field_id)) {
+        setError('Invalid Field ID selected.');
+        return;
+    }
+
     try {
       const payload = {
-        field_id,
+        booking_field_ids: [field_id],
         start_time,
         end_time,
-        service_type: service_type || null, // Send null if empty
-        max_capacity: max_capacity || null, // Send null if empty (API handles parsing)
+        service_type: service_type || null,
+        max_capacity: max_capacity || null,
       };
 
       const response = await fetch('/api/bookings', {
