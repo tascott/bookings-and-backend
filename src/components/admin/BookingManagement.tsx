@@ -397,9 +397,9 @@ export default function BookingManagement({
              {localError && <p style={{ color: 'red' }}>Operation Error: {localError}</p>}
             {isLoadingBookings ? (
                 <p>Loading bookings...</p>
-            ) : parentError && !localError && bookings.length === 0 ? (
+            ) : parentError && !localError && (!bookings || bookings.length === 0) ? (
                 <p style={{ color: 'red' }}>Error loading bookings: {parentError}</p>
-            ) : bookings.length === 0 ? (
+            ) : !bookings || bookings.length === 0 ? (
                 <p>No bookings found.</p>
             ) : (
                 <div className={styles.userList}>

@@ -97,8 +97,6 @@ Current TODOS:
 
 - calendar view for admin
 
-- edit vehicles
-
 - assign staff, populates their dashboard for the day/week
 
 - booking refunds
