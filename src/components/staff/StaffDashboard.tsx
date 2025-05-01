@@ -103,22 +103,8 @@ export default function StaffDashboard({
     }
   };
 
-  // Define tabs for the staff dashboard
+  // Define tabs for the staff dashboard (Reordered)
   const staffTabs = [
-    {
-      id: 'schedule',
-      label: 'My Schedule',
-      content: (
-        <div>
-          <h3>My Schedule</h3>
-          <p>View your assigned bookings and daily schedule.</p>
-          {/* Staff schedule component will be implemented here */}
-          <div /* className={styles.comingSoon} */ >
-            <p>Coming soon - calendar view of your upcoming shifts</p>
-          </div>
-        </div>
-      ),
-    },
     {
       id: 'bookings',
       label: 'Today\'s Bookings',
@@ -136,6 +122,20 @@ export default function StaffDashboard({
           refetchBookings={fetchBookings}
           handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
         />
+      ),
+    },
+    {
+      id: 'schedule',
+      label: 'My Schedule',
+      content: (
+        <div>
+          <h3>My Schedule</h3>
+          <p>View your assigned bookings and daily schedule.</p>
+          {/* Staff schedule component will be implemented here */}
+          <div /* className={styles.comingSoon} */ >
+            <p>Coming soon - calendar view of your upcoming shifts</p>
+          </div>
+        </div>
       ),
     },
     {
@@ -169,18 +169,20 @@ export default function StaffDashboard({
               <button onClick={startEdit}>Edit</button>
             </div>
           ) : (
-            <div style={{ background: '#222', color: '#fff', padding: 16, borderRadius: 8, maxWidth: 400 }}>
+            <div style={{ background: '#2a2a2e', padding: '2rem', borderRadius: 8, color: '#fff', width: '90%', maxWidth: '500px' }}>
               <label>First Name:<br />
-                <input name="first_name" value={editFields.first_name} onChange={handleEditChange} style={{ background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: 4, width: '100%' }} />
+                <input name="first_name" value={editFields.first_name} onChange={handleEditChange} className="input" />
               </label><br />
               <label>Last Name:<br />
-                <input name="last_name" value={editFields.last_name} onChange={handleEditChange} style={{ background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: 4, width: '100%' }} />
+                <input name="last_name" value={editFields.last_name} onChange={handleEditChange} className="input" />
               </label><br />
               <label>Phone:<br />
-                <input name="phone" value={editFields.phone} onChange={handleEditChange} style={{ background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: 4, width: '100%' }} />
+                <input name="phone" value={editFields.phone} onChange={handleEditChange} className="input" />
               </label><br />
-              <button onClick={saveProfile} disabled={isSaving} style={{ color: '#fff', background: '#28a745', border: 'none', padding: '6px 16px', borderRadius: 4, marginRight: 8 }}>Save</button>
-              <button onClick={cancelEdit} disabled={isSaving} style={{ color: '#fff', background: '#6c757d', border: 'none', padding: '6px 16px', borderRadius: 4 }}>Cancel</button>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                <button onClick={cancelEdit} disabled={isSaving} className="button secondary">Cancel</button>
+                <button onClick={saveProfile} disabled={isSaving} className="button primary">{isSaving ? 'Saving...' : 'Save Changes'}</button>
+              </div>
             </div>
           )}
         </div>

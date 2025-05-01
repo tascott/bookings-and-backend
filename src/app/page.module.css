@@ -583,3 +583,13 @@ a.secondary {
     background-color: #5a6268;
   }
 }
+
+/* Style for staff view (5 columns) */
+.userCardHeaderStaff {
+  grid-template-columns: 1.5fr 1fr 1fr 1.5fr 1.5fr; /* Adjusted 5 columns (Staff) */
+}
+
+/* Style for staff view (5 columns) */
+.userCardStaff {
+    grid-template-columns: 1.5fr 1fr 1fr 1.5fr 1.5fr; /* Adjusted 5 columns (Staff) */
+}

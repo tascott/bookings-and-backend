@@ -25,6 +25,7 @@ export default function PetManagement() {
     const [newPetBreed, setNewPetBreed] = useState('');
     const [newPetSize, setNewPetSize] = useState('');
     const [isAdding, setIsAdding] = useState(false);
+    const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
     // State for editing a pet
     const [editingPet, setEditingPet] = useState<Pet | null>(null);
@@ -70,28 +71,29 @@ export default function PetManagement() {
         setIsAdding(true);
         setError(null);
         try {
-            const payload = {
-                name: newPetName.trim(),
-                breed: newPetBreed.trim() || undefined,
-                size: newPetSize.trim() || undefined,
-            };
             const response = await fetch('/api/pets', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: JSON.stringify({
+                    name: newPetName.trim(),
+                    breed: newPetBreed.trim() || undefined,
+                    size: newPetSize.trim() || undefined,
+                }),
             });
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || `Failed to add pet (HTTP ${response.status})`);
             }
-            // Success - clear form and refetch list
+            // Success
             setNewPetName('');
             setNewPetBreed('');
             setNewPetSize('');
             await fetchPets(); // Refresh the list
+            setIsAddModalOpen(false); // <-- Close modal on success
         } catch (e) {
             const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
             setError(errorMessage);
+             // Keep modal open on error for correction
         } finally {
             setIsAdding(false);
         }
@@ -176,52 +178,19 @@ export default function PetManagement() {
             {/* Display Global Error for this section */}
             {error && <p style={{ color: 'red' }}>Error: {error}</p>}
 
-            {/* --- Add Pet Form --- */}
-            <form onSubmit={handleAddPetSubmit} style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>Add New Pet</h3>
-                <div style={{ marginBottom: '0.5rem' }}>
-                    <label htmlFor="newPetName">Name:</label>
-                    <input
-                        type="text"
-                        id="newPetName"
-                        value={newPetName}
-                        onChange={(e: ChangeEvent<HTMLInputElement>) => setNewPetName(e.target.value)}
-                        required
-                        style={{ marginLeft: '0.5rem' }}
-                    />
-                </div>
-                 <div style={{ marginBottom: '0.5rem' }}>
-                    <label htmlFor="newPetBreed">Breed (Optional):</label>
-                    <input
-                        type="text"
-                        id="newPetBreed"
-                        value={newPetBreed}
-                        onChange={(e: ChangeEvent<HTMLInputElement>) => setNewPetBreed(e.target.value)}
-                         style={{ marginLeft: '0.5rem' }}
-                   />
-                </div>
-                 <div style={{ marginBottom: '0.5rem' }}>
-                    <label htmlFor="newPetSize">Size (Optional):</label>
-                    <input
-                        type="text"
-                        id="newPetSize"
-                        value={newPetSize}
-                        onChange={(e: ChangeEvent<HTMLInputElement>) => setNewPetSize(e.target.value)}
-                        placeholder="e.g., Small, Medium, Large"
-                        style={{ marginLeft: '0.5rem' }}
-                    />
-                </div>
-                <button type="submit" disabled={isAdding} style={{ marginTop: '1rem' }}>
-                    {isAdding ? 'Adding...' : 'Add Pet'}
+            {/* Button to open Add Pet modal */}
+            <div style={{ marginBottom: '1rem' }}>
+                <button onClick={() => setIsAddModalOpen(true)} className="button primary">
+                    Add New Pet
                 </button>
-            </form>
+            </div>
 
             {/* --- List Existing Pets --- */}
             <h3>Existing Pets</h3>
             {isLoading ? (
                 <p>Loading pets...</p>
             ) : pets.length === 0 && !error ? (
-                <p>You haven't added any pets yet.</p>
+                <p>You haven&apos;t added any pets yet.</p>
             ) : (
                 <div className={styles.petList}> {/* Use a class for styling */}
                     {pets.map(pet => (
@@ -305,6 +274,63 @@ export default function PetManagement() {
                             )}
                         </div>
                     ))}
+                </div>
+            )}
+
+            {/* Add Pet Modal */}
+            {isAddModalOpen && (
+                <div style={{
+                    position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+                    background: 'rgba(0,0,0,0.7)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    zIndex: 1000
+                }}>
+                    <div style={{ background: '#2a2a2e', padding: '2rem', borderRadius: 8, color: '#fff', width: '90%', maxWidth: '500px' }}>
+                         {/* --- Add Pet Form (Inside Modal) --- */}
+                         <form onSubmit={handleAddPetSubmit}>
+                            <h3>Add New Pet</h3>
+                            {/* Display any add-specific error inside modal */}
+                             {error && isAdding && <p style={{ color: '#f87171' }}>Error: {error}</p>}
+                             <div style={{ marginBottom: '1rem' }}>
+                                <label htmlFor="newPetName">Name:</label>
+                                <input
+                                    type="text"
+                                    id="newPetName"
+                                    value={newPetName}
+                                    onChange={(e) => setNewPetName(e.target.value)}
+                                    required
+                                    className="input"
+                                />
+                            </div>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label htmlFor="newPetBreed">Breed (Optional):</label>
+                                <input
+                                    type="text"
+                                    id="newPetBreed"
+                                    value={newPetBreed}
+                                    onChange={(e) => setNewPetBreed(e.target.value)}
+                                    className="input"
+                            />
+                            </div>
+                            <div style={{ marginBottom: '1rem' }}>
+                                <label htmlFor="newPetSize">Size (Optional):</label>
+                                <input
+                                    type="text"
+                                    id="newPetSize"
+                                    value={newPetSize}
+                                    onChange={(e) => setNewPetSize(e.target.value)}
+                                    placeholder="e.g., Small, Medium, Large"
+                                    className="input"
+                                />
+                            </div>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1.5rem' }}>
+                                <button type="button" onClick={() => setIsAddModalOpen(false)} className="button secondary" disabled={isAdding}>Cancel</button>
+                                <button type="submit" disabled={isAdding} className="button primary">
+                                    {isAdding ? 'Adding...' : 'Add Pet'}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
         </section>
