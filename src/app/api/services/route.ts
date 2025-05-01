@@ -2,6 +2,15 @@ import { NextResponse } from 'next/server'
 import { createClient as createServerClient } from '@/utils/supabase/server'
 import { createAdminClient } from '@/utils/supabase/admin'
 
+// Define the expected structure for the POST request body
+type NewServiceData = {
+    name: string;
+    description?: string | null;
+    requires_field_selection?: boolean;
+    default_price?: number | null;
+    service_type: 'Field Hire' | 'Daycare'; // Make service_type mandatory
+}
+
 // GET all services
 export async function GET() {
   const supabase = await createServerClient()
@@ -16,7 +25,7 @@ export async function GET() {
   const supabaseAdmin = await createAdminClient()
   const { data: services, error } = await supabaseAdmin
     .from('services')
-    .select('id, name, description, created_at, requires_field_selection, default_price')
+    .select('id, name, description, created_at, requires_field_selection, default_price, service_type')
     .order('name')
 
   if (error) {
@@ -29,66 +38,63 @@ export async function GET() {
 
 // POST a new service (Admin only)
 export async function POST(request: Request) {
-  const supabase = await createServerClient()
-  const supabaseAdmin = await createAdminClient()
+    const supabase = await createServerClient();
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-   // Check auth & admin role
-  const { data: { user }, error: authError } = await supabase.auth.getUser()
-  if (authError || !user) {
-    return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
-  }
-  const { data: staffData, error: staffError } = await supabase
-    .from('staff')
-    .select('role')
-    .eq('user_id', user.id)
-    .single()
-  if (staffError || !staffData || staffData.role !== 'admin') {
-    return NextResponse.json({ error: 'Forbidden: Requires admin role' }, { status: 403 })
-  }
+    if (authError || !user) {
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 })
+    }
 
-  // Parse request body
-  let serviceData: { name: string; description?: string; default_price?: number | null };
-  try {
-    const body = await request.json();
-    // Validate price if provided
-    let defaultPrice = body.default_price;
-    if (defaultPrice !== undefined && defaultPrice !== null && typeof defaultPrice !== 'number') {
-        // Attempt conversion if it's a string number
-        const parsedPrice = parseFloat(defaultPrice);
-        if (isNaN(parsedPrice)) {
-            throw new Error('Invalid format for default_price');
+    // Check admin role using the user ID
+    const { data: staffData, error: staffError } = await supabase
+        .from('staff')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+
+    if (staffError || !staffData || staffData.role !== 'admin') {
+        return NextResponse.json({ error: 'Forbidden: Requires admin role' }, { status: 403 });
+    }
+
+    let serviceData: NewServiceData
+    try {
+        const body = await request.json()
+        // Validate required fields
+        if (!body.name || typeof body.name !== 'string' || body.name.trim() === '') {
+            throw new Error('Service name is required.')
         }
-        defaultPrice = parsedPrice;
+        // Validate mandatory service_type
+        if (!body.service_type || (body.service_type !== 'Field Hire' && body.service_type !== 'Daycare')) {
+            throw new Error('Valid service_type (\'Field Hire\' or \'Daycare\') is required.')
+        }
+
+        // Prepare data, setting defaults or nulls for optional fields if not provided
+        serviceData = {
+            name: body.name.trim(),
+            description: body.description?.trim() || null,
+            requires_field_selection: typeof body.requires_field_selection === 'boolean' ? body.requires_field_selection : false,
+            default_price: typeof body.default_price === 'number' ? body.default_price : null,
+            service_type: body.service_type // Already validated
+        }
+
+    } catch (e) {
+        const errorMessage = e instanceof Error ? e.message : 'Invalid request body'
+        return NextResponse.json({ error: errorMessage }, { status: 400 })
     }
 
-    serviceData = {
-        name: body.name,
-        description: body.description,
-        default_price: defaultPrice === undefined ? null : defaultPrice // Ensure it's number or null
-    };
-    if (!serviceData.name) {
-      throw new Error('Missing required field: name');
+    // Use admin client to bypass RLS for insertion
+    const supabaseAdmin = await createAdminClient()
+
+    const { data: newService, error: insertError } = await supabaseAdmin
+        .from('services')
+        .insert(serviceData)
+        .select()
+        .single()
+
+    if (insertError) {
+        console.error('Error inserting service:', insertError)
+        return NextResponse.json({ error: insertError.message }, { status: 500 })
     }
-  } catch (e) {
-    const errorMessage = e instanceof Error ? e.message : 'Invalid request body';
-    return NextResponse.json({ error: errorMessage }, { status: 400 })
-  }
 
-  // Insert the new service
-  const { data: newService, error: insertError } = await supabaseAdmin
-    .from('services')
-    .insert(serviceData)
-    .select()
-    .single();
-
-  if (insertError) {
-    console.error('Error creating service:', insertError)
-    // Handle unique constraint violation for name
-    if (insertError.code === '23505') {
-         return NextResponse.json({ error: `Service name "${serviceData.name}" already exists.` }, { status: 409 }); // 409 Conflict
-    }
-    return NextResponse.json({ error: insertError.message }, { status: 500 })
-  }
-
-  return NextResponse.json(newService, { status: 201 })
+    return NextResponse.json(newService, { status: 201 })
 }

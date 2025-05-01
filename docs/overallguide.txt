@@ -5,6 +5,7 @@ Project Summary for AI Assistant (booking-and-accounts)
 **System Overview:**
 - **Tech Stack:** Next.js (App Router), Supabase (Auth & PostgreSQL), React.
 - **User Roles:** Admin, Staff, Client. Role-based access is enforced throughout the UI and API.
+- **Data Fetching:** Data is primarily fetched within the relevant dashboard component (Admin, Staff, Client) after authentication and role determination, rather than being passed down from the main page.
 
 **Key Features:**
 - **Authentication:**
@@ -24,7 +25,10 @@ Project Summary for AI Assistant (booking-and-accounts)
     - Displays default staff member name (or "Unassigned").
     - Edit client profiles (updates `clients` and `profiles` tables), manage their pets (add/edit/delete/confirm pets).
   - **Site & Field Management:** Create/view sites and fields.
-  - **Service Management:** Create/view services and their availability rules.
+  - **Service Management:**
+    - Create/view services, including setting a mandatory `service_type` ('Field Hire' or 'Daycare').
+    - Manage service availability rules.
+    - Filter existing services by type in the UI.
   - **Booking Management:** Create/view bookings, link bookings to clients and pets.
   - **Vehicle Management:**
     - Admins can view/add/delete vehicles and assign them to staff.
@@ -50,7 +54,7 @@ Project Summary for AI Assistant (booking-and-accounts)
 **Table Details:**
 - **sites:** id, name, address, is_active
 - **fields:** id, site_id (FK), name, field_type
-- **services:** id, name, description, created_at, requires_field_selection, default_price
+- **services:** id, name, description, created_at, requires_field_selection, default_price, service_type (TEXT NOT NULL CHECK(service_type IN ('Field Hire', 'Daycare')))
 - **service_availability:**
     - id (bigint PK)
     - service_id (FK)
@@ -168,19 +172,25 @@ Project Summary for AI Assistant (booking-and-accounts)
       - Returns the list of slots, including the calculated `price_per_pet`.
 - **/api/fields, /api/sites, /api/services, /api/service-availability, /api/service-availability/[ruleId]**:
   - CRUD for fields, sites, services, and service availability rules.
-  - `service-availability` endpoints now handle `use_staff_vehicle_capacity` (boolean) instead of `capacity_type` and require `field_ids` (array).
+  - `GET /api/services`: Returns services including `service_type`. Supports `?active=true` filter.
+  - `POST /api/services`: Requires `name` and `service_type` ('Field Hire' or 'Daycare').
+  - `PUT /api/services/[serviceId]`: Allows updating fields including `service_type`.
+  - `service-availability` endpoints now handle `use_staff_vehicle_capacity` (boolean) instead of `capacity_type` and require `field_ids` (array). No longer uses `base_capacity`.
 
 **Component/File Structure:**
-- **src/app/page.tsx:** Main entry point, renders UI based on auth/role, displays welcome message with user name.
+- **src/app/page.tsx:** Main entry point. Handles authentication state and renders the correct dashboard (Admin, Staff, Client) based on user role. Does not manage application-wide data state.
+- **src/components/admin/AdminDashboard.tsx:** Container for admin features. Fetches and manages state for users, sites, fields, services, vehicles, bookings, availability etc., needed for its child components (UserManagement, SiteFieldManagement, ServiceManagement...). Contains action handlers.
 - **src/components/admin/UserManagement.tsx:** View staff/admin, assign roles/vehicles.
-- **src/components/admin/ClientManagement.tsx:** List/search clients (clients only), assign default staff, manage client info/pets via modal.
-- **src/components/admin/BookingManagement.tsx:** Create/manage bookings (potentially allows override).
-- **src/components/admin/ServiceManagement.tsx:** Manage services.
+- **src/components/admin/ClientManagement.tsx:** List/search clients (clients only), assign default staff, manage client info/pets via modal. Fetches its own client data.
+- **src/components/admin/BookingManagement.tsx:** Create/manage bookings (potentially allows override). Fetches its own data if needed.
+- **src/components/admin/ServiceManagement.tsx:** Manage services. Includes dropdown for `service_type` on add/edit and filtering by type.
 - **src/components/admin/SiteFieldManagement.tsx:** Manage sites/fields.
-- **src/components/admin/ServiceAvailabilityManagement.tsx:** Manage service availability rules. UI updated to use `use_staff_vehicle_capacity` checkbox instead of `capacity_type` radios; field selection is always present.
+- **src/components/admin/ServiceAvailabilityManagement.tsx:** Manage service availability rules. UI updated to use `use_staff_vehicle_capacity` checkbox instead of `capacity_type`; field selection is always present. No longer uses `base_capacity` field.
+- **src/components/client/ClientDashboard.tsx:** Container for client features. Fetches and manages state for services, profile, etc., needed for its child components.
 - **src/components/client/ClientBooking.tsx:** Client booking UI.
 - **src/components/client/PetManagement.tsx:** Client pet management UI.
 - **src/components/client/MyBookings.tsx:** Client booking history/upcoming bookings.
+- **src/components/staff/StaffDashboard.tsx:** Container for staff features. Fetches and manages state for bookings, services etc., needed for its child components.
 - **src/utils/auth-helpers.ts:** Centralized authentication/authorization helpers.
 - **src/utils/supabase/client.ts, server.ts, admin.ts:** Supabase client initializers.
 

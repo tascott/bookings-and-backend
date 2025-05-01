@@ -375,6 +375,7 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
     const description = formData.get('serviceDescription') as string;
     const requires_field_selection = formData.get('requiresFieldSelection') === 'on';
     const defaultPriceStr = formData.get('serviceDefaultPrice') as string;
+    const service_type = formData.get('service_type') as 'Field Hire' | 'Daycare';
 
     if (!name) {
       setError('Service name is required.');
@@ -391,11 +392,24 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
       }
     }
 
+    if (!service_type || (service_type !== 'Field Hire' && service_type !== 'Daycare')) {
+      setError('A valid Service Type (Field Hire or Daycare) must be selected.');
+      return;
+    }
+
     try {
+      const payload = {
+        name,
+        description,
+        requires_field_selection,
+        default_price,
+        service_type
+      };
+
       const response = await fetch('/api/services', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description, requires_field_selection, default_price }),
+        body: JSON.stringify(payload),
       });
       if (!response.ok) {
         const errorData = await response.json();

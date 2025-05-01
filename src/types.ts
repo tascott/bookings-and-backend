@@ -38,8 +38,9 @@ export type Service = {
   name: string;
   description: string | null;
   created_at: string;
-  requires_field_selection: boolean;
-  default_price?: number | null; // Add default price
+  requires_field_selection?: boolean; // Optional based on docs
+  default_price?: number | null;
+  service_type?: 'Field Hire' | 'Daycare' | null; // Added service_type
 }
 
 // Service Availability type
