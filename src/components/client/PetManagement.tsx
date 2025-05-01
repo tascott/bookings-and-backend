@@ -172,7 +172,7 @@ export default function PetManagement() {
 
     // --- Render Logic ---
     return (
-        <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
+        <section>
             <h2>My Pets</h2>
 
             {/* Display Global Error for this section */}

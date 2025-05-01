@@ -66,6 +66,7 @@ interface AdminDashboardProps {
   vehicleError: string | null;
   handleAddVehicle: (vehicle: Partial<Vehicle>) => Promise<void>;
   handleDeleteVehicle: (vehicleId: number) => Promise<void>;
+  handleUpdateVehicle: (vehicleId: number, updates: Partial<Vehicle>) => Promise<void>;
 }
 
 export default function AdminDashboard({
@@ -110,6 +111,7 @@ export default function AdminDashboard({
   vehicleError,
   handleAddVehicle,
   handleDeleteVehicle,
+  handleUpdateVehicle,
 }: AdminDashboardProps) {
 
   // Define tabs for the admin dashboard
@@ -199,12 +201,8 @@ export default function AdminDashboard({
           role="admin"
           bookings={bookings}
           isLoadingBookings={isLoadingBookings}
-          sites={sites}
-          fields={fields}
+          services={services}
           error={error}
-          handleAddBooking={handleAddBooking}
-          addBookingFormRef={addBookingFormRef}
-          getFieldsForSite={getFieldsForSite}
           refetchBookings={fetchBookings}
           handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
         />
@@ -220,6 +218,7 @@ export default function AdminDashboard({
           error={vehicleError}
           onAdd={handleAddVehicle}
           onDelete={handleDeleteVehicle}
+          onUpdate={handleUpdateVehicle}
         />
       ),
     },

@@ -496,7 +496,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     // -------------------------------------
 
     return (
-        <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
+        <section>
             <h2>Available Services & Times</h2>
 
             {/* Slot Search Form */}

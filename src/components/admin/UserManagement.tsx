@@ -3,39 +3,23 @@
 import styles from "@/app/page.module.css"; // Adjust path as needed
 // import type { User } from '@supabase/supabase-js'; // Removed unused import
 // Import Staff and Vehicle types
-import type { Staff, Vehicle } from '@/types';
-import { useState, useEffect, useRef } from 'react';
+import type { UserWithRole, Vehicle } from '@/types';
+import type { StaffMemberListItem } from '@/types'; // Import StaffMemberListItem
+// import type { User } from '@supabase/supabase-js'; // Removed unused User import
+import { useState, useEffect, useRef, useCallback } from 'react';
 import TabNavigation from '@/components/TabNavigation'; // Import the TabNavigation component
-
-// Define type for user data passed as props (align with what fetchAllUsers provides)
-type UserWithRole = {
-    id: string;
-    user_id?: string; // This might be the Supabase auth user ID
-    email?: string;
-    role: string;
-    created_at?: string;
-    last_sign_in_at?: string;
-    // Profile data might be nested or joined depending on API
-    first_name?: string;
-    last_name?: string;
-    phone?: string; // Use phone consistently if possible
-    // staff table specific fields
-    staff_id?: number; // Corresponds to staff.id
-    default_vehicle_id?: number | null;
-    notes?: string;
-}
 
 // Define props for the component
 interface UserManagementProps {
-    users: UserWithRole[]; // These are likely combined Auth User + Profile/Staff data
-    staff: Staff[]; // Separate array of staff records including default_vehicle_id
-    vehicles: Vehicle[]; // List of all vehicles for dropdown
+    users: UserWithRole[];
+    staff: StaffMemberListItem[]; // Add staff list
+    vehicles: Vehicle[]; // Add vehicles list
     isLoadingUsers: boolean;
     error: string | null;
-    updatingUserId: string | null;
-    handleAssignRole: (userId: string, targetRole: 'client' | 'staff' | 'admin') => Promise<void>;
-    handleAssignDefaultVehicle: (staffId: number, vehicleId: number | null) => Promise<void>; // Handler for vehicle assignment
-    onUserUpdated?: () => void;
+    updatingUserId: string | null; // Track which user is being updated
+    handleAssignRole: (userId: string, role: string) => Promise<void>;
+    handleAssignDefaultVehicle: (staffId: number, vehicleId: number | null) => Promise<void>; // Add handler
+    onUserUpdated: () => Promise<void>; // Callback to refetch users after update
 }
 
 export default function UserManagement({
@@ -50,10 +34,13 @@ export default function UserManagement({
     onUserUpdated
 }: UserManagementProps) {
     // Edit modal state
-    const [editingUser, setEditingUser] = useState<UserWithRole & { first_name?: string; last_name?: string; phone_number?: string; notes?: string } | null>(null);
+    const [editError, setEditError] = useState<string | null>(null);
+
+    // Simplify editingUser state type
+    const [editingUser, setEditingUser] = useState<UserWithRole | null>(null);
+    // --- Restore editFields state ---
     const [editFields, setEditFields] = useState({ first_name: '', last_name: '', phone: '', notes: '' });
     const [isSaving, setIsSaving] = useState(false);
-    const [editError, setEditError] = useState<string | null>(null);
 
     // --- Promote Client Autocomplete State ---
     const [clientSearch, setClientSearch] = useState('');
@@ -62,6 +49,41 @@ export default function UserManagement({
     const [promoteError, setPromoteError] = useState<string | null>(null);
     const [isPromoting, setIsPromoting] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
+
+    // --- Correctly placed helper functions ---
+    const removeSelectedClient = () => {
+        setSelectedClient(null);
+        setClientSearch('');
+    };
+
+    const promoteToStaff = async () => {
+        if (!selectedClient) {
+            setPromoteError('No client selected.');
+            return;
+        }
+        // Ensure the user doesn't already exist in the staff list by checking user_id (which is the auth ID)
+        const alreadyStaff = staff.find(s => s.user_id === selectedClient.id);
+        if (alreadyStaff) {
+             setPromoteError('This user is already staff or admin.');
+             return;
+        }
+        setIsPromoting(true);
+        setPromoteError(null);
+        try {
+            // Call the handleAssignRole function passed via props
+            await handleAssignRole(selectedClient.id, 'staff');
+            setPromoteError(null);
+            setSelectedClient(null); // Clear selection on success
+            setClientSearch('');
+            // Optionally refetch all users if needed, or rely on parent component
+             await onUserUpdated();
+        } catch (e) {
+            setPromoteError(e instanceof Error ? e.message : 'Failed to promote user');
+        } finally {
+            setIsPromoting(false);
+        }
+    };
+    // -----------------------------------------
 
     // Fetch filtered clients as user types
     useEffect(() => {
@@ -99,7 +121,7 @@ export default function UserManagement({
             setSelectedClient(null);
             setClientSearch('');
             setFilteredClients([]);
-            if (onUserUpdated) onUserUpdated();
+            if (onUserUpdated) await onUserUpdated();
         } catch (e) {
             setPromoteError(e instanceof Error ? e.message : 'Failed to promote user');
         } finally {
@@ -107,58 +129,62 @@ export default function UserManagement({
         }
     };
 
-    // Combine user details (Keep this logic, used by both Staff and Admin tabs)
+    // Prepare staff details including profile and vehicle info
     const staffUserDetails = users
         .filter(u => u.role === 'staff' || u.role === 'admin')
-        .map(user => {
-            const staffRecord = staff.find(s => s.user_id === user.id);
+        .map(u => {
+            // Find matching staff record using user.id (which is the auth user_id)
+            const staffRecord = staff.find(s => s.user_id === u.id);
             return {
-                ...user,
-                staff_id: staffRecord?.id,
+                ...u,
+                staff_id: staffRecord?.id, // Get the staff table primary key (staff.id)
                 default_vehicle_id: staffRecord?.default_vehicle_id,
-                notes: staffRecord?.notes ?? undefined,
-                first_name: staffRecord?.profile?.first_name || user.first_name,
-                last_name: staffRecord?.profile?.last_name || user.last_name,
-            } as UserWithRole;
+            };
         });
+    // const clients = users.filter(u => u.role === 'client'); // Remove unused variable
 
     // Filter for Tabs
     const staffOnly = staffUserDetails.filter(u => u.role === 'staff');
     const adminsOnly = staffUserDetails.filter(u => u.role === 'admin');
 
-    const openEdit = (user: UserWithRole) => {
+    const openEditModal = useCallback((user: UserWithRole) => {
         setEditingUser(user);
+        // --- Set initial editFields based on user ---
         setEditFields({
             first_name: user.first_name || '',
             last_name: user.last_name || '',
-            phone: user.phone || '', // Use phone consistently
-            notes: user.notes || ''
+            phone: user.phone || '',
+            notes: user.notes || '' // Access notes optionally
         });
         setEditError(null);
-    };
+    }, []);
+
     const closeEdit = () => {
         setEditingUser(null);
         setEditError(null);
     };
+    // Handle editing field changes
     const handleEditChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+        // --- Restore implementation ---
         setEditFields(f => ({ ...f, [e.target.name]: e.target.value }));
     };
     const handleEditSave = async () => {
         if (!editingUser) return;
+        // --- Restore implementation ---
         setIsSaving(true);
         setEditError(null);
         try {
             const response = await fetch(`/api/users/${editingUser.id}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(editFields)
+                body: JSON.stringify(editFields) // Send editFields state
             });
             if (!response.ok) {
                 const errorData = await response.json();
                 throw new Error(errorData.error || 'Failed to update user');
             }
             closeEdit();
-            if (typeof onUserUpdated === 'function') onUserUpdated();
+            if (typeof onUserUpdated === 'function') await onUserUpdated();
         } catch (e) {
             setEditError(e instanceof Error ? e.message : 'Failed to update user');
         } finally {
@@ -214,7 +240,7 @@ export default function UserManagement({
                                     </div>
                                     <div>{u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A'}</div>
                                     <div className={styles.userAction}>
-                                        <button onClick={() => openEdit(u)} disabled={updatingUserId === u.id}>Edit</button>
+                                        <button onClick={() => openEditModal(u)} disabled={updatingUserId === u.id}>Edit</button>
                                     </div>
                                 </div>
                             ))}
@@ -252,7 +278,7 @@ export default function UserManagement({
                                     <div>{u.role}</div>
                                     <div>{u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A'}</div>
                                     <div className={styles.userAction}>
-                                        <button onClick={() => openEdit(u)} disabled={updatingUserId === u.id}>Edit</button>
+                                        <button onClick={() => openEditModal(u)} disabled={updatingUserId === u.id}>Edit</button>
                                     </div>
                                 </div>
                             ))}
@@ -320,25 +346,30 @@ export default function UserManagement({
                         {editError && <p style={{ color: '#f87171' }}>{editError}</p>}
                         <div style={{ marginBottom: '1rem' }}>
                             <label>First Name:<br />
+                                {/* --- Restore binding to editFields --- */}
                                 <input type="text" name="first_name" value={editFields.first_name} onChange={handleEditChange} className="input" />
                             </label>
                         </div>
                         <div style={{ marginBottom: '1rem' }}>
                             <label>Last Name:<br />
+                                {/* --- Restore binding to editFields --- */}
                                 <input type="text" name="last_name" value={editFields.last_name} onChange={handleEditChange} className="input" />
                             </label>
                         </div>
                         <div style={{ marginBottom: '1rem' }}>
                             <label>Phone:<br />
+                                {/* --- Restore binding to editFields --- */}
                                 <input type="text" name="phone" value={editFields.phone} onChange={handleEditChange} className="input" />
                             </label>
                         </div>
                         <div style={{ marginBottom: '1rem' }}>
                             <label>Notes (Staff Only):<br />
-                                <textarea name="notes" value={editFields.notes} onChange={handleEditChange} className="input" rows={3} disabled={editingUser.role !== 'staff'}></textarea>
+                                {/* --- Restore binding to editFields --- */}
+                                <textarea name="notes" value={editFields.notes} onChange={handleEditChange} className="input" rows={3} />
                             </label>
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                            {/* --- Restore binding disabled state to isSaving --- */}
                             <button onClick={closeEdit} className="button secondary" disabled={isSaving}>Cancel</button>
                             <button onClick={handleEditSave} className="button primary" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Changes'}</button>
                         </div>

@@ -59,11 +59,19 @@ export type ServiceAvailability = {
 
 // User with role information
 export type UserWithRole = {
-  id: string;
+  id: string; // This is the Supabase Auth User ID
   email?: string;
   role: string;
   created_at?: string;
   last_sign_in_at?: string;
+  // Optional profile fields (from join)
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  // Optional staff fields (from join)
+  staff_id?: number | null; // Corresponds to staff.id
+  default_vehicle_id?: number | null;
+  notes?: string | null;
 }
 
 // Pet type

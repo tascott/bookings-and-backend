@@ -802,6 +802,30 @@ export default function Home() {
     }
   };
 
+  const handleUpdateVehicle = async (id: number, updates: Partial<Vehicle>) => {
+    setVehicleError(null);
+    try {
+      // Include the id in the body for the PUT request
+      const payload = { ...updates, id };
+      const response = await fetch(`/api/vehicles`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update vehicle');
+      }
+      const updatedVehicle: Vehicle = await response.json();
+      // Update local state
+      setVehicles(prev => prev.map(v => v.id === id ? updatedVehicle : v));
+    } catch (e) {
+      const message = e instanceof Error ? e.message : 'Failed to update vehicle';
+      setVehicleError(message);
+      throw e; // Re-throw the error so the modal can catch it
+    }
+  };
+
   // Re-add fetchStaff function, now fetching default_vehicle_id
   const fetchStaff = async () => {
     setStaff([]);
@@ -990,6 +1014,7 @@ export default function Home() {
                   vehicleError={vehicleError}
                   handleAddVehicle={handleAddVehicle}
                   handleDeleteVehicle={handleDeleteVehicle}
+                  handleUpdateVehicle={handleUpdateVehicle}
                   handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
                 />
               )}

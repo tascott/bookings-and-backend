@@ -90,3 +90,51 @@ export async function POST(
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
+
+export async function GET(request: Request, context: { params: { clientId: string } }) {
+    const supabase = await createServerClient();
+    const supabaseAdmin = await createAdminClient();
+
+    // 1. Check Auth & Role (Admin/Staff)
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    if (authError || !user) {
+        return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
+    }
+    const { data: staffData, error: staffError } = await supabase
+        .from('staff')
+        .select('role')
+        .eq('user_id', user.id)
+        .single();
+
+    if (staffError || !staffData || !['admin', 'staff'].includes(staffData.role || '')) {
+        return NextResponse.json({ error: 'Forbidden: Requires admin or staff role' }, { status: 403 });
+    }
+
+    // 2. Get Client ID from route params
+    const clientIdStr = context.params.clientId; // Access directly from context
+    const clientId = parseInt(clientIdStr, 10);
+    if (isNaN(clientId)) {
+        return NextResponse.json({ error: 'Invalid Client ID format' }, { status: 400 });
+    }
+
+    // 3. Query Client's Pets
+    try {
+        const { data: pets, error: queryError } = await supabaseAdmin
+            .from('pets')
+            .select('id, name') // Removed is_active
+            .eq('client_id', clientId)
+            .order('name'); // Order alphabetically
+
+        if (queryError) {
+            console.error("Client pets query error:", queryError);
+            throw new Error('Database error fetching client pets.');
+        }
+
+        return NextResponse.json(pets || []); // Return empty array if no pets
+
+    } catch (e) {
+        const message = e instanceof Error ? e.message : 'An unexpected error occurred fetching pets.';
+        console.error('Fetch Client Pets Error:', e);
+        return NextResponse.json({ error: message }, { status: 500 });
+    }
+}

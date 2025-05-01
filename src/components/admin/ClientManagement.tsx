@@ -818,7 +818,7 @@ export default function ClientManagement() {
   };
 
   return (
-    <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem', color: 'white' }}>
+    <section style={{ color: 'white' }}>
       <h2>Client Management</h2>
       {/* Search and Pagination Controls */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 16 }}>

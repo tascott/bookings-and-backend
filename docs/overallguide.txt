@@ -114,6 +114,7 @@ Project Summary for AI Assistant (booking-and-accounts)
   - DELETE: Admins delete a vehicle by ID.
 - **/api/pets**, **/api/pets/[petId]**, **/api/clients/[clientId]/pets**:
   - CRUD for pets, linked to clients.
+  - `/api/clients/[clientId]/pets` specifically used by admin/staff to fetch a client's pets.
 - **/api/bookings**, **/api/client-booking**, **/api/my-bookings**, **/api/bookings/[bookingId]/status**:
   - Bookings CRUD, client booking flow, viewing client bookings, updating payment status.
   - `POST /api/client-booking`: Handles client-initiated bookings. Performs capacity checks based on the matched `service_availability` rule:
@@ -129,7 +130,10 @@ Project Summary for AI Assistant (booking-and-accounts)
           - Checks overlaps based on bookings in *any* of the rule's `field_ids`.
           - Determines `field_id` based on client selection (if `requires_field_selection`) or assigns the first available.
           - Sets `assigned_staff_id` and `vehicle_id` to `null`.
-  - Compares requested pets against remaining capacity (respecting NULL base_capacity as unlimited).
+      - Compares requested pets against remaining capacity (respecting NULL base_capacity as unlimited).
+  - **/api/admin-booking**:
+    - **POST:** Handles admin/staff-initiated bookings. Bypasses some standard checks.
+    - **Pet Verification:** Checks that selected pets belong to the selected client but *does not* currently check if pets are marked as `is_active` or `is_confirmed`. This allows admins to book for any pet owned by the client.
 - **/api/available-slots:**
   - Returns available booking slots for a service/date, requires auth.
   - Calls `calculate_available_slots` RPC, passing client's `default_staff_id`.
@@ -193,3 +197,9 @@ Project Summary for AI Assistant (booking-and-accounts)
 - Use `/api/users` for role management and mixed user lists.
 - Check schema and this document before writing SQL or API code.
 - Check `service_availability` rules for the `use_staff_vehicle_capacity` flag to understand how capacity and overlap checks are performed for a given service/time.
+
+**Data Consistency & Schema Verification:**
+- It's crucial to ensure TypeScript types (`src/types.ts`), API logic, and the actual PostgreSQL database schema remain synchronized.
+- Discrepancies can lead to runtime errors (e.g., querying non-existent columns like `pets.is_active` was encountered).
+- **Always verify column names and existence directly in the Supabase dashboard (Table Editor or SQL Editor) or via migration files** before relying on them in code or types.
+- Update types and documentation promptly after schema changes.

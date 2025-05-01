@@ -73,8 +73,6 @@ export default function MyBookings() {
 
     return (
         <section className="dashboard-section" style={{ marginTop: '2rem' }}>
-            <h2>My Bookings</h2>
-
             {isLoading && <p>Loading your bookings...</p>}
             {error && <p className="error-message">Error loading bookings: {error}</p>}
 
