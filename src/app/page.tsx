@@ -1,27 +1,10 @@
 'use client';
 
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
-// Remove Auth UI imports
-// import { Auth } from '@supabase/auth-ui-react';
-// import { ThemeSupa } from '@supabase/auth-ui-shared';
 import type { User } from '@supabase/supabase-js';
-// import type { Vehicle, Staff } from '@/types'; // Removed Staff import
-import type {
-  Site,
-  Field,
-  Booking,
-  Service,
-  ServiceAvailability,
-  UserWithRole,
-  Vehicle,
-  Staff,
-  // Add other shared types if needed (e.g., Pet, Profile, Client)
-} from '@/types';
 import styles from "./page.module.css";
-// Import server actions
 import { login, signup } from './actions';
-// Import the new component
 import AuthForm from '@/components/AuthForm';
 import AdminDashboard from '@/components/admin/AdminDashboard';
 import StaffDashboard from '@/components/staff/StaffDashboard';
@@ -30,44 +13,17 @@ import ClientDashboard from '@/components/client/ClientDashboard';
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
   const [role, setRole] = useState<string | null>(null);
-  const [users, setUsers] = useState<UserWithRole[]>([]);
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
-  const [isLoadingUsers, setIsLoadingUsers] = useState(false);
   const [isLoadingRole, setIsLoadingRole] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  // State to track which user row is being updated
-  const [updatingUserId, setUpdatingUserId] = useState<string | null>(null);
-  // Add state for sites and fields
-  const [sites, setSites] = useState<Site[]>([]);
-  const [fields, setFields] = useState<Field[]>([]);
-  const [isLoadingSites, setIsLoadingSites] = useState(false);
-  const [isLoadingFields, setIsLoadingFields] = useState(false);
-  // Add state for bookings
-  const [bookings, setBookings] = useState<Booking[]>([]);
-  const [isLoadingBookings, setIsLoadingBookings] = useState(false);
-  // Add new state for services and availability
-  const [services, setServices] = useState<Service[]>([]);
-  const [isLoadingServices, setIsLoadingServices] = useState(false);
-  const [serviceAvailability, setServiceAvailability] = useState<ServiceAvailability[]>([]);
-  const [isLoadingServiceAvailability, setIsLoadingServiceAvailability] = useState(false);
-  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
-  const [staff, setStaff] = useState<Staff[]>([]);
-  const [isLoadingVehicles, setIsLoadingVehicles] = useState(false);
-  const [vehicleError, setVehicleError] = useState<string | null>(null);
-  // Add state for user profile details
+  const [error, setError] = useState<string | null>(null); // Keep error for auth/role fetching
   const [firstName, setFirstName] = useState<string | null>(null);
   const [lastName, setLastName] = useState<string | null>(null);
   const supabase = createClient();
 
-  // Create refs for forms that need resetting after async ops
-  const addSiteFormRef = useRef<HTMLFormElement>(null);
-  const addServiceFormRef = useRef<HTMLFormElement>(null);
-  const addBookingFormRef = useRef<HTMLFormElement>(null);
-  const addServiceAvailabilityFormRef = useRef<HTMLFormElement>(null);
-
   const fetchUserRole = async (userId: string) => {
     setIsLoadingRole(true);
     setRole(null);
+    setError(null); // Clear previous errors when fetching role
     try {
       // Fetch from staff, don't assume single row
       const { data: staffData, error: staffError } = await supabase
@@ -99,831 +55,118 @@ export default function Home() {
       if (clientError) throw clientError;
 
       // If not found in either table
+      console.warn(`User ${userId} not found in staff or clients table.`); // Add warning
       return null;
     } catch (err) {
       // Log unexpected errors (like connection issues, RLS problems)
       const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
       console.error("Error fetching user role:", err);
-      setError(errorMessage);
+      setError(`Error fetching user role: ${errorMessage}`); // Set error state
       return null;
     } finally {
       setIsLoadingRole(false);
     }
   };
 
-  const fetchAllUsers = async () => {
-    setIsLoadingUsers(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/users');
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `HTTP error! status: ${response.status}`);
-      }
-      const data: UserWithRole[] = await response.json();
-      setUsers(data);
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-      console.error("Failed to fetch users:", e);
-      setError(errorMessage);
-      setUsers([]);
-    } finally {
-      setIsLoadingUsers(false);
-    }
-  };
+  // Removed fetchAllUsers function
 
+  // Effect 1: Check auth state and fetch profile
   useEffect(() => {
-    const checkUserAndProfile = async () => {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-      setUser(user);
-      if (userError) {
-        console.error("Error fetching user:", userError);
-      }
+    const checkUserAndProfile = async (currentUser: User | null) => {
+       if (currentUser) {
+         // Fetch profile details after getting user
+         const { data: profile, error: profileError } = await supabase
+           .from('profiles')
+           .select('first_name, last_name')
+           .eq('user_id', currentUser.id)
+           .single();
 
-      if (user) {
-        // Fetch profile details after getting user
-        const { data: profile, error: profileError } = await supabase
-          .from('profiles')
-          .select('first_name, last_name')
-          .eq('user_id', user.id)
-          .single();
-
-        if (profileError) {
-          console.error("Error fetching profile:", profileError);
-          // Don't block rendering, just won't have name
-          setFirstName(null);
-          setLastName(null);
-        } else if (profile) {
-          setFirstName(profile.first_name);
-          setLastName(profile.last_name);
-        } else {
-          // Profile might not exist yet
-          setFirstName(null);
-          setLastName(null);
-        }
-      } else {
-        // No user, clear profile state
-        setFirstName(null);
-        setLastName(null);
-      }
-      setIsLoadingInitial(false); // Set initial loading false after user and profile check
+         if (profileError) {
+           console.error("Error fetching profile:", profileError);
+           // Don't block rendering, just won't have name
+           setFirstName(null);
+           setLastName(null);
+         } else if (profile) {
+           setFirstName(profile.first_name);
+           setLastName(profile.last_name);
+         } else {
+           // Profile might not exist yet
+           console.warn(`Profile not found for user ${currentUser.id}`);
+           setFirstName(null);
+           setLastName(null);
+         }
+       } else {
+         // No user, clear profile state
+         setFirstName(null);
+         setLastName(null);
+       }
     };
 
-    checkUserAndProfile();
+    // Initial check
+    supabase.auth.getUser().then(({ data: { user }, error: userError }) => {
+        setUser(user);
+        if (userError) {
+            console.error("Error fetching user on initial load:", userError);
+        }
+        checkUserAndProfile(user).finally(() => {
+            setIsLoadingInitial(false); // Set initial loading false after user and profile check
+        });
+    });
+
 
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       const newUser = session?.user ?? null;
+      const previousUser = user; // Capture previous user state for comparison
       setUser(newUser);
-      // Reset dependent states on auth change
-      setRole(null);
-      setUsers([]);
-      setError(null);
-      setIsLoadingRole(false);
-      setIsLoadingUsers(false);
-      setFirstName(null);
-      setLastName(null);
 
-      // If user logs in, fetch their profile immediately
-      if (newUser) {
-        checkUserAndProfile(); // Re-run check on login/logout
+      // Only reset dependent state if the user actually changed (login/logout)
+      if (newUser?.id !== previousUser?.id) {
+          console.log('Auth state changed, resetting role and profile.');
+          setRole(null);
+          setError(null);
+          setIsLoadingRole(false);
+          // Fetch profile for the new user or clear it
+          checkUserAndProfile(newUser);
+      } else {
+          // If only session refreshed, user is the same, don't reset role/profile
+          console.log('Auth session refreshed, user unchanged.');
       }
     });
 
     return () => {
       authListener.subscription.unsubscribe();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [supabase]); // Depend only on supabase client instance
 
-  // Fetch role after user state is confirmed
+  // Effect 2: Fetch role after user state is confirmed
   useEffect(() => {
-    if (user) {
+    if (user && !role && !isLoadingRole) { // Fetch role only if we have a user but no role yet, and not already loading
+      console.log(`User ${user.id} logged in, fetching role...`);
       fetchUserRole(user.id).then(fetchedRole => {
+        console.log(`Role fetched for user ${user.id}: ${fetchedRole}`);
         setRole(fetchedRole);
       });
-    } else {
+    } else if (!user) {
+      // Clear role if user logs out
       setRole(null);
     }
-  }, [user]); // Depend on user object
-
-  useEffect(() => {
-    if (role === 'admin') {
-      fetchAllUsers();
-      fetchVehicles();
-      fetchStaff();
-    } else if (role === 'staff' && user) {
-      // Staff logic (no vehicle fetch needed here for default vehicle assignment)
-    } else {
-      setUsers([]);
-      setVehicles([]);
-      setStaff([]);
-    }
-  }, [role, user]);
-
-  // --- Site/Field Management Functions ---
-  const fetchSites = async () => {
-    setIsLoadingSites(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/sites');
-      if (!response.ok) throw new Error('Failed to fetch sites');
-      const data: Site[] = await response.json();
-      setSites(data);
-    } catch (e) {
-       setError(e instanceof Error ? e.message : 'Failed to load sites');
-       setSites([]);
-    } finally {
-      setIsLoadingSites(false);
-    }
-  };
-
-  const fetchFields = async () => {
-    setIsLoadingFields(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/fields'); // Fetch all fields initially
-      if (!response.ok) throw new Error('Failed to fetch fields');
-      const data: Field[] = await response.json();
-      setFields(data);
-    } catch (e) {
-       setError(e instanceof Error ? e.message : 'Failed to load fields');
-       setFields([]);
-    } finally {
-      setIsLoadingFields(false);
-    }
-  };
-
-  const handleAddSite = async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setError(null);
-      // Use the ref to get form data if needed, or keep using event.currentTarget for this part
-      const formData = new FormData(event.currentTarget);
-      const name = formData.get('siteName') as string;
-      const address = formData.get('siteAddress') as string;
-
-      if (!name) {
-          setError('Site name is required.');
-          return;
-      }
-
-      try {
-          const response = await fetch('/api/sites', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ name, address }),
-          });
-          if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Failed to add site');
-          }
-          const newSite: Site = await response.json();
-          setSites(prevSites => [...prevSites, newSite]);
-          // Reset the form using the ref (with optional chaining)
-          addSiteFormRef.current?.reset();
-      } catch (e) {
-          setError(e instanceof Error ? e.message : 'Failed to add site');
-      }
-  };
-
-  const handleAddField = async (event: React.FormEvent<HTMLFormElement>) => {
-      event.preventDefault();
-      setError(null);
-      const formData = new FormData(event.currentTarget);
-      const site_id = formData.get('fieldSiteId') as string;
-      const name = formData.get('fieldName') as string;
-      const capacity = formData.get('fieldCapacity') as string;
-      const field_type = formData.get('fieldType') as string;
-
-      if (!site_id) {
-          setError('Site ID is required to add a field.');
-          return;
-      }
-
-       try {
-          const response = await fetch('/api/fields', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ site_id, name, capacity, field_type }),
-          });
-          if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Failed to add field');
-          }
-          const newField: Field = await response.json();
-          setFields(prevFields => [...prevFields, newField]);
-          // Remove the reset call for the dynamic field forms
-          // event.currentTarget.reset();
-      } catch (e) {
-          setError(e instanceof Error ? e.message : 'Failed to add field');
-      }
-  };
-  // ---------------------------------------
-
-  // Effect 4: Fetch Sites & Fields when Role becomes 'admin'
-  useEffect(() => {
-    if (role === 'admin' || role === 'staff') {
-      fetchSites();
-      fetchFields();
-      fetchBookings(); // Fetch bookings for admin/staff
-      fetchServices(); // All staff/admin can see services
-      if (role === 'admin') { // Only admins manage availability rules
-        fetchServiceAvailability();
-      } else {
-        setServiceAvailability([]); // Clear if staff
-      }
-    } else {
-      // Clear data if user is not admin/staff
-      setSites([]);
-      setFields([]);
-      setBookings([]); // Clear bookings
-      setServices([]); // Clear services
-      setServiceAvailability([]); // Clear availability
-    }
-     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [role]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, role, isLoadingRole]); // Depend on user object, role, and loading state
 
   const handleLogout = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error('Error logging out:', error);
+    const { error: signOutError } = await supabase.auth.signOut(); // Renamed error variable
+    if (signOutError) {
+      console.error('Error logging out:', signOutError);
       setError('Failed to log out.');
     } else {
-      // Clear the URL parameters after successful logout
-      window.history.replaceState({}, '', '/');
+      // No need to clear state manually, onAuthStateChange handles it
+       // Clear the URL parameters after successful logout (optional, good practice)
+       window.history.replaceState({}, '', '/');
     }
   };
 
-  // Function to handle role assignment
-  const handleAssignRole = async (userId: string, targetRole: string) => {
-    if (!user || role !== 'admin') {
-      setError('Permission denied.');
-      return;
-    }
-    if (user.id === userId) {
-       setError('Cannot change your own role.');
-       return;
-    }
-
-    setUpdatingUserId(userId); // Set loading state for this user
-    setError(null);
-
-    try {
-      const response = await fetch('/api/users', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ userId, targetRole }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to assign role (HTTP ${response.status})`);
-      }
-
-      // Success! Refresh the user list to show the updated role
-      await fetchAllUsers();
-
-    } catch (e) {
-      const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred.';
-      console.error("Role assignment failed:", e);
-      setError(errorMessage);
-    } finally {
-      setUpdatingUserId(null); // Clear loading state
-    }
-  };
-
-  // --- Booking Management Functions ---
-  const fetchBookings = async () => {
-    setIsLoadingBookings(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/bookings');
-      if (!response.ok) throw new Error('Failed to fetch bookings');
-      const data: Booking[] = await response.json();
-      setBookings(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load bookings');
-      setBookings([]);
-    } finally {
-      setIsLoadingBookings(false);
-    }
-  };
-
-  const handleAddBooking = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-    const formData = new FormData(event.currentTarget);
-    const field_id_str = formData.get('bookingFieldId') as string;
-    const start_time = formData.get('bookingStartTime') as string;
-    const end_time = formData.get('bookingEndTime') as string;
-    const service_type = formData.get('bookingServiceType') as string;
-    // Optional fields
-    const max_capacity = formData.get('bookingMaxCapacity') as string;
-
-    if (!field_id_str || !start_time || !end_time) {
-      setError('Field, start time, and end time are required.');
-      return;
-    }
-
-    const field_id = parseInt(field_id_str, 10);
-    if (isNaN(field_id)) {
-        setError('Invalid Field ID selected.');
-        return;
-    }
-
-    try {
-      const payload = {
-        booking_field_ids: [field_id],
-        start_time,
-        end_time,
-        service_type: service_type || null,
-        max_capacity: max_capacity || null,
-      };
-
-      const response = await fetch('/api/bookings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add booking');
-      }
-      const newBooking: Booking = await response.json();
-      setBookings(prevBookings => [...prevBookings, newBooking].sort((a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime())); // Add and sort
-      addBookingFormRef.current?.reset(); // Use ref
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add booking');
-    }
-  };
-
-  // --- Service Management Functions ---
-  const fetchServices = async () => {
-    setIsLoadingServices(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/services');
-      if (!response.ok) throw new Error('Failed to fetch services');
-      const data: Service[] = await response.json();
-      setServices(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load services');
-      setServices([]);
-    } finally {
-      setIsLoadingServices(false);
-    }
-  };
-
-  const handleAddService = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-    const formData = new FormData(event.currentTarget);
-    const name = formData.get('serviceName') as string;
-    const description = formData.get('serviceDescription') as string;
-    const defaultPriceStr = formData.get('serviceDefaultPrice') as string;
-
-    if (!name) {
-      setError('Service name is required.');
-      return;
-    }
-
-    let defaultPrice: number | null = null;
-    if (defaultPriceStr) {
-        const parsed = parseFloat(defaultPriceStr);
-        if (!isNaN(parsed)) {
-            defaultPrice = parsed;
-        } else {
-            setError('Invalid format for default price.');
-            return;
-        }
-    }
-
-    try {
-      const response = await fetch('/api/services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, description, default_price: defaultPrice }),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add service');
-      }
-      const newService: Service = await response.json();
-      setServices(prev => [...prev, newService].sort((a, b) => a.name.localeCompare(b.name)));
-      addServiceFormRef.current?.reset(); // Use ref
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add service');
-    }
-  };
-
-  const handleUpdateService = async (serviceId: number, data: Partial<Omit<Service, 'id' | 'created_at'>>) => {
-    setError(null);
-    try {
-        const response = await fetch(`/api/services/${serviceId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to update service');
-        }
-        const updatedService: Service = await response.json();
-        // Update local state
-        setServices(prev =>
-            prev.map(s => s.id === serviceId ? updatedService : s).sort((a, b) => a.name.localeCompare(b.name))
-        );
-    } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to update service');
-        // Optionally revert optimistic update here
-    }
-  };
-
-  const handleDeleteService = async (serviceId: number) => {
-      if (!window.confirm('Are you sure you want to delete this service? This cannot be undone.')) {
-          return;
-      }
-      setError(null);
-      try {
-          const response = await fetch(`/api/services/${serviceId}`, {
-              method: 'DELETE',
-          });
-          if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Failed to delete service');
-          }
-          // Update local state
-          setServices(prev => prev.filter(s => s.id !== serviceId));
-      } catch (e) {
-          setError(e instanceof Error ? e.message : 'Failed to delete service');
-      }
-  };
-  // -----------------------------------
-
-  // --- Service Availability Management Functions ---
-  const fetchServiceAvailability = async () => {
-    setIsLoadingServiceAvailability(true);
-    setError(null);
-    try {
-      const response = await fetch('/api/service-availability');
-      if (!response.ok) throw new Error('Failed to fetch service availability');
-      const data: ServiceAvailability[] = await response.json();
-      setServiceAvailability(data);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to load service availability');
-      setServiceAvailability([]);
-    } finally {
-      setIsLoadingServiceAvailability(false);
-    }
-  };
-
-  const handleAddServiceAvailability = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setError(null);
-    const formData = new FormData(event.currentTarget);
-
-    const daysOfWeek: number[] = [];
-    for (let i = 1; i <= 7; i++) {
-      if (formData.get(`availabilityDayOfWeek-${i}`) === 'on') {
-        daysOfWeek.push(i);
-      }
-    }
-    // Parse override price
-    const overridePriceStr = formData.get('availabilityOverridePrice') as string;
-    let overridePrice: number | null = null;
-    if (overridePriceStr) {
-        const parsed = parseFloat(overridePriceStr);
-        if (!isNaN(parsed)) {
-            overridePrice = parsed;
-        } else {
-            setError('Invalid format for override price.');
-            return;
-        }
-    }
-
-    const payload = {
-      service_id: formData.get('availabilityServiceId') as string,
-      field_ids: formData.getAll('availabilityFieldIds') as string[],
-      start_time: formData.get('availabilityStartTime') as string,
-      end_time: formData.get('availabilityEndTime') as string,
-      base_capacity: formData.get('availabilityBaseCapacity') as string || undefined,
-      is_active: formData.get('availabilityIsActive') === 'on',
-      days_of_week: daysOfWeek.length > 0 ? daysOfWeek : undefined,
-      specific_date: formData.get('availabilitySpecificDate') as string || undefined,
-      override_price: overridePrice, // Add override price
-    };
-
-    // Client-side validation (matching API)
-    if (!payload.service_id || !payload.field_ids || payload.field_ids.length === 0 || !payload.start_time || !payload.end_time) {
-      setError('Service, at least one Field, Start Time, and End Time are required.');
-      return;
-    }
-    payload.field_ids = payload.field_ids.filter(id => id);
-     if (payload.field_ids.length === 0) {
-         setError('At least one Field must be selected.');
-         return;
-    }
-    if (payload.specific_date === '' || payload.specific_date === undefined) payload.specific_date = undefined;
-    if (payload.days_of_week !== undefined && payload.specific_date !== undefined) {
-      setError('Cannot set both Recurring Days and Specific Date.');
-      return;
-    }
-
-    try {
-      const response = await fetch('/api/service-availability', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        body: JSON.stringify(Object.fromEntries(Object.entries(payload).filter(([_, v]) => v !== undefined))),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add service availability rule');
-      }
-      const newAvailabilityRule: ServiceAvailability = await response.json();
-      setServiceAvailability(prev => [...prev, newAvailabilityRule].sort((a, b) => a.id - b.id));
-      addServiceAvailabilityFormRef.current?.reset(); // Use ref
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Failed to add service availability rule');
-    }
-  };
-
-  const handleUpdateServiceAvailability = async (ruleId: number, data: Partial<Omit<ServiceAvailability, 'id' | 'created_at'>>) => {
-    setError(null);
-    try {
-        // Basic frontend validation (mirroring API)
-        if (data.end_time && data.start_time && data.end_time <= data.start_time) throw new Error("End time must be after start time.");
-        if (data.days_of_week && data.specific_date) throw new Error("Cannot set both recurring days and specific date.");
-
-        const response = await fetch(`/api/service-availability/${ruleId}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(data),
-        });
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to update availability rule');
-        }
-        const updatedRule: ServiceAvailability = await response.json();
-        // Update local state
-        setServiceAvailability(prev =>
-            prev.map(r => r.id === ruleId ? updatedRule : r).sort((a, b) => a.id - b.id)
-        );
-    } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to update availability rule');
-    }
-  };
-
- const handleDeleteServiceAvailability = async (ruleId: number) => {
-      if (!window.confirm('Are you sure you want to delete this availability rule? This cannot be undone.')) {
-          return;
-      }
-      setError(null);
-      try {
-          const response = await fetch(`/api/service-availability/${ruleId}`, {
-              method: 'DELETE',
-          });
-          if (!response.ok) {
-              const errorData = await response.json();
-              throw new Error(errorData.error || 'Failed to delete availability rule');
-          }
-          // Update local state
-          setServiceAvailability(prev => prev.filter(r => r.id !== ruleId));
-      } catch (e) {
-          setError(e instanceof Error ? e.message : 'Failed to delete availability rule');
-      }
-  };
-
-  // --- Handler to toggle Service Availability Active state ---
-  const handleToggleServiceAvailabilityActive = async (ruleId: number, currentStatus: boolean) => {
-    setError(null);
-    const newStatus = !currentStatus;
-
-    try {
-      const response = await fetch('/api/service-availability', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: ruleId, is_active: newStatus }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || `Failed to update rule ${ruleId}`);
-      }
-
-      const updatedRule: ServiceAvailability = await response.json();
-
-      // Update the local state
-      setServiceAvailability(prevRules =>
-        prevRules.map(rule => (rule.id === ruleId ? updatedRule : rule))
-      );
-
-    } catch (e) {
-      setError(e instanceof Error ? e.message : `Failed to update rule ${ruleId}`);
-      // Optionally revert optimistic UI update here if you implemented one
-    }
-  };
-  // --------------------------------------------------------
-
-  // Fetch data on login/role change
-  useEffect(() => {
-    if (user) {
-        // Fetch sites/fields/services needed for name lookups if not already loaded by admin/staff role check
-        if (role !== 'admin' && role !== 'staff') {
-            // Clients only need services for the dropdown, not all sites/fields
-            // fetchSites(); // REMOVED for clients
-            // fetchFields(); // REMOVED for clients
-            fetchServices();
-        } else {
-            // Admin/Staff still need sites/fields for their management sections
-            fetchSites();
-            fetchFields();
-            fetchServices(); // Ensure services are fetched for admin/staff too
-        }
-    } else {
-        // Clear data on logout
-        setSites([]);
-        setFields([]);
-        setServices([]);
-        // setCalculatedSlots([]); // State moved to ClientBooking
-        setServiceAvailability([]); // Clear admin availability rules
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, role]); // Re-run if user or role changes
-
-  const fetchVehicles = async () => {
-    setIsLoadingVehicles(true);
-    setVehicleError(null);
-    try {
-      const response = await fetch('/api/vehicles');
-      if (!response.ok) throw new Error('Failed to fetch vehicles');
-      const data: Vehicle[] = await response.json();
-      setVehicles(data);
-    } catch (e) {
-      setVehicleError(e instanceof Error ? e.message : 'Failed to load vehicles');
-      setVehicles([]);
-    } finally {
-      setIsLoadingVehicles(false);
-    }
-  };
-
-  const handleAddVehicle = async (vehicle: Partial<Vehicle>) => {
-    setVehicleError(null);
-    try {
-      const response = await fetch('/api/vehicles', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(vehicle),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to add vehicle');
-      }
-      const newVehicle: Vehicle = await response.json();
-      setVehicles(prev => [...prev, newVehicle]);
-    } catch (e) {
-      setVehicleError(e instanceof Error ? e.message : 'Failed to add vehicle');
-    }
-  };
-
-  const handleDeleteVehicle = async (id: number) => {
-    setVehicleError(null);
-    try {
-      const response = await fetch(`/api/vehicles?id=${id}`, { method: 'DELETE' });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to delete vehicle');
-      }
-      setVehicles(prev => prev.filter(v => v.id !== id));
-    } catch (e) {
-      setVehicleError(e instanceof Error ? e.message : 'Failed to delete vehicle');
-    }
-  };
-
-  const handleUpdateVehicle = async (id: number, updates: Partial<Vehicle>) => {
-    setVehicleError(null);
-    try {
-      // Include the id in the body for the PUT request
-      const payload = { ...updates, id };
-      const response = await fetch(`/api/vehicles`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update vehicle');
-      }
-      const updatedVehicle: Vehicle = await response.json();
-      // Update local state
-      setVehicles(prev => prev.map(v => v.id === id ? updatedVehicle : v));
-    } catch (e) {
-      const message = e instanceof Error ? e.message : 'Failed to update vehicle';
-      setVehicleError(message);
-      throw e; // Re-throw the error so the modal can catch it
-    }
-  };
-
-  // Re-add fetchStaff function, now fetching default_vehicle_id
-  const fetchStaff = async () => {
-    setStaff([]);
-    try {
-      // Select required staff fields + profile + default vehicle id
-      const { data, error } = await supabase
-        .from('staff')
-        .select('id, user_id, role, default_vehicle_id, profiles(first_name, last_name)');
-
-      if (error) {
-        console.error("Supabase error fetching staff:", error.message);
-        throw error;
-      }
-
-      // Log data for debugging if needed
-      // console.log("Raw staff data:", data);
-
-      const formattedStaff: Staff[] = (data || []).map(s => {
-        const profileData = Array.isArray(s.profiles) ? s.profiles[0] : s.profiles;
-        return {
-          id: s.id,
-          user_id: s.user_id,
-          role: s.role,
-          default_vehicle_id: s.default_vehicle_id,
-          profile: profileData ? { first_name: profileData.first_name, last_name: profileData.last_name } : null
-        };
-      });
-
-      // console.log("Formatted staff data:", formattedStaff);
-      setStaff(formattedStaff);
-
-    } catch (e) {
-      console.error("Error in fetchStaff process:", e instanceof Error ? e.message : String(e));
-      setStaff([]);
-    }
-  };
-
-  // Function to handle assigning a default vehicle to staff
-  const handleAssignDefaultVehicle = async (staffId: number, vehicleId: number | null) => {
-    setError(null); // Clear global error
-    try {
-        const response = await fetch('/api/staff/assignment', { // Using a new specific route
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ staffId, defaultVehicleId: vehicleId }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || `Failed to assign vehicle (HTTP ${response.status})`);
-        }
-
-        // Optimistically update local state or refetch
-        setStaff(prevStaff =>
-            prevStaff.map(s =>
-                s.id === staffId ? { ...s, default_vehicle_id: vehicleId } : s
-            )
-        );
-
-    } catch (e) {
-        const message = e instanceof Error ? e.message : 'Unknown error assigning vehicle';
-        console.error("Error assigning default vehicle:", message);
-        setError(message); // Show error to user
-    }
-};
-
-  // --- Booking Paid Status Handler ---
-  const handleToggleBookingPaidStatus = async (bookingId: number, currentStatus: boolean) => {
-    setError(null);
-    const newStatus = !currentStatus;
-    try {
-        const response = await fetch(`/api/bookings/${bookingId}/status`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_paid: newStatus }),
-        });
-
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to update booking status');
-        }
-
-        const updatedBookingStatus: { id: number; is_paid: boolean } = await response.json();
-
-        // Update local state optimistically or based on response
-        setBookings(prevBookings =>
-            prevBookings.map(b =>
-                b.id === bookingId ? { ...b, is_paid: updatedBookingStatus.is_paid } : b
-            )
-        );
-    } catch (e) {
-        setError(e instanceof Error ? e.message : 'Failed to update booking status');
-        // Optionally revert optimistic update here
-    }
-  };
-  // ---------------------------------
-
-  // Helper to display user name or email
+  // Helper to display user name or email (Keep this)
   const getUserDisplayName = () => {
     if (firstName || lastName) {
       return `${firstName || ''} ${lastName || ''}`.trim();
@@ -932,14 +175,8 @@ export default function Home() {
   };
 
   if (isLoadingInitial) {
-    return <div>Loading...</div>;
+    return <div>Loading application...</div>; // More descriptive loading message
   }
-
-  // --- Helper to group fields by site_id ---
-  const getFieldsForSite = (siteId: number): Field[] => {
-      return fields.filter(f => f.site_id === siteId);
-  }
-  // ----------------------------------------
 
   return (
     <div className={styles.page}>
@@ -952,7 +189,8 @@ export default function Home() {
               {isLoadingRole ? (
                 <span> (Checking role...)</span>
               ) : (
-                role && <span> (Role: {role})</span>
+                 // Display role or indicate if no role assigned
+                role ? <span> (Role: {role})</span> : <span> (Role not assigned)</span>
               )}
             </p>
             <button onClick={handleLogout}>Logout</button>
@@ -960,11 +198,14 @@ export default function Home() {
         ) : (
           <p>Please log in or sign up.</p>
         )}
+        {/* Display auth/role errors in the header */}
+        {error && <p className={styles.error}>Error: {error}</p>}
       </header>
-      {!user && (
-        // Render the AuthForm component, passing server actions
+
+      {!user && !isLoadingInitial && ( // Show AuthForm only when not logged in and initial load is done
         <AuthForm login={login} signup={signup} />
       )}
+
       {user && (
         <main>
           {isLoadingRole ? (
@@ -973,79 +214,31 @@ export default function Home() {
             <>
               {/* Render the appropriate dashboard based on user role */}
               {role === 'admin' && (
+                // Pass only necessary props, AdminDashboard will fetch its own data
                 <AdminDashboard
                   user={user}
-                  users={users}
-                  isLoadingUsers={isLoadingUsers}
-                  updatingUserId={updatingUserId}
-                  handleAssignRole={handleAssignRole}
-                  fetchAllUsers={fetchAllUsers}
-                  staff={staff}
-                  vehicles={vehicles}
-                  handleAssignDefaultVehicle={handleAssignDefaultVehicle}
-                  sites={sites}
-                  fields={fields}
-                  isLoadingSites={isLoadingSites}
-                  isLoadingFields={isLoadingFields}
-                  handleAddSite={handleAddSite}
-                  handleAddField={handleAddField}
-                  getFieldsForSite={getFieldsForSite}
-                  addSiteFormRef={addSiteFormRef}
-                  bookings={bookings}
-                  isLoadingBookings={isLoadingBookings}
-                  handleAddBooking={handleAddBooking}
-                  addBookingFormRef={addBookingFormRef}
-                  fetchBookings={fetchBookings}
-                  services={services}
-                  isLoadingServices={isLoadingServices}
-                  handleAddService={handleAddService}
-                  addServiceFormRef={addServiceFormRef}
-                  handleUpdateService={handleUpdateService}
-                  handleDeleteService={handleDeleteService}
-                  serviceAvailability={serviceAvailability}
-                  isLoadingServiceAvailability={isLoadingServiceAvailability}
-                  handleAddServiceAvailability={handleAddServiceAvailability}
-                  handleToggleServiceAvailabilityActive={handleToggleServiceAvailabilityActive}
-                  addServiceAvailabilityFormRef={addServiceAvailabilityFormRef}
-                  handleUpdateServiceAvailability={handleUpdateServiceAvailability}
-                  handleDeleteServiceAvailability={handleDeleteServiceAvailability}
-                  error={error}
-                  isLoadingVehicles={isLoadingVehicles}
-                  vehicleError={vehicleError}
-                  handleAddVehicle={handleAddVehicle}
-                  handleDeleteVehicle={handleDeleteVehicle}
-                  handleUpdateVehicle={handleUpdateVehicle}
-                  handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
                 />
               )}
 
               {role === 'staff' && (
+                 // Pass only necessary props, StaffDashboard will fetch its own data
                 <StaffDashboard
                   user={user}
-                  bookings={bookings}
-                  isLoadingBookings={isLoadingBookings}
-                  sites={sites}
-                  fields={fields}
-                  services={services}
-                  handleAddBooking={handleAddBooking}
-                  addBookingFormRef={addBookingFormRef}
-                  getFieldsForSite={getFieldsForSite}
-                  fetchBookings={fetchBookings}
-                  error={error}
-                  handleToggleBookingPaidStatus={handleToggleBookingPaidStatus}
                 />
               )}
 
               {role === 'client' && (
+                 // Pass only necessary props, ClientDashboard will fetch its own data
                 <ClientDashboard
                   user={user}
-                  services={services}
+                  // Removed props: services
                 />
               )}
 
-              {!role && (
+              {/* Handle case where user is logged in but has no role */}
+              {role === null && !isLoadingRole && (
                 <div>
-                  <p>Your account is not currently assigned a role. Please contact an administrator.</p>
+                  <p>Your account is not currently assigned a role (staff or client). Please contact an administrator.</p>
                 </div>
               )}
             </>

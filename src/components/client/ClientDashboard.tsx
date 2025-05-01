@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import SidebarNavigation from '@/components/SidebarNavigation';
 import ClientBooking from '@/components/client/ClientBooking';
 import PetManagement from '@/components/client/PetManagement';
@@ -8,17 +8,13 @@ import MyBookings from '@/components/client/MyBookings';
 import type { User } from '@supabase/supabase-js';
 import { Service } from '@/types';
 
-// Define props for the client dashboard
+// Define props for the client dashboard - Only needs user now
 interface ClientDashboardProps {
   user: User;
-  // Services for booking
-  services: Service[];
-  // Any other props needed for client components
 }
 
 export default function ClientDashboard({
   user,
-  services,
 }: ClientDashboardProps) {
   // Profile state
   const [profile, setProfile] = useState<{ first_name: string; last_name: string; phone: string } | null>(null);
@@ -27,6 +23,11 @@ export default function ClientDashboard({
   const [editProfile, setEditProfile] = useState(false);
   const [editFields, setEditFields] = useState({ first_name: '', last_name: '', phone: '' });
   const [isSaving, setIsSaving] = useState(false);
+
+  // Add state for services
+  const [services, setServices] = useState<Service[]>([]);
+  const [isLoadingServices, setIsLoadingServices] = useState(false);
+  const [servicesError, setServicesError] = useState<string | null>(null);
 
   // Fetch profile on mount
   useEffect(() => {
@@ -46,6 +47,31 @@ export default function ClientDashboard({
     };
     fetchProfile();
   }, []);
+
+  // Fetch services on mount
+  const fetchServices = useCallback(async () => {
+    setIsLoadingServices(true);
+    setServicesError(null);
+    try {
+      // Clients likely fetch all active services
+      const response = await fetch('/api/services?active=true'); // Assuming an ?active=true filter exists or is added
+      if (!response.ok) throw new Error('Failed to fetch services');
+      const data: Service[] = await response.json();
+      setServices(data);
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Failed to load services';
+      console.error("Error fetching services:", errorMessage);
+      setServicesError(errorMessage);
+      setServices([]); // Set to empty array on error
+    } finally {
+      setIsLoadingServices(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchServices();
+  }, [fetchServices]);
+
 
   const startEdit = () => {
     if (!profile) return;
@@ -90,7 +116,12 @@ export default function ClientDashboard({
       id: 'book',
       label: 'Book Services',
       content: (
-        <ClientBooking services={services} />
+        // Pass the fetched services and loading/error states
+        <ClientBooking
+            services={services}
+            isLoadingServices={isLoadingServices}
+            servicesError={servicesError}
+        />
       ),
     },
     {

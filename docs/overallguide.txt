@@ -58,8 +58,7 @@ Project Summary for AI Assistant (booking-and-accounts)
     - start_time, end_time (time without timezone)
     - days_of_week (integer[] | null) -- Array of numbers 1-7 (Mon-Sun)
     - specific_date (date | null)
-    - base_capacity (integer | null) -- Optional base limit, used if use_staff_vehicle_capacity=FALSE. NULL = unlimited.
-    - use_staff_vehicle_capacity (boolean NOT NULL DEFAULT FALSE) -- If TRUE, capacity uses assigned staff vehicle; otherwise uses base_capacity.
+    - use_staff_vehicle_capacity (boolean NOT NULL DEFAULT FALSE) -- If TRUE, capacity uses assigned staff vehicle; otherwise capacity is effectively unlimited unless further field/service constraints are applied.
     - is_active (boolean)
     - created_at (timestamptz)
     - override_price (numeric | null)
@@ -126,11 +125,11 @@ Project Summary for AI Assistant (booking-and-accounts)
           - Finds an available field from the rule's `field_ids` not fully booked by other services/staff.
           - Assigns the determined `field_id`, `assigned_staff_id`, and `vehicle_id` to the new booking.
       - If `use_staff_vehicle_capacity` is FALSE:
-          - Sets `max_effective_capacity` based on the rule's `base_capacity` (treating NULL as very high/unlimited).
+          - Sets `max_effective_capacity` to a very high number (effectively unlimited for this specific rule check).
           - Checks overlaps based on bookings in *any* of the rule's `field_ids`.
           - Determines `field_id` based on client selection (if `requires_field_selection`) or assigns the first available.
           - Sets `assigned_staff_id` and `vehicle_id` to `null`.
-      - Compares requested pets against remaining capacity (respecting NULL base_capacity as unlimited).
+      - Compares requested pets against remaining capacity.
   - **/api/admin-booking**:
     - **POST:** Handles admin/staff-initiated bookings. Bypasses some standard checks.
     - **Pet Verification:** Checks that selected pets belong to the selected client but *does not* currently check if pets are marked as `is_active` or `is_confirmed`. This allows admins to book for any pet owned by the client.
@@ -144,7 +143,7 @@ Project Summary for AI Assistant (booking-and-accounts)
       - `associated_field_ids`: Array of field IDs for the slot.
   - RPC Capacity Logic:
       - If `rule_uses_staff_capacity`=TRUE: Checks availability/vehicle capacity/overlaps for the passed-in `in_client_default_staff_id`. Returns remaining vehicle capacity, or 0 if staff unavailable/no vehicle/all associated fields booked.
-      - If `rule_uses_staff_capacity`=FALSE: Uses rule's `base_capacity` (NULL treated as unlimited) and subtracts pets booked across all `associated_field_ids`.
+      - If `rule_uses_staff_capacity`=FALSE: Calculates remaining capacity based on total bookings across all `associated_field_ids` (no specific base limit applied at this level).
       - **Note:** The RPC returns slots even if the calculated `slot_remaining_capacity` is 0.
   - API formats capacity for display, filters out past slots, and returns the list.
   - Returns available booking slots for a service/date range, requires auth.
@@ -158,7 +157,7 @@ Project Summary for AI Assistant (booking-and-accounts)
       - `associated_field_ids`: Array of field IDs for the slot.
   - RPC Capacity Logic:
       - If `rule_uses_staff_capacity`=TRUE: Checks availability/vehicle capacity/overlaps for the passed-in `in_client_default_staff_id`. Returns remaining vehicle capacity, or 0 if staff unavailable/no vehicle/all associated fields booked.
-      - If `rule_uses_staff_capacity`=FALSE: Uses rule's `base_capacity` (NULL treated as unlimited) and subtracts pets booked across all `associated_field_ids`.
+      - If `rule_uses_staff_capacity`=FALSE: Calculates remaining capacity based on total bookings across all `associated_field_ids` (no specific base limit applied at this level).
       - **Note:** The RPC returns slots even if the calculated `slot_remaining_capacity` is 0.
   - **API Route Processing:**
       - For each slot returned by the RPC, the API route determines the applicable price:

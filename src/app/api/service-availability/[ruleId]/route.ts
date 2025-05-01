@@ -75,22 +75,6 @@ export async function PUT(request: Request, { params }: { params: { ruleId: stri
         } else {
              availabilityData.days_of_week = null;
         }
-        if (availabilityData.base_capacity != null) {
-             const parsedCap = parseInt(String(availabilityData.base_capacity), 10);
-             availabilityData.base_capacity = isNaN(parsedCap) ? null : parsedCap;
-        } else {
-            availabilityData.base_capacity = null;
-        }
-        const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-        if (availabilityData.specific_date != null && availabilityData.specific_date !== '' && !dateRegex.test(availabilityData.specific_date)) throw new Error('Invalid specific_date format');
-
-        if (availabilityData.override_price !== undefined && availabilityData.override_price !== null) {
-            const parsedPrice = parseFloat(String(availabilityData.override_price));
-            availabilityData.override_price = isNaN(parsedPrice) ? null : parsedPrice;
-        } else {
-             availabilityData.override_price = null;
-        }
-        availabilityData.is_active = typeof availabilityData.is_active === 'boolean' ? availabilityData.is_active : true;
         availabilityData.specific_date = availabilityData.specific_date || null;
         // Validate use_staff_vehicle_capacity (ensure boolean, default false)
         availabilityData.use_staff_vehicle_capacity = typeof availabilityData.use_staff_vehicle_capacity === 'boolean' ? availabilityData.use_staff_vehicle_capacity : false;
@@ -110,7 +94,6 @@ export async function PUT(request: Request, { params }: { params: { ruleId: stri
         end_time?: string;
         days_of_week?: number[] | null;
         specific_date?: string | null;
-        base_capacity?: number | null;
         use_staff_vehicle_capacity?: boolean;
         is_active?: boolean;
         override_price?: number | null;
@@ -124,8 +107,6 @@ export async function PUT(request: Request, { params }: { params: { ruleId: stri
     if (availabilityData.end_time !== undefined) updatePayload.end_time = availabilityData.end_time;
     if (availabilityData.days_of_week !== undefined) updatePayload.days_of_week = availabilityData.days_of_week;
     if (availabilityData.specific_date !== undefined) updatePayload.specific_date = availabilityData.specific_date;
-    if (availabilityData.base_capacity !== undefined) updatePayload.base_capacity = availabilityData.base_capacity;
-    // Ensure use_staff_vehicle_capacity is included
     updatePayload.use_staff_vehicle_capacity = availabilityData.use_staff_vehicle_capacity;
     if (availabilityData.is_active !== undefined) updatePayload.is_active = availabilityData.is_active;
     if (availabilityData.override_price !== undefined) updatePayload.override_price = availabilityData.override_price;

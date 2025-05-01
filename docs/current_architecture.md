@@ -24,7 +24,7 @@ Key tables currently implemented:
 -   **`public.sites`:** Represents physical locations (e.g., "Downtown Site"). Contains `name`, `address`, `is_active`.
 -   **`public.fields`:** Represents bookable areas within a Site (e.g., "Field A"). Contains `site_id` (FK to `sites`), `name`, `capacity`, `field_type`.
 -   **`public.services`:** Defines the types of services offered (e.g., "Doggy Daycare AM", "Full Day Field Hire"). Contains `name`, `description`.
--   **`public.service_availability`:** Defines the rules for when and where services are available. Links `service_id` to an array of applicable `field_ids`. Contains time rules (`start_time`, `end_time`), recurrence rules (`days_of_week` array [1-7 for Mon-Sun], `specific_date`), optional `base_capacity`, and `is_active` flag.
+-   **`public.service_availability`:** Defines the rules for when and where services are available. Links `service_id` to an array of applicable `field_ids`. Contains time rules (`start_time`, `end_time`), recurrence rules (`days_of_week` array [1-7 for Mon-Sun], `specific_date`) and `is_active` flag.
 -   **`public.bookings`:** Stores actual booking instances (created manually by admin/staff via UI currently). Contains `field_id`, `start_time`, `end_time`, `service_type`, `status`, `max_capacity`.
 -   **`public.booking_clients`:** (Exists in schema) Join table to link `bookings` to `clients`. **Not yet utilized** in the booking creation flow.
 -   **`public.pets`:** (Exists in schema) Table to store client pets. **Not yet implemented** in the UI/API.

@@ -13,7 +13,6 @@ type ServiceAvailability = {
     end_time: string;
     days_of_week: number[] | null;
     specific_date: string | null;
-    base_capacity: number | null;
     use_staff_vehicle_capacity: boolean; // Added new flag
     is_active: boolean;
     created_at: string;

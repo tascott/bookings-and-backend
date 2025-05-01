@@ -77,7 +77,6 @@ export async function POST(request: Request) {
       field_ids: number[];
       start_time: string;
       end_time: string;
-      base_capacity?: number;
       is_active?: boolean;
       days_of_week?: number[];
       specific_date?: string;
@@ -111,8 +110,6 @@ export async function POST(request: Request) {
         if (parsedDays.some(d => d < 1 || d > 7)) throw new Error('Invalid day in days_of_week array (1-7).');
         if (parsedDays.length > 0) daysOfWeekValue = parsedDays;
     }
-    const baseCapacityRaw = body.base_capacity ? parseInt(body.base_capacity, 10) : undefined;
-    const baseCapacityValue = (baseCapacityRaw !== undefined && !isNaN(baseCapacityRaw)) ? baseCapacityRaw : undefined;
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (body.specific_date != null && !dateRegex.test(body.specific_date)) throw new Error('Invalid specific_date format');
     // --------------------------------
@@ -133,7 +130,6 @@ export async function POST(request: Request) {
         field_ids: fieldIds,
         start_time: body.start_time,
         end_time: body.end_time,
-        base_capacity: baseCapacityValue,
         is_active: body.is_active !== undefined ? body.is_active : true,
         days_of_week: daysOfWeekValue,
         specific_date: body.specific_date || null,
