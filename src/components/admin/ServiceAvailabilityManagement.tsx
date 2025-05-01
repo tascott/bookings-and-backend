@@ -1,7 +1,8 @@
 'use client';
 
-import styles from "@/app/page.module.css"; // Adjust path as needed
+// import styles from "@/app/page.module.css"; // Removed unused import
 import React, { useState } from 'react'; // Remove unused useEffect
+import TabNavigation from '@/components/TabNavigation'; // Import TabNavigation
 
 // Define types (or import from shared location)
 type ServiceAvailability = {
@@ -217,287 +218,291 @@ export default function ServiceAvailabilityManagement({
         // --- End Validation & Save ---
     };
 
-    return (
-        <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
-            <h2>Service Availability Rules (Admin)</h2>
-            {/* Display error related to availability? Or rely on global */}
-            {/* {error && error.includes('availability') && <p style={{ color: 'red' }}>Error: {error}</p>} */}
+    // Define Tabs
+    const availabilityMgmtTabs = [
+        {
+            id: 'view',
+            label: 'Existing Rules',
+            content: (
+                <>
+                    <h3>Existing Availability Rules</h3>
+                    {isLoadingServiceAvailability ? (
+                        <p>Loading rules...</p>
+                    ) : error && serviceAvailability.length === 0 ? (
+                        <p style={{ color: 'red' }}>Error loading rules: {error}</p>
+                    ) : serviceAvailability.length === 0 ? (
+                        <p>No availability rules defined yet.</p>
+                    ) : (
+                        <ul style={{ listStyle: 'none', padding: 0 }}>
+                            {serviceAvailability.map(rule => {
+                                const ruleFields = fields.filter(f => rule.field_ids?.includes(f.id));
+                                const defaultServicePrice = getServiceDefaultPrice(rule.service_id);
+                                return (
+                                    <li key={rule.id} style={{
+                                        border: '1px solid #ccc', // Slightly darker border for better visibility
+                                        padding: '1rem',
+                                        marginBottom: '0.8rem',
+                                        borderRadius: '4px',
+                                        background: rule.is_active ? '#fff' : '#f8f8f8',
+                                        color: '#212529' // Explicitly set dark text color
+                                    }}>
+                                        <div><strong>Service:</strong> {getServiceName(rule.service_id)} (Rule ID: {rule.id})</div>
+                                        <div><strong>Status:</strong> {rule.is_active ? 'Active' : 'Inactive'}</div>
+                                        <div><strong>Time:</strong> {rule.start_time} - {rule.end_time}</div>
+                                        <div>
+                                            <strong>Applies to:</strong>
+                                            {rule.specific_date ? (
+                                                ` Specific Date: ${rule.specific_date}`
+                                            ) : rule.days_of_week && rule.days_of_week.length > 0 ? (
+                                                ` Days: ${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].filter((_, i) => rule.days_of_week!.includes(i)).join(', ')}`
+                                            ) : (
+                                                ' No specific date or days set'
+                                            )}
+                                        </div>
+                                        <div>
+                                            <strong>Fields:</strong>
+                                            {ruleFields.length > 0 ? (
+                                                ruleFields.map(f => f.name || `Field ${f.id}`).join(', ')
+                                            ) : (
+                                                <span style={{ color: 'red' }}> (No valid fields assigned!)</span>
+                                            )}
+                                        </div>
+                                        <div>
+                                            <strong>Capacity:</strong>
+                                             {rule.use_staff_vehicle_capacity ? ' Uses Staff Vehicle Capacity' : ` Base: ${rule.base_capacity ?? 'N/A'}`}
+                                        </div>
+                                        <div>
+                                            <strong>Price:</strong>
+                                            {rule.override_price !== null && rule.override_price !== undefined
+                                                ? ` Override: £${rule.override_price.toFixed(2)}`
+                                                : ` Default: ${defaultServicePrice !== null && defaultServicePrice !== undefined ? `£${defaultServicePrice.toFixed(2)}` : 'Not set'}`
+                                            }
+                                        </div>
+                                        <div style={{ marginTop: '0.8rem' }}>
+                                            <button onClick={() => handleToggleServiceAvailabilityActive(rule.id, rule.is_active)} style={{ marginRight: '0.5rem' }} className={`button small ${rule.is_active ? 'secondary' : 'primary'}`}>{rule.is_active ? 'Deactivate' : 'Activate'}</button>
+                                            <button onClick={() => openEditModal(rule)} style={{ marginRight: '0.5rem' }} className="button secondary small">Edit</button>
+                                            <button onClick={() => handleDeleteServiceAvailability(rule.id)} className="button danger small">Delete</button>
+                                        </div>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                    {/* Display global error if needed */}
+                    {error && serviceAvailability.length > 0 && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
+                </>
+            )
+        },
+        {
+            id: 'add',
+            label: 'Add New Rule',
+            content: (
+                <>
+                    {/* Add New Availability Rule Form */}
+                    <form ref={addServiceAvailabilityFormRef} onSubmit={handleAddServiceAvailability} style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
+                        <h3>Add New Availability Rule</h3>
+                        {(services.length === 0) ? (
+                            <p>Please add Services before defining availability.</p>
+                        ) : (
+                            <>
+                                <div style={{ marginBottom: '0.5rem' }}>
+                                    <label htmlFor="availabilityServiceId">Service:</label>
+                                    <select id="availabilityServiceId" name="availabilityServiceId" required className="input">
+                                        <option value="">-- Select Service --</option>
+                                        {services.map(service => (
+                                            <option key={service.id} value={service.id}>{service.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
 
-            {/* Add New Availability Rule Form */}
-            <form ref={addServiceAvailabilityFormRef} onSubmit={handleAddServiceAvailability} style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>Add New Availability Rule</h3>
-                {(services.length === 0) ? (
-                     <p>Please add Services before defining availability.</p>
-                 ) : (
-                    <>
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label htmlFor="availabilityServiceId">Service:</label>
-                            <select id="availabilityServiceId" name="availabilityServiceId" required>
-                                <option value="">-- Select Service --</option>
+                                {/* Field Selection */}
+                                {(sites.length === 0 || fields.length === 0) ? (
+                                    <p style={{ color: 'orange' }}>Please add Sites and Fields first.</p>
+                                ) : (
+                                    <div style={{ marginBottom: '0.5rem', border: '1px dashed #ccc', padding: '0.5rem' }}>
+                                        <label>Applies to Field(s): (Required - Select at least one)</label>
+                                        {sites.map(site => (
+                                            <div key={`avail-site-group-${site.id}`} style={{ marginLeft: '1rem', marginBottom: '0.5rem' }}>
+                                                <strong>{site.name}:</strong>
+                                                {getFieldsForSite(site.id).length > 0 ? (
+                                                    getFieldsForSite(site.id).map(field => (
+                                                        <label key={`avail-field-${field.id}`} style={{ display: 'block', marginLeft: '1rem' }}>
+                                                            <input type="checkbox" name="availabilityFieldIds" value={field.id} /> {field.name || `Field ${field.id}`}
+                                                        </label>
+                                                    ))
+                                                ) : (
+                                                    <span style={{ fontStyle: 'italic', color: '#888' }}> (No fields in this site)</span>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+
+                                <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                                    <div style={{ flex: 1 }}>
+                                        <label htmlFor="availabilityStartTime">Start Time:</label>
+                                        <input type="time" id="availabilityStartTime" name="availabilityStartTime" required className="input" />
+                                    </div>
+                                    <div style={{ flex: 1 }}>
+                                        <label htmlFor="availabilityEndTime">End Time:</label>
+                                        <input type="time" id="availabilityEndTime" name="availabilityEndTime" required className="input" />
+                                    </div>
+                                </div>
+
+                                <div style={{ border: '1px dashed #ccc', padding: '0.5rem', marginBottom: '0.5rem' }}>
+                                    <label>Recurrence Type (Select One):</label>
+                                    <div style={{ marginLeft: '1rem' }}>
+                                        <label>Specific Date:</label>
+                                        <input type="date" name="availabilitySpecificDate" className="input" style={{marginLeft: '0.5rem'}}/>
+                                    </div>
+                                    <div style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
+                                        <label>Recurring Days:</label><br />
+                                        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                                            <label key={`day-${index}`} style={{ marginRight: '0.5rem' }}>
+                                                <input type="checkbox" name={`availabilityDayOfWeek-${index}`} value={index} /> {day}
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+
+                                <div style={{ border: '1px dashed #ccc', padding: '0.5rem', marginBottom: '0.5rem' }}>
+                                     <label>Capacity Type (Select One):</label>
+                                     <div style={{ marginLeft: '1rem' }}>
+                                         <label>
+                                             <input type="checkbox" name="use_staff_vehicle_capacity" /> Use Staff Vehicle Capacity
+                                             <span style={{fontSize: '0.8em', color: '#777'}}>(Ignores Base Capacity)</span>
+                                         </label>
+                                     </div>
+                                     <div style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
+                                        <label htmlFor="availabilityBaseCapacity">Base Capacity (if not using staff vehicle):</label>
+                                        <input type="number" id="availabilityBaseCapacity" name="availabilityBaseCapacity" min="0" placeholder="Leave blank if unlimited" className="input" style={{width: '80px', marginLeft: '0.5rem'}}/>
+                                    </div>
+                                </div>
+
+                                <div style={{ marginTop: '0.5rem' }}>
+                                    <label htmlFor="availabilityOverridePrice">Override Price (£ - Optional):</label>
+                                    <input type="number" id="availabilityOverridePrice" name="availabilityOverridePrice" min="0" step="0.01" placeholder="Leave blank to use service default" className="input" />
+                                </div>
+
+                                <button type="submit" style={{ marginTop: '1rem' }} className="button primary">Add Rule</button>
+                            </>
+                        )}
+                    </form>
+                </>
+            )
+        },
+    ];
+
+    return (
+        <section>
+            <h2>Service Availability Rules (Admin)</h2>
+            {/* Removed Add/View sections from here */}
+
+            {/* Render Tabs */}
+            <TabNavigation tabs={availabilityMgmtTabs} />
+
+            {/* Keep Edit Modal outside tabs */}
+            {editingRule && (
+                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                    <div style={{ background: '#2a2a2e', padding: '2rem', borderRadius: 8, color: '#fff', width: '90%', maxWidth: '600px', maxHeight: '90vh', overflowY: 'auto' }}>
+                        <h3>Edit Availability Rule (ID: {editingRule.id})</h3>
+                        {editError && <p style={{ color: '#f87171' }}>{editError}</p>}
+
+                        {/* Edit Form Fields - structured similar to Add form */}
+                        <div style={{ marginBottom: '0.5rem' }}>
+                            <label>Service:</label>
+                            <select name="service_id" value={editFields.service_id} onChange={handleEditFieldChange} required className="input">
+                                {/* Options populated from services prop */}
                                 {services.map(service => (
                                     <option key={service.id} value={service.id}>{service.name}</option>
                                 ))}
                             </select>
                         </div>
-
-                        {/* Field Selection (Always Visible) */}
-                        {(sites.length === 0 || fields.length === 0) ? (
-                            <p style={{ color: 'orange', marginLeft: '1rem' }}>Please add Sites and Fields before defining availability.</p>
-                        ) : (
-                            <div style={{ marginTop: '0.5rem' }}>
-                                <label>Applies to Field(s): (Required)</label>
-                                {sites.map(site => (
-                                    <div key={`avail-site-group-${site.id}`} style={{ marginLeft: '1rem', marginBottom: '0.5rem' }}>
-                                        <strong>{site.name}</strong>
-                                        {getFieldsForSite(site.id).map(field => (
-                                            <div key={`avail-field-chk-${field.id}`} style={{ marginLeft: '1rem' }}>
-                                                <input type="checkbox" id={`availField-${field.id}`} name="availabilityFieldIds" value={field.id} />
-                                                <label htmlFor={`availField-${field.id}`}>{field.name || `Field ID ${field.id}`}</label>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-
-                        {/* ADD Use Staff Vehicle Capacity Checkbox */}
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label htmlFor="use_staff_vehicle_capacity">
-                                <input
-                                    type="checkbox"
-                                    id="use_staff_vehicle_capacity"
-                                    name="use_staff_vehicle_capacity"
-                                    // Consider defaultChecked if needed, or manage via state if complex interactions arise
-                                />
-                                Use Staff Vehicle Capacity (Overrides Base Capacity for pet limits)
-                            </label>
-                        </div>
-
-                        {/* Time, Recurrence, Capacity, Active Inputs */}
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label htmlFor="availabilityStartTime">Start Time:</label>
-                            <input type="time" id="availabilityStartTime" name="availabilityStartTime" required />
-                        </div>
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label htmlFor="availabilityEndTime">End Time:</label>
-                            <input type="time" id="availabilityEndTime" name="availabilityEndTime" required />
-                        </div>
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label htmlFor="availabilityBaseCapacity">Base Capacity (Optional):</label>
-                            <input type="number" id="availabilityBaseCapacity" name="availabilityBaseCapacity" min="0" placeholder="Leave blank for unlimited / staff default" />
-                        </div>
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label>Recurring Days (Mon-Sun):</label>
-                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem', marginLeft: '1rem' }}>
-                                {[
-                                    { label: 'Mon', value: 1 }, { label: 'Tue', value: 2 }, { label: 'Wed', value: 3 },
-                                    { label: 'Thu', value: 4 }, { label: 'Fri', value: 5 }, { label: 'Sat', value: 6 },
-                                    { label: 'Sun', value: 7 },
-                                ].map(day => (
-                                    <div key={`avail-day-${day.value}`}>
-                                        <input type="checkbox" id={`availabilityDayOfWeek-${day.value}`} name={`availabilityDayOfWeek-${day.value}`} />
-                                        <label htmlFor={`availabilityDayOfWeek-${day.value}`}>{day.label}</label>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label htmlFor="availabilitySpecificDate">Specific Date (Optional):</label>
-                            <input type="date" id="availabilitySpecificDate" name="availabilitySpecificDate" placeholder="Leave blank if recurring" />
-                        </div>
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label htmlFor="availabilityIsActive">Is Active:</label>
-                            <input type="checkbox" id="availabilityIsActive" name="availabilityIsActive" defaultChecked />
-                        </div>
-                        {/* Add Override Price Input */}
-                        <div style={{ marginTop: '0.5rem' }}>
-                            <label htmlFor="availabilityOverridePrice">Override Price (£) (Optional):</label>
-                            <input type="number" id="availabilityOverridePrice" name="availabilityOverridePrice" min="0" step="0.01" placeholder="e.g., 30.00 (leave blank to use default)" />
-                        </div>
-                        <button type="submit" style={{ marginTop: '1rem' }}>Add Availability Rule</button>
-                    </>
-                )}
-            </form>
-
-            {/* Display Existing Availability Rules */}
-            <h3>Existing Availability Rules</h3>
-            {isLoadingServiceAvailability ? (
-                <p>Loading availability rules...</p>
-            ) : error && serviceAvailability.length === 0 ? (
-                 <p style={{ color: 'red' }}>Error loading availability rules: {error}</p>
-            ): serviceAvailability.length === 0 ? (
-                <p>No availability rules defined yet.</p>
-            ) : (
-                <div className={styles.availabilityList}>
-                    {serviceAvailability.map(rule => {
-                        const defaultPrice = getServiceDefaultPrice(rule.service_id);
-                        return (
-                            <div key={rule.id} className={styles.availabilityCard} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.8rem', borderRadius: '4px' }}>
-                                <p>
-                                    {/* Display Service Name (ID: X) */}
-                                    <strong>Service:</strong> {getServiceName(rule.service_id)} (ID: {rule.service_id}) |
-                                    <strong>Fields:</strong> {rule.field_ids?.join(', ') || 'ERROR: Missing Fields'} |
-                                    <strong>Uses Staff Veh. Capacity:</strong> {rule.use_staff_vehicle_capacity ? 'Yes' : 'No'} |
-                                    <label htmlFor={`active-toggle-${rule.id}`} style={{ marginLeft: '0.5rem', cursor: 'pointer' }}>
-                                        <input
-                                            type="checkbox"
-                                            id={`active-toggle-${rule.id}`}
-                                            checked={rule.is_active}
-                                            onChange={() => handleToggleServiceAvailabilityActive(rule.id, rule.is_active)}
-                                            style={{ marginRight: '0.3rem' }}
-                                        />
-                                        {rule.is_active ? 'Yes' : 'No'}
-                                    </label>
-                                </p>
-                                <p>
-                                    <strong>Time:</strong> {rule.start_time} - {rule.end_time} |
-                                    <strong>Recurrence:</strong>
-                                    {rule.days_of_week && rule.days_of_week.length > 0 ? `Days: ${rule.days_of_week.join(', ')} (Mon=1)` : rule.specific_date ? `${rule.specific_date}` : 'None specified'}
-                                </p>
-                                <p>
-                                    <strong>Base Capacity:</strong> {rule.base_capacity ?? 'Default'} |
-                                    {/* Maybe show capacity_type again or other relevant info */}
-                                </p>
-                                {/* Display Prices */}
-                                <p style={{ fontSize: '0.9em', color: '#38761d' }}>
-                                    <strong>Pricing:</strong>
-                                    {rule.override_price !== null && rule.override_price !== undefined ? (
-                                        <span> Override: £{rule.override_price.toFixed(2)} </span>
-                                    ) : (
-                                        <span> Default: {defaultPrice !== null && defaultPrice !== undefined ? `£${defaultPrice.toFixed(2)}` : 'Not set'} </span>
-                                    )}
-                                    {/* Optionally always show default for comparison */}
-                                    {(rule.override_price !== null && rule.override_price !== undefined) &&
-                                     (defaultPrice !== null && defaultPrice !== undefined) &&
-                                      <span style={{ fontStyle: 'italic', marginLeft: '0.5rem' }}>(Default: £{defaultPrice.toFixed(2)})</span>}
-                                </p>
-                                {/* Add Edit/Delete buttons */}
-                                <div style={{ marginTop: '0.5rem' }}>
-                                     <button onClick={() => openEditModal(rule)} style={{ marginRight: '0.5rem', padding: '2px 8px' }}>Edit</button>
-                                     <button onClick={() => handleDeleteServiceAvailability(rule.id)} style={{ padding: '2px 8px', color: 'red' }}>Delete</button>
-                                 </div>
-                            </div>
-                        );
-                    })}
-                </div>
-            )}
-            {/* Display global error if needed and not displayed above */}
-            {error && serviceAvailability.length > 0 && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
-
-             {/* Edit Modal */}
-             {editingRule && (
-                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, overflowY: 'auto' }}>
-                    <div style={{ background: '#222', color: '#fff', padding: 24, borderRadius: 8, margin: '2rem', width: '90%', maxWidth: '600px', boxShadow: '0 2px 16px #0008' }}>
-                        <h3 style={{ color: '#fff', marginTop: 0 }}>Edit Availability Rule (ID: {editingRule.id})</h3>
-                        {/* Service Select */}
-                        <div style={{ marginBottom: 8 }}>
-                            <label>Service:<br />
-                                <select name="service_id" value={editFields.service_id} onChange={handleEditFieldChange} required style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }}>
-                                     {services.map(service => (
-                                        <option key={service.id} value={service.id}>{service.name}</option>
-                                    ))}
-                                </select>
-                            </label>
-                        </div>
-
-                        {/* Field Multi-Select (Always Visible) */}
-                        <div style={{ marginBottom: 8 }}>
-                            <label>Applies to Field(s): (Required)<br />
-                                <div style={{ maxHeight: '150px', overflowY: 'auto', border: '1px solid #555', padding: '4px', background: '#333' }}>
-                                {sites.map(site => (
-                                    <div key={`edit-avail-site-group-${site.id}`} style={{ marginLeft: '1rem', marginBottom: '0.5rem' }}>
-                                        <strong>{site.name}</strong>
-                                        {getFieldsForSite(site.id).map(field => (
-                                            <div key={`edit-avail-field-chk-${field.id}`} style={{ marginLeft: '1rem' }}>
-                                                <input type="checkbox" id={`editAvailField-${field.id}`} name="availabilityFieldIds" value={field.id.toString()}
+                        <div style={{ marginBottom: '0.5rem', border: '1px dashed #ccc', padding: '0.5rem' }}>
+                             <label>Applies to Field(s): (Required)</label>
+                            {/* Logic to show checkboxes for fields, checked based on editFields.field_ids */}
+                            {sites.map(site => (
+                                <div key={`edit-avail-site-group-${site.id}`} style={{ marginLeft: '1rem', marginBottom: '0.5rem' }}>
+                                    <strong>{site.name}:</strong>
+                                    {getFieldsForSite(site.id).length > 0 ? (
+                                        getFieldsForSite(site.id).map(field => (
+                                            <label key={`edit-avail-field-${field.id}`} style={{ display: 'block', marginLeft: '1rem' }}>
+                                                <input
+                                                    type="checkbox"
+                                                    name="availabilityFieldIds"
+                                                    value={field.id}
                                                     checked={editFields.field_ids.includes(field.id.toString())}
                                                     onChange={handleEditFieldChange}
-                                                    disabled={isSaving}
-                                                />
-                                                <label htmlFor={`editAvailField-${field.id}`}>{field.name || `Field ID ${field.id}`}</label>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ))}
+                                                /> {field.name || `Field ${field.id}`}
+                                            </label>
+                                        ))
+                                    ) : (
+                                        <span style={{ fontStyle: 'italic', color: '#888' }}> (No fields in this site)</span>
+                                    )}
                                 </div>
-                            </label>
+                            ))}
                         </div>
-
-                        {/* ADD Use Staff Vehicle Capacity Checkbox */}
-                         <div style={{ marginBottom: 8 }}>
-                             <label>
-                                 <input
-                                     type="checkbox"
-                                     name="use_staff_vehicle_capacity"
-                                     checked={editFields.use_staff_vehicle_capacity}
-                                     onChange={handleEditFieldChange}
-                                     disabled={isSaving}
-                                 />
-                                 Use Staff Vehicle Capacity (Overrides Base Capacity for pet limits)
-                             </label>
-                         </div>
-
-                        {/* Times */}
-                        <div style={{ display: 'flex', gap: '1rem', marginBottom: 8 }}>
-                            <div style={{ flex: 1 }}>
-                                <label>Start Time:<br />
-                                    <input type="time" name="start_time" value={editFields.start_time} onChange={handleEditFieldChange} required style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }} />
-                                </label>
+                        <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.5rem' }}>
+                            <div style={{flex: 1}}>
+                                <label>Start Time:</label>
+                                <input type="time" name="start_time" value={editFields.start_time} onChange={handleEditFieldChange} required className="input" />
                             </div>
-                             <div style={{ flex: 1 }}>
-                                <label>End Time:<br />
-                                    <input type="time" name="end_time" value={editFields.end_time} onChange={handleEditFieldChange} required style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }} />
-                                </label>
+                             <div style={{flex: 1}}>
+                                <label>End Time:</label>
+                                <input type="time" name="end_time" value={editFields.end_time} onChange={handleEditFieldChange} required className="input" />
                             </div>
                         </div>
-                         {/* Capacity & Price */}
-                        <div style={{ display: 'flex', gap: '1rem', marginBottom: 8 }}>
-                             <div style={{ flex: 1 }}>
-                                <label>Base Capacity (Optional):<br />
-                                    <input type="number" name="base_capacity" value={editFields.base_capacity} onChange={handleEditFieldChange} min="0" placeholder="Blank = Unlimited / Staff Default" style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }} />
-                                </label>
+                        <div style={{ border: '1px dashed #ccc', padding: '0.5rem', marginBottom: '0.5rem' }}>
+                            <label>Recurrence Type:</label>
+                             <div style={{ marginLeft: '1rem' }}>
+                                <label>Specific Date:</label>
+                                <input type="date" name="specific_date" value={editFields.specific_date} onChange={handleEditFieldChange} className="input" style={{marginLeft: '0.5rem'}}/>
                             </div>
-                             <div style={{ flex: 1 }}>
-                                <label>Override Price (£) (Opt.):<br />
-                                    <input type="number" name="override_price" value={editFields.override_price} onChange={handleEditFieldChange} min="0" step="0.01" placeholder="Service Default" style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }} />
-                                </label>
-                            </div>
-                        </div>
-                        {/* Recurrence or Specific Date */}
-                         <div style={{ marginBottom: 8 }}>
-                            <label>Recurring Days (Mon-Sun):</label>
-                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1rem', marginLeft: '1rem', background: '#333', padding: '4px 8px', border: '1px solid #555' }}>
-                                {[
-                                    { label: 'Mon', value: '1' }, { label: 'Tue', value: '2' }, { label: 'Wed', value: '3' },
-                                    { label: 'Thu', value: '4' }, { label: 'Fri', value: '5' }, { label: 'Sat', value: '6' },
-                                    { label: 'Sun', value: '7' },
-                                ].map(day => (
-                                    <div key={`edit-avail-day-${day.value}`}>
-                                        <input type="checkbox" id={`editAvailabilityDayOfWeek-${day.value}`} name={`availabilityDayOfWeek-${day.value}`} value={day.value}
-                                               checked={editFields.days_of_week.includes(day.value)}
-                                               onChange={handleEditFieldChange} />
-                                        <label htmlFor={`editAvailabilityDayOfWeek-${day.value}`}>{day.label}</label>
-                                    </div>
+                            <div style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
+                                <label>Recurring Days:</label><br />
+                                {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day, index) => (
+                                    <label key={`edit-day-${index}`} style={{ marginRight: '0.5rem' }}>
+                                        <input
+                                            type="checkbox"
+                                            name={`availabilityDayOfWeek-${index}`}
+                                            value={index}
+                                            checked={editFields.days_of_week.includes(index.toString())}
+                                            onChange={handleEditFieldChange}
+                                         /> {day}
+                                    </label>
                                 ))}
                             </div>
                         </div>
-                        <div style={{ marginBottom: 8 }}>
-                            <label>Specific Date (Optional):<br />
-                                <input type="date" name="specific_date" value={editFields.specific_date} onChange={handleEditFieldChange} style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }} />
-                            </label>
+                        <div style={{ border: '1px dashed #ccc', padding: '0.5rem', marginBottom: '0.5rem' }}>
+                             <label>Capacity Type:</label>
+                              <div style={{ marginLeft: '1rem' }}>
+                                 <label>
+                                     <input
+                                         type="checkbox"
+                                         name="use_staff_vehicle_capacity"
+                                         checked={editFields.use_staff_vehicle_capacity}
+                                         onChange={handleEditFieldChange}
+                                     /> Use Staff Vehicle Capacity
+                                 </label>
+                             </div>
+                             <div style={{ marginLeft: '1rem', marginTop: '0.5rem' }}>
+                                <label>Base Capacity:</label>
+                                <input type="number" name="base_capacity" value={editFields.base_capacity} onChange={handleEditFieldChange} min="0" placeholder="Blank = unlimited" className="input" style={{width: '80px', marginLeft: '0.5rem'}}/>
+                            </div>
                         </div>
-                        {/* Active Toggle */}
-                        <div style={{ marginBottom: 16 }}>
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label>Override Price (£):</label>
+                            <input type="number" name="override_price" value={editFields.override_price} onChange={handleEditFieldChange} min="0" step="0.01" placeholder="Blank = use default" className="input" />
+                        </div>
+                         <div style={{ marginBottom: '1rem' }}>
                             <label>
-                                <input type="checkbox" name="is_active" checked={editFields.is_active} onChange={handleEditFieldChange} />
-                                Active Rule
+                                <input type="checkbox" name="is_active" checked={editFields.is_active} onChange={handleEditFieldChange} /> Active Rule
                             </label>
                         </div>
 
-                        {editError && <p style={{ color: '#ff6b6b' }}>{editError}</p>}
-                        <div style={{ marginTop: '1rem', borderTop: '1px solid #444', paddingTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
-                            <button onClick={handleSaveEdit} disabled={isSaving} style={{ color: '#fff', background: '#28a745', border: 'none', padding: '6px 16px', borderRadius: 4, marginRight: 8 }}>{isSaving ? 'Saving...' : 'Save Changes'}</button>
-                            <button onClick={closeEditModal} disabled={isSaving} style={{ color: '#fff', background: '#6c757d', border: 'none', padding: '6px 16px', borderRadius: 4 }}>Cancel</button>
+                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                            <button onClick={closeEditModal} disabled={isSaving} className="button secondary">Cancel</button>
+                            <button onClick={handleSaveEdit} disabled={isSaving} className="button primary">{isSaving ? 'Saving...' : 'Save Changes'}</button>
                         </div>
                     </div>
                 </div>

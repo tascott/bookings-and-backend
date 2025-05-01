@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
+import TabNavigation from '@/components/TabNavigation'; // Import TabNavigation
 
 // Remove unused import
 // import styles from "@/app/page.module.css"; // Adjust path as needed
@@ -92,89 +93,110 @@ export default function ServiceManagement({
         }
     };
 
+    // Define Tabs
+    const serviceMgmtTabs = [
+        {
+            id: 'view',
+            label: 'Existing Services',
+            content: (
+                <>
+                    <h3>Existing Services</h3>
+                    {isLoadingServices ? (
+                        <p>Loading services...</p>
+                    ) : error && services.length === 0 ? (
+                        <p style={{ color: 'red' }}>Error loading services: {error}</p>
+                    ) : services.length === 0 ? (
+                        <p>No services defined yet.</p>
+                    ) : (
+                        <ul style={{ listStyle: 'none', padding: 0 }}>
+                            {services.map(service => (
+                                <li key={service.id} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.5rem', borderRadius: '4px' }}>
+                                    <strong>{service.name}</strong> (ID: {service.id})
+                                    <span style={{ marginLeft: '1rem', color: '#38761d' }}>
+                                        Price: {service.default_price !== null && service.default_price !== undefined ? `£${service.default_price.toFixed(2)}` : 'Not set'}
+                                    </span>
+                                    <p style={{ margin: '0.3rem 0 0 0', fontSize: '0.9em', color: '#555' }}>
+                                        {service.description || 'No description'}
+                                    </p>
+                                    <div style={{ marginTop: '0.5rem' }}>
+                                        <button onClick={() => openEditModal(service)} style={{ marginRight: '0.5rem', padding: '2px 8px' }} className="button secondary small">Edit</button>
+                                        <button onClick={() => handleDeleteService(service.id)} style={{ padding: '2px 8px' }} className="button danger small">Delete</button>
+                                    </div>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {/* Display global error if needed and not displayed above */}
+                    {error && services.length > 0 && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
+                </>
+            )
+        },
+        {
+            id: 'add',
+            label: 'Add New Service',
+            content: (
+                <>
+                    {/* Add New Service Form */}
+                    <form ref={addServiceFormRef} onSubmit={handleAddService} style={{ padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
+                        <h3>Add New Service</h3>
+                        <div>
+                            <label htmlFor="serviceName">Service Name:</label>
+                            <input type="text" id="serviceName" name="serviceName" required placeholder="e.g., Doggy Daycare AM, Full Day Field Hire" className="input" />
+                        </div>
+                        <div style={{ marginTop: '0.5rem' }}>
+                            <label htmlFor="serviceDescription">Description:</label>
+                            <textarea id="serviceDescription" name="serviceDescription" rows={3} className="input"></textarea>
+                        </div>
+                        <div style={{ marginTop: '0.5rem' }}>
+                            <label htmlFor="serviceDefaultPrice">Default Price (£):</label>
+                            <input type="number" id="serviceDefaultPrice" name="serviceDefaultPrice" min="0" step="0.01" placeholder="e.g., 25.50" className="input" />
+                        </div>
+                        <button type="submit" style={{ marginTop: '1rem' }} className="button primary">Add Service</button>
+                    </form>
+                </>
+            )
+        },
+    ];
+
     return (
-        <section style={{ marginTop: '2rem', borderTop: '1px solid #eee', paddingTop: '2rem' }}>
+        <section>
             <h2>Service Management (Admin)</h2>
-            {/* Display error related to services? Or rely on global */}
-            {/* {error && error.includes('service') && <p style={{ color: 'red' }}>Error: {error}</p>} */}
+            {/* Removed Add New Service Form from here */}
+            {/* Removed Display Existing Services from here */}
 
-            {/* Add New Service Form */}
-            <form ref={addServiceFormRef} onSubmit={handleAddService} style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>Add New Service</h3>
-                <div>
-                    <label htmlFor="serviceName">Service Name:</label>
-                    <input type="text" id="serviceName" name="serviceName" required placeholder="e.g., Doggy Daycare AM, Full Day Field Hire" />
-                </div>
-                <div style={{ marginTop: '0.5rem' }}>
-                    <label htmlFor="serviceDescription">Description:</label>
-                    <textarea id="serviceDescription" name="serviceDescription" rows={3}></textarea>
-                </div>
-                <div style={{ marginTop: '0.5rem' }}>
-                    <label htmlFor="serviceDefaultPrice">Default Price (£):</label>
-                    <input type="number" id="serviceDefaultPrice" name="serviceDefaultPrice" min="0" step="0.01" placeholder="e.g., 25.50" />
-                </div>
-                <button type="submit" style={{ marginTop: '1rem' }}>Add Service</button>
-            </form>
+            {/* Render Tabs */}
+            <TabNavigation tabs={serviceMgmtTabs} />
 
-            {/* Display Existing Services */}
-            <h3>Existing Services</h3>
-            {isLoadingServices ? (
-                <p>Loading services...</p>
-            ) : error && services.length === 0 ? (
-                 <p style={{ color: 'red' }}>Error loading services: {error}</p>
-            ) : services.length === 0 ? (
-                <p>No services defined yet.</p>
-            ) : (
-                <ul style={{ listStyle: 'none', padding: 0 }}>
-                    {services.map(service => (
-                        <li key={service.id} style={{ border: '1px solid #eee', padding: '0.8rem', marginBottom: '0.5rem', borderRadius: '4px' }}>
-                            <strong>{service.name}</strong> (ID: {service.id})
-                            <span style={{ marginLeft: '1rem', color: '#38761d' }}>
-                                Price: {service.default_price !== null && service.default_price !== undefined ? `£${service.default_price.toFixed(2)}` : 'Not set'}
-                            </span>
-                            <p style={{ margin: '0.3rem 0 0 0', fontSize: '0.9em', color: '#555' }}>
-                                {service.description || 'No description'}
-                            </p>
-                            {/* Add Edit/Delete buttons */}
-                            <div style={{ marginTop: '0.5rem' }}>
-                                <button onClick={() => openEditModal(service)} style={{ marginRight: '0.5rem', padding: '2px 8px' }}>Edit</button>
-                                <button onClick={() => handleDeleteService(service.id)} style={{ padding: '2px 8px', color: 'red' }}>Delete</button>
-                            </div>
-                        </li>
-                    ))}
-                </ul>
-            )}
-            {/* Display global error if needed and not displayed above */}
-            {error && services.length > 0 && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
-
-            {/* Edit Modal */}
+            {/* Keep Edit Modal outside tabs */}
             {editingService && (
-                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                    <div style={{ background: '#222', color: '#fff', padding: 24, borderRadius: 8, minWidth: 320, boxShadow: '0 2px 16px #0008' }}>
+                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                    <div style={{ background: '#2a2a2e', padding: '2rem', borderRadius: 8, color: '#fff', width: '90%', maxWidth: '500px' }}>
                         <h3 style={{ color: '#fff' }}>Edit Service: {editingService.name}</h3>
-                        <div style={{ marginBottom: 8 }}>
+                        {editError && <p style={{ color: '#f87171' }}>{editError}</p>}
+                        <div style={{ marginBottom: '1rem' }}>
                             <label>Name:<br />
-                                <input type="text" name="name" value={editFields.name} onChange={handleEditChange} required style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }} />
+                                <input type="text" name="name" value={editFields.name} onChange={handleEditChange} required className="input" />
                             </label>
                         </div>
-                         <div style={{ marginBottom: 8 }}>
+                         <div style={{ marginBottom: '1rem' }}>
                             <label>Description:<br />
-                                <textarea name="description" value={editFields.description} onChange={handleEditChange} rows={3} style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }} />
+                                <textarea name="description" value={editFields.description} onChange={handleEditChange} rows={3} className="input" />
                             </label>
                         </div>
-                         <div style={{ marginBottom: 8 }}>
+                         <div style={{ marginBottom: '1rem' }}>
                             <label>Default Price (£):<br />
-                                <input type="number" name="default_price" value={editFields.default_price} onChange={handleEditChange} min="0" step="0.01" placeholder="Leave blank if no price" style={{ width: '100%', background: '#333', color: '#fff', border: '1px solid #555', padding: 4 }} />
+                                <input type="number" name="default_price" value={editFields.default_price} onChange={handleEditChange} min="0" step="0.01" placeholder="Leave blank if no price" className="input" />
                             </label>
                         </div>
-                        {editError && <p style={{ color: '#ff6b6b' }}>{editError}</p>}
-                        <div style={{ marginTop: '1rem' }}>
-                            <button onClick={handleSaveEdit} disabled={isSaving} style={{ color: '#fff', background: '#28a745', border: 'none', padding: '6px 16px', borderRadius: 4, marginRight: 8 }}>{isSaving ? 'Saving...' : 'Save Changes'}</button>
-                            <button onClick={closeEditModal} disabled={isSaving} style={{ color: '#fff', background: '#6c757d', border: 'none', padding: '6px 16px', borderRadius: 4 }}>Cancel</button>
+                        <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                            <button onClick={closeEditModal} disabled={isSaving} className="button secondary">Cancel</button>
+                            <button onClick={handleSaveEdit} disabled={isSaving} className="button primary">{isSaving ? 'Saving...' : 'Save Changes'}</button>
                         </div>
                     </div>
                 </div>
             )}
+
+            {/* Removed global error display from here */}
         </section>
     );
 }

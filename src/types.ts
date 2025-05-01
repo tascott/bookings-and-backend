@@ -104,6 +104,18 @@ export type Staff = {
   default_vehicle_id?: number | null; // Add default vehicle ID field
 }
 
+// Simplified Staff type for listing with profile names
+export type StaffMemberListItem = {
+  id: number;
+  user_id: string;
+  role: string;
+  profile?: {
+    first_name: string | null;
+    last_name: string | null;
+  } | null;
+  default_vehicle_id?: number | null;
+}
+
 // Vehicle type
 export type Vehicle = {
   id: number;

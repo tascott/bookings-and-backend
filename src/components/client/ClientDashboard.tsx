@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import TabNavigation from '@/components/TabNavigation';
+import SidebarNavigation from '@/components/SidebarNavigation';
 import ClientBooking from '@/components/client/ClientBooking';
 import PetManagement from '@/components/client/PetManagement';
 import MyBookings from '@/components/client/MyBookings';
-import styles from '@/app/page.module.css';
 import type { User } from '@supabase/supabase-js';
 import { Service } from '@/types';
 
@@ -147,10 +146,10 @@ export default function ClientDashboard({
   ];
 
   return (
-    <div className={styles.roleTabsContent}>
+    <>
       <h2>Client Dashboard</h2>
       <p>Welcome to your doggy daycare portal. Book services, manage your pets, and view your appointments.</p>
-      <TabNavigation tabs={clientTabs} />
-    </div>
+      <SidebarNavigation tabs={clientTabs} />
+    </>
   );
 }

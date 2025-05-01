@@ -1,21 +1,20 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import TabNavigation from '@/components/TabNavigation';
+import SidebarNavigation from '@/components/SidebarNavigation';
 import BookingManagement from '@/components/admin/BookingManagement';
-import styles from '@/app/page.module.css';
-import type { User } from '@supabase/supabase-js';
-import type { Site, Field, Booking, Service } from '@/types';
+// import type { User } from '@supabase/supabase-js'; // Type not used
+import type { Site, Field, Booking /*, Service */ } from '@/types'; // Service type not used
 
 // Define props for the staff dashboard
 interface StaffDashboardProps {
-  user: User; // Changed back as it might be used later, or remove if definitely unused
+  // user: User; // Removed unused prop
   // Booking management
   bookings: Booking[];
   isLoadingBookings: boolean;
   sites: Site[];
   fields: Field[];
-  services: Service[]; // Renamed back from _services
+  // services: Service[]; // Removed unused prop
   handleAddBooking: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   addBookingFormRef: React.RefObject<HTMLFormElement | null>;
   getFieldsForSite: (siteId: number) => Field[];
@@ -27,18 +26,17 @@ interface StaffDashboardProps {
 }
 
 export default function StaffDashboard({
-  user, // Renamed back from _user
+  // _user, // Prop is unused
   bookings,
   isLoadingBookings,
   sites,
   fields,
-  services, // Renamed back from _services
+  // _services, // Prop is unused
   handleAddBooking,
   addBookingFormRef,
   getFieldsForSite,
   fetchBookings,
   error,
-  // Destructure paid status toggle handler
   handleToggleBookingPaidStatus
 }: StaffDashboardProps) {
   // Profile state
@@ -115,7 +113,7 @@ export default function StaffDashboard({
           <h3>My Schedule</h3>
           <p>View your assigned bookings and daily schedule.</p>
           {/* Staff schedule component will be implemented here */}
-          <div className={styles.comingSoon}>
+          <div /* className={styles.comingSoon} */ >
             <p>Coming soon - calendar view of your upcoming shifts</p>
           </div>
         </div>
@@ -147,7 +145,7 @@ export default function StaffDashboard({
         <div>
           <h3>My Assigned Clients</h3>
           <p>View details of clients assigned to your bookings.</p>
-          <div className={styles.comingSoon}>
+          <div /* className={styles.comingSoon} */ >
             <p>Coming soon - view client and pet details for your scheduled shifts</p>
           </div>
         </div>
@@ -191,10 +189,10 @@ export default function StaffDashboard({
   ];
 
   return (
-    <div className={styles.roleTabsContent}>
+    <>
       <h2>Staff Dashboard</h2>
       <p>View your schedule and manage your assigned bookings.</p>
-      <TabNavigation tabs={staffTabs} />
-    </div>
+      <SidebarNavigation tabs={staffTabs} />
+    </>
   );
 }

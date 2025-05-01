@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import TabNavigation from '@/components/TabNavigation';
+import SidebarNavigation from '@/components/SidebarNavigation';
 import UserManagement from './UserManagement';
 import SiteFieldManagement from './SiteFieldManagement';
 import BookingManagement from './BookingManagement';
@@ -10,19 +10,18 @@ import ServiceAvailabilityManagement from './ServiceAvailabilityManagement';
 import ClientManagement from './ClientManagement';
 import VehicleManagement from './VehicleManagement';
 import StaffAvailabilityManagement from './StaffAvailabilityManagement';
-import styles from '@/app/page.module.css';
 import type { User } from '@supabase/supabase-js';
-import { UserWithRole, Site, Field, Booking, Service, ServiceAvailability, Vehicle, Staff } from '@/types';
+import { UserWithRole, Site, Field, Booking, Service, ServiceAvailability, Vehicle, StaffMemberListItem } from '@/types';
 
 // Define props for the admin dashboard
 interface AdminDashboardProps {
   user: User;
   // User management
   users: UserWithRole[];
-  staff: Staff[];
+  staff: StaffMemberListItem[];
   isLoadingUsers: boolean;
   updatingUserId: string | null;
-  handleAssignRole: (userId: string, targetRole: 'client' | 'staff' | 'admin') => Promise<void>;
+  handleAssignRole: (userId: string, role: string) => Promise<void>;
   fetchAllUsers: () => Promise<void>;
   handleAssignDefaultVehicle: (staffId: number, vehicleId: number | null) => Promise<void>;
   // Site and field management
@@ -48,17 +47,17 @@ interface AdminDashboardProps {
   handleAddService: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   addServiceFormRef: React.RefObject<HTMLFormElement | null>;
   // Add service update/delete handlers
-  handleUpdateService: (serviceId: number, data: Partial<Omit<Service, 'id' | 'created_at'>>) => Promise<void>;
+  handleUpdateService: (serviceId: number, updatedData: Partial<Service>) => Promise<void>;
   handleDeleteService: (serviceId: number) => Promise<void>;
   // Service availability
   serviceAvailability: ServiceAvailability[];
   isLoadingServiceAvailability: boolean;
   handleAddServiceAvailability: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
-  handleToggleServiceAvailabilityActive: (ruleId: number, currentStatus: boolean) => Promise<void>;
+  handleToggleServiceAvailabilityActive: (id: number, isActive: boolean) => Promise<void>;
   addServiceAvailabilityFormRef: React.RefObject<HTMLFormElement | null>;
   // Add availability update/delete handlers
-  handleUpdateServiceAvailability: (ruleId: number, data: Partial<Omit<ServiceAvailability, 'id' | 'created_at'>>) => Promise<void>;
-  handleDeleteServiceAvailability: (ruleId: number) => Promise<void>;
+  handleUpdateServiceAvailability: (id: number, updatedData: Partial<ServiceAvailability>) => Promise<void>;
+  handleDeleteServiceAvailability: (id: number) => Promise<void>;
   // Shared
   error: string | null;
   // Vehicle management props (vehicles needed for dropdown in user mgmt)
@@ -66,7 +65,7 @@ interface AdminDashboardProps {
   isLoadingVehicles: boolean;
   vehicleError: string | null;
   handleAddVehicle: (vehicle: Partial<Vehicle>) => Promise<void>;
-  handleDeleteVehicle: (id: number) => Promise<void>;
+  handleDeleteVehicle: (vehicleId: number) => Promise<void>;
 }
 
 export default function AdminDashboard({
@@ -234,10 +233,10 @@ export default function AdminDashboard({
   ];
 
   return (
-    <div className={styles.roleTabsContent}>
+    <>
       <h2>Admin Dashboard</h2>
       <p>Manage your business operations from this central hub.</p>
-      <TabNavigation tabs={adminTabs} />
-    </div>
+      <SidebarNavigation tabs={adminTabs} />
+    </>
   );
 }

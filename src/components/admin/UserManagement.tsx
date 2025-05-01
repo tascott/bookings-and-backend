@@ -1,10 +1,11 @@
 'use client';
 
 import styles from "@/app/page.module.css"; // Adjust path as needed
-import type { User } from '@supabase/supabase-js';
+// import type { User } from '@supabase/supabase-js'; // Removed unused import
 // Import Staff and Vehicle types
 import type { Staff, Vehicle } from '@/types';
 import { useState, useEffect, useRef } from 'react';
+import TabNavigation from '@/components/TabNavigation'; // Import the TabNavigation component
 
 // Define type for user data passed as props (align with what fetchAllUsers provides)
 type UserWithRole = {
@@ -31,7 +32,6 @@ interface UserManagementProps {
     vehicles: Vehicle[]; // List of all vehicles for dropdown
     isLoadingUsers: boolean;
     error: string | null;
-    currentUser: User | null; // The currently logged-in admin user
     updatingUserId: string | null;
     handleAssignRole: (userId: string, targetRole: 'client' | 'staff' | 'admin') => Promise<void>;
     handleAssignDefaultVehicle: (staffId: number, vehicleId: number | null) => Promise<void>; // Handler for vehicle assignment
@@ -44,7 +44,6 @@ export default function UserManagement({
     vehicles, // Add vehicles to props
     isLoadingUsers,
     error,
-    currentUser,
     updatingUserId,
     handleAssignRole,
     handleAssignDefaultVehicle, // Add handler to props
@@ -57,7 +56,6 @@ export default function UserManagement({
     const [editError, setEditError] = useState<string | null>(null);
 
     // --- Promote Client Autocomplete State ---
-    const [showPromote, setShowPromote] = useState(false);
     const [clientSearch, setClientSearch] = useState('');
     const [filteredClients, setFilteredClients] = useState<UserWithRole[]>([]);
     const [selectedClient, setSelectedClient] = useState<UserWithRole | null>(null);
@@ -67,7 +65,7 @@ export default function UserManagement({
 
     // Fetch filtered clients as user types
     useEffect(() => {
-        if (!showPromote || !clientSearch) {
+        if (!clientSearch) {
             setFilteredClients([]);
             return;
         }
@@ -85,7 +83,7 @@ export default function UserManagement({
         };
         fetchClients();
         return () => controller.abort();
-    }, [clientSearch, showPromote]);
+    }, [clientSearch]);
 
     // Handle promote
     const handlePromote = async (targetRole: 'staff' | 'admin') => {
@@ -109,22 +107,24 @@ export default function UserManagement({
         }
     };
 
-    // Match users (from fetchAllUsers, likely auth.users based) with staff records (from fetchStaff)
+    // Combine user details (Keep this logic, used by both Staff and Admin tabs)
     const staffUserDetails = users
-        .filter(u => u.role === 'staff' || u.role === 'admin') // Filter for staff/admin roles in the main user list
+        .filter(u => u.role === 'staff' || u.role === 'admin')
         .map(user => {
-            // Find the corresponding staff record using the user_id (Supabase auth ID)
             const staffRecord = staff.find(s => s.user_id === user.id);
             return {
-                ...user, // Spread the user details (email, created_at etc.)
-                staff_id: staffRecord?.id, // Get the staff table primary key (important!)
-                default_vehicle_id: staffRecord?.default_vehicle_id, // Get the assigned vehicle
-                notes: staffRecord?.notes ?? undefined, // Ensure notes is string | undefined
-                // Include profile names from staffRecord if available (assuming fetchStaff includes profile)
+                ...user,
+                staff_id: staffRecord?.id,
+                default_vehicle_id: staffRecord?.default_vehicle_id,
+                notes: staffRecord?.notes ?? undefined,
                 first_name: staffRecord?.profile?.first_name || user.first_name,
                 last_name: staffRecord?.profile?.last_name || user.last_name,
-            } as UserWithRole; // Add type assertion to satisfy compiler if needed
+            } as UserWithRole;
         });
+
+    // Filter for Tabs
+    const staffOnly = staffUserDetails.filter(u => u.role === 'staff');
+    const adminsOnly = staffUserDetails.filter(u => u.role === 'admin');
 
     const openEdit = (user: UserWithRole) => {
         setEditingUser(user);
@@ -166,159 +166,187 @@ export default function UserManagement({
         }
     };
 
+    // Define Tabs Content (Reordered)
+    const userMgmtTabs = [
+        {
+            id: 'staff',
+            label: 'Staff Management',
+            content: (
+                <> {/* Wrap in fragment */}
+                    {isLoadingUsers && <p>Loading staff...</p>}
+                    {!isLoadingUsers && staffOnly.length > 0 && (
+                        <div className={styles.userList}>
+                            {/* Staff table header */}
+                             <div className={styles.userCardHeader}>
+                                <div>Email</div>
+                                <div>First Name</div>
+                                <div>Last Name</div>
+                                <div>Phone</div>
+                                <div>Default Vehicle</div>
+                                <div>Created At</div>
+                                <div className={styles.userAction}>Actions</div>
+                            </div>
+                            {/* Staff table body */}
+                            {staffOnly.map((u) => (
+                                <div key={u.id} className={`${styles.userCard} ${updatingUserId === u.id ? styles.updating : ''}`}>
+                                    <div>{u.email ?? 'N/A'}</div>
+                                    <div>{u.first_name ?? 'N/A'}</div>
+                                    <div>{u.last_name ?? 'N/A'}</div>
+                                    <div>{u.phone ?? 'N/A'}</div>
+                                    <div> {/* Default Vehicle Dropdown */}
+                                        {u.staff_id ? (
+                                            <select
+                                                value={u.default_vehicle_id ?? ''}
+                                                onChange={(e) => {
+                                                    const vehicleId = e.target.value ? Number(e.target.value) : null;
+                                                    handleAssignDefaultVehicle(u.staff_id!, vehicleId);
+                                                }}
+                                                disabled={updatingUserId === u.id}
+                                            >
+                                                <option value="">-- None --</option>
+                                                {vehicles.map(v => (
+                                                    <option key={v.id} value={v.id}>{v.make} {v.model} ({v.license_plate || 'No Plate'})</option>
+                                                ))}
+                                            </select>
+                                        ) : (
+                                            <span>N/A</span>
+                                        )}
+                                    </div>
+                                    <div>{u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A'}</div>
+                                    <div className={styles.userAction}>
+                                        <button onClick={() => openEdit(u)} disabled={updatingUserId === u.id}>Edit</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {!isLoadingUsers && staffOnly.length === 0 && <p>No staff members found.</p>}
+                </>
+            )
+        },
+        {
+            id: 'admins',
+            label: 'Admin Management',
+            content: (
+                <> {/* Wrap in fragment */}
+                    {isLoadingUsers && <p>Loading admins...</p>}
+                    {!isLoadingUsers && adminsOnly.length > 0 && (
+                        <div className={styles.userList}>
+                            {/* Admin table header */}
+                             <div className={styles.userCardHeader}>
+                                <div>Email</div>
+                                <div>First Name</div>
+                                <div>Last Name</div>
+                                <div>Phone</div>
+                                <div>Role</div>
+                                <div>Created At</div>
+                                <div className={styles.userAction}>Actions</div>
+                            </div>
+                            {/* Admin table body */}
+                            {adminsOnly.map((u) => (
+                                <div key={u.id} className={`${styles.userCard} ${updatingUserId === u.id ? styles.updating : ''}`}>
+                                    <div>{u.email ?? 'N/A'}</div>
+                                    <div>{u.first_name ?? 'N/A'}</div>
+                                    <div>{u.last_name ?? 'N/A'}</div>
+                                    <div>{u.phone ?? 'N/A'}</div>
+                                    <div>{u.role}</div>
+                                    <div>{u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A'}</div>
+                                    <div className={styles.userAction}>
+                                        <button onClick={() => openEdit(u)} disabled={updatingUserId === u.id}>Edit</button>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                    {!isLoadingUsers && adminsOnly.length === 0 && <p>No admin members found.</p>}
+                </>
+            )
+        },
+        {
+            id: 'promote',
+            label: 'Promote Client',
+            content: (
+                <div style={{ background: '#181818', padding: 16, borderRadius: 8, maxWidth: 480 }}>
+                    <label>Search for client by email/name:<br />
+                        <input
+                            ref={inputRef}
+                            type="text"
+                            value={clientSearch}
+                            onChange={e => {
+                                setClientSearch(e.target.value);
+                                setSelectedClient(null);
+                            }}
+                            style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid #555', background: '#222', color: '#fff', marginBottom: 4 }}
+                            placeholder="Type email, first or last name..."
+                        />
+                    </label>
+                    {clientSearch && filteredClients.length > 0 && !selectedClient && (
+                        <ul style={{ background: '#222', border: '1px solid #555', borderRadius: 4, maxHeight: 160, overflowY: 'auto', margin: 0, padding: 0, listStyle: 'none', position: 'absolute', zIndex: 10, width: inputRef.current?.offsetWidth || 320 }}>
+                            {filteredClients.slice(0, 10).map(c => (
+                                <li key={c.id} style={{ padding: 8, cursor: 'pointer' }}
+                                    onClick={() => { setSelectedClient(c); setClientSearch(c.email || ''); setFilteredClients([]); }}>
+                                    <span>{c.email}</span> {c.first_name || ''} {c.last_name || ''}
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {selectedClient && (
+                        <div style={{ marginTop: 12, background: '#222', padding: 12, borderRadius: 4 }}>
+                            <div><strong>Email:</strong> {selectedClient.email}</div>
+                            <div><strong>Name:</strong> {selectedClient.first_name} {selectedClient.last_name}</div>
+                            <div><strong>Current Role:</strong> {selectedClient.role}</div>
+                            <button onClick={() => handlePromote('staff')} disabled={isPromoting} style={{ marginRight: 8 }}>Promote to Staff</button>
+                            <button onClick={() => handlePromote('admin')} disabled={isPromoting}>Promote to Admin</button>
+                            <button onClick={() => { setSelectedClient(null); setClientSearch(''); }} style={{ marginLeft: 8 }}>Cancel</button>
+                            {promoteError && <p style={{ color: 'red' }}>{promoteError}</p>}
+                        </div>
+                    )}
+                </div>
+            )
+        },
+    ];
+
     return (
         <section>
             <h2>User Management (Admin)</h2>
-            {/* --- Promote Client Section --- */}
-            <div style={{ marginBottom: 24 }}>
-                <button onClick={() => setShowPromote(v => !v)} style={{ marginBottom: 8 }}>
-                    {showPromote ? 'Hide Promote Client' : 'Promote Client to Staff/Admin'}
-                </button>
-                {showPromote && (
-                    <div style={{ background: '#181818', padding: 16, borderRadius: 8, maxWidth: 480 }}>
-                        <label>Search for client by email:<br />
-                            <input
-                                ref={inputRef}
-                                type="text"
-                                value={clientSearch}
-                                onChange={e => {
-                                    setClientSearch(e.target.value);
-                                    setSelectedClient(null);
-                                }}
-                                style={{ width: '100%', padding: 6, borderRadius: 4, border: '1px solid #555', background: '#222', color: '#fff', marginBottom: 4 }}
-                                placeholder="Type email, first or last name..."
-                            />
-                        </label>
-                        {clientSearch && filteredClients.length > 0 && !selectedClient && (
-                            <ul style={{ background: '#222', border: '1px solid #555', borderRadius: 4, maxHeight: 160, overflowY: 'auto', margin: 0, padding: 0, listStyle: 'none', position: 'absolute', zIndex: 10, width: inputRef.current?.offsetWidth || 320 }}>
-                                {filteredClients.slice(0, 10).map(c => (
-                                    <li key={c.id} style={{ padding: 8, cursor: 'pointer' }}
-                                        onClick={() => { setSelectedClient(c); setClientSearch(c.email || ''); setFilteredClients([]); }}>
-                                        <span>{c.email}</span> {c.first_name || ''} {c.last_name || ''}
-                                    </li>
-                                ))}
-                            </ul>
-                        )}
-                        {selectedClient && (
-                            <div style={{ marginTop: 12, background: '#222', padding: 12, borderRadius: 4 }}>
-                                <div><strong>Email:</strong> {selectedClient.email}</div>
-                                <div><strong>Name:</strong> {selectedClient.first_name} {selectedClient.last_name}</div>
-                                <div><strong>Current Role:</strong> {selectedClient.role}</div>
-                                <button onClick={() => handlePromote('staff')} disabled={isPromoting} style={{ marginRight: 8 }}>Promote to Staff</button>
-                                <button onClick={() => handlePromote('admin')} disabled={isPromoting}>Promote to Admin</button>
-                                <button onClick={() => { setSelectedClient(null); setClientSearch(''); }} style={{ marginLeft: 8 }}>Cancel</button>
-                                {promoteError && <p style={{ color: 'red' }}>{promoteError}</p>}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-            {/* --- End Promote Client Section --- */}
-            {isLoadingUsers && <p>Loading users...</p>}
-            {/* Display component-specific error or rely on global error passed via props */}
-            {/* {error && <p style={{ color: 'red' }}>Error: {error}</p>} */}
-            {!isLoadingUsers && staffUserDetails.length > 0 && (
-                <div className={styles.userList}>
-                    <div className={styles.userCardHeader}>
-                        <div>Email</div>
-                        <div>First Name</div>
-                        <div>Last Name</div>
-                        <div>Phone</div>
-                        <div>Current Role</div>
-                        <div>Created At</div>
-                        <div>Default Vehicle</div>
-                        <div className={styles.userAction}>Actions</div>
-                    </div>
-                    {staffUserDetails.map((u) => (
-                        <div key={u.id} className={`${styles.userCard} ${updatingUserId === u.id ? styles.updating : ''}`}>
-                            <div>{u.email ?? 'N/A'}</div>
-                            <div>{u.first_name ?? 'N/A'}</div>
-                            <div>{u.last_name ?? 'N/A'}</div>
-                            <div>{u.phone ?? 'N/A'}</div>
-                            <div>{u.role}</div>
-                            <div>{u.created_at ? new Date(u.created_at).toLocaleString() : 'N/A'}</div>
-                            <div>
-                                {u.staff_id ? (
-                                    <select
-                                        value={u.default_vehicle_id ?? ''}
-                                        onChange={(e) => {
-                                            const vehicleId = e.target.value ? Number(e.target.value) : null;
-                                            handleAssignDefaultVehicle(u.staff_id!, vehicleId);
-                                        }}
-                                        disabled={updatingUserId === u.id}
-                                    >
-                                        <option value="">-- None --</option>
-                                        {vehicles.map(v => (
-                                            <option key={v.id} value={v.id}>
-                                                {v.make} {v.model} ({v.year || 'N/A'})
-                                            </option>
-                                        ))}
-                                    </select>
-                                ) : (
-                                    <span>N/A</span>
-                                )}
-                            </div>
-                            <div className={styles.userAction}>
-                                {updatingUserId === u.id ? (
-                                    <span>Updating...</span>
-                                ) : (
-                                    <>
-                                        <button onClick={() => openEdit(u)} style={{ color: '#fff', background: '#007bff', border: 'none', padding: '4px 10px', borderRadius: 4, marginRight: 4 }}>Edit</button>
-                                        {currentUser && u.id !== currentUser.id && u.role !== 'client' && (
-                                            <button onClick={() => handleAssignRole(u.id, 'client')}>Make Client</button>
-                                        )}
-                                        {currentUser && u.id !== currentUser.id && u.role !== 'staff' && (
-                                            <button onClick={() => handleAssignRole(u.id, 'staff')}>Make Staff</button>
-                                        )}
-                                        {currentUser && u.id !== currentUser.id && u.role !== 'admin' && (
-                                            <button onClick={() => handleAssignRole(u.id, 'admin')}>Make Admin</button>
-                                        )}
-                                        {currentUser && u.id === currentUser.id && (
-                                            <span>(Your Role)</span>
-                                        )}
-                                    </>
-                                )}
-                            </div>
-                        </div>
-                    ))}
-                </div>
-            )}
-            {!isLoadingUsers && staffUserDetails.length === 0 && (
-                <p>No staff or admin users found.</p>
-            )}
-            {/* Display global error if needed, passed via props */}
-            {error && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
-            {/* Edit Modal */}
+            {/* Render Tabs */}
+            <TabNavigation tabs={userMgmtTabs} />
+
+            {/* Keep Edit Modal outside tabs - it will overlay */}
             {editingUser && (
-                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                    <div style={{ background: '#222', color: '#fff', padding: 24, borderRadius: 8, minWidth: 320, boxShadow: '0 2px 16px #0008' }}>
-                        <h3 style={{ color: '#fff' }}>Edit Staff/Admin User</h3>
-                        <div style={{ marginBottom: 8 }}>
+                <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+                    <div style={{ background: '#2a2a2e', padding: '2rem', borderRadius: 8, color: '#fff', width: '90%', maxWidth: '500px' }}>
+                        <h3>Edit User: {editingUser.email}</h3>
+                        {editError && <p style={{ color: '#f87171' }}>{editError}</p>}
+                        <div style={{ marginBottom: '1rem' }}>
                             <label>First Name:<br />
-                                <input name="first_name" value={editFields.first_name} onChange={handleEditChange} style={{ background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: 4, width: '100%' }} />
+                                <input type="text" name="first_name" value={editFields.first_name} onChange={handleEditChange} className="input" />
                             </label>
                         </div>
-                        <div style={{ marginBottom: 8 }}>
+                        <div style={{ marginBottom: '1rem' }}>
                             <label>Last Name:<br />
-                                <input name="last_name" value={editFields.last_name} onChange={handleEditChange} style={{ background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: 4, width: '100%' }} />
+                                <input type="text" name="last_name" value={editFields.last_name} onChange={handleEditChange} className="input" />
                             </label>
                         </div>
-                        <div style={{ marginBottom: 8 }}>
+                        <div style={{ marginBottom: '1rem' }}>
                             <label>Phone:<br />
-                                <input name="phone" value={editFields.phone} onChange={handleEditChange} style={{ background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: 4, width: '100%' }} />
+                                <input type="text" name="phone" value={editFields.phone} onChange={handleEditChange} className="input" />
                             </label>
                         </div>
-                        <div style={{ marginBottom: 8 }}>
-                            <label>Notes:<br />
-                                <textarea name="notes" value={editFields.notes} onChange={handleEditChange} style={{ background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: 4, width: '100%' }} />
+                        <div style={{ marginBottom: '1rem' }}>
+                            <label>Notes (Staff Only):<br />
+                                <textarea name="notes" value={editFields.notes} onChange={handleEditChange} className="input" rows={3} disabled={editingUser.role !== 'staff'}></textarea>
                             </label>
                         </div>
-                        {editError && <p style={{ color: '#ff6b6b' }}>{editError}</p>}
-                        <button onClick={handleEditSave} disabled={isSaving} style={{ color: '#fff', background: '#28a745', border: 'none', padding: '6px 16px', borderRadius: 4, marginRight: 8 }}>Save</button>
-                        <button onClick={closeEdit} disabled={isSaving} style={{ color: '#fff', background: '#6c757d', border: 'none', padding: '6px 16px', borderRadius: 4 }}>Cancel</button>
+                        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem' }}>
+                            <button onClick={closeEdit} className="button secondary" disabled={isSaving}>Cancel</button>
+                            <button onClick={handleEditSave} className="button primary" disabled={isSaving}>{isSaving ? 'Saving...' : 'Save Changes'}</button>
+                        </div>
                     </div>
                 </div>
             )}
+            {/* Display global error if needed */}
+            {error && <p style={{ color: 'red' }}>Error: {error}</p>}
         </section>
     );
 }
