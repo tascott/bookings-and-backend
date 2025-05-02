@@ -141,9 +141,9 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **/api/available-slots:**
   - Returns available booking slots for a service/date, requires auth.
   - Calls `calculate_available_slots` RPC, passing client's `default_staff_id`.
-  - RPC returns one row per logical time slot, including:
-      - `slot_start_time`, `slot_end_time`
-      - `slot_remaining_capacity`: Calculated based on the rules below (NULL if unlimited).
+  - RPC returns potential time slots based on rules, including:
+      - `slot_start_time`, `slot_end_time` (Now generated based on 'Europe/London' timezone)
+      - `slot_remaining_capacity`: Calculated capacity based on rules/overlaps (NULL if unlimited).
       - `rule_uses_staff_capacity`: Boolean flag.
       - `associated_field_ids`: Array of field IDs for the slot.
   - RPC Capacity Logic:
@@ -196,6 +196,13 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **src/components/admin/ServiceAvailabilityManagement.tsx:** Manage service availability rules. UI updated to use `use_staff_vehicle_capacity` checkbox instead of `capacity_type`; field selection is always present. No longer uses `base_capacity` field.
 - **src/components/client/ClientDashboard.tsx:** Container for client features. Fetches and manages state for services, profile, etc., needed for its child components.
 - **src/components/client/ClientBooking.tsx:** Client booking UI.
+  - Fetches availability using `calculate_available_slots` RPC (which now uses 'Europe/London').
+  - Displays slots in calendar and list format.
+  - Uses `isSlotBookedBySelectedPets` to check for existing bookings for selected pets.
+  - Disables slots in the list view and provides visual cues (text suffix) if already booked or full.
+  - Uses `eventStyleGetter` in CalendarView to visually distinguish already booked slots (greyed out).
+  - Slot selection (via calendar or list) uses the original timestamp string as the key for consistency.
+  - Booking submission uses `POST /api/client-booking`.
 - **src/components/client/PetManagement.tsx:** Client pet management UI.
 - **src/components/client/MyBookings.tsx:** Client booking history/upcoming bookings.
 - **src/components/staff/StaffDashboard.tsx:** Container for staff features. Fetches and manages state for bookings, services etc., needed for its child components.
@@ -224,15 +231,18 @@ Project Summary for AI Assistant (booking-and-accounts)
 
 **Calendar Component (`src/components/shared/CalendarView.tsx`)**
 - **Purpose:** Provides a reusable calendar interface for displaying date-based data like bookings, availability, or schedules.
-- **Technology:** Built using `react-big-calendar` and `date-fns` for robust date handling and pre-built calendar views.
+- **Technology:** Built using `react-big-calendar` and `date-fns`.
 - **Features:**
-  - Supports Monthly, Weekly, and Daily views.
-  - Includes built-in navigation for changing dates/views.
-  - Accepts an array of events (`CalendarEvent[]`) to display data points on the calendar.
-  - Requires mapping data (e.g., bookings) to the `CalendarEvent` interface (`{ id, title, start: Date, end: Date, resource?: unknown }`).
-  - Provides callback props for user interaction:
-    - `onSelectSlot`: Triggered when a day background is clicked (passes the clicked date).
-    - `onSelectEvent`: Triggered when an existing event item is clicked (passes the event object).
+  - Supports Monthly, Weekly, and Daily views (Week view used in ClientBooking).
+  - Includes built-in navigation.
+  - Accepts an array of events (`CalendarEvent[]`) to display data points.
+  - Configured to show time range 6am-6pm.
+  - Requires mapping data to the `CalendarEvent` interface (`{ id, title, start: Date, end: Date, resource?: unknown }`).
+  - `resource` object used to store `rawStartTime` for consistent key handling.
+  - Callback props for user interaction:
+    - `onSelectSlot` (currently unused in ClientBooking).
+    - `onSelectEvent` (used in ClientBooking to select slots).
+    - `eventStyleGetter` (used in ClientBooking to style available vs. already booked slots).
 - **Usage:**
   - Import `CalendarView` and the `CalendarEvent` type.
   - Fetch the relevant data (e.g., bookings for a staff member).
