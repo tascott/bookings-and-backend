@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, ChangeEvent } from 'react';
 import styles from '@/app/page.module.css'; // Adjust path as needed
 import CalendarView, { CalendarEvent } from '@/components/shared/CalendarView'; // Import CalendarView
+import Modal from '@/components/shared/Modal'; // Import Modal component
 import { formatISO, isSameDay, startOfWeek, endOfWeek, getDay as dateFnsGetDay, addDays } from 'date-fns'; // Import date-fns helpers and format, and startOfWeek, endOfWeek, getDay, addDays
 
 // Define required types directly or import from a shared types file later
@@ -34,6 +35,7 @@ type CalculatedSlot = {
 	capacity_display?: string;
 	field_ids?: number[];
 	uses_staff_capacity?: boolean;
+	other_staff_potentially_available?: boolean; // New field from RPC
 };
 
 // Define a new type for the aggregated data used for display
@@ -46,6 +48,7 @@ type AggregatedSlot = {
 	price_per_pet: number; // Use the lowest price found for this time block?
 	uses_staff_capacity: boolean; // Indicates if capacity is staff-based
 	zero_capacity_reason: string | null; // 'staff_full', 'no_staff', 'base_full', or null
+	other_staff_potentially_available?: boolean; // New field
 	// Keep track of contributing fields/slots if needed for booking later?
 	// contributingSlots: CalculatedSlot[];
 };
@@ -128,6 +131,11 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 
 	// State for current calendar view range - use helper function for initial state
 	const [calendarViewDate, setCalendarViewDate] = useState<Date>(getInitialCalendarDate());
+
+	// --- State for Enquiry Modal ---
+	const [isEnquiryModalOpen, setIsEnquiryModalOpen] = useState(false);
+	const [enquirySlot, setEnquirySlot] = useState<AggregatedSlot | null>(null);
+	// -----------------------------
 
 	// Define helper here to be accessible throughout the component
 	const getServiceName = (id: number) => services.find((s) => s.id === id)?.name || `Service ID ${id}`;
@@ -280,12 +288,15 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 
 			// Map slots to CalendarEvent objects
 			const slotEvents: CalendarEvent[] = slotsData
-				.filter((slot) => slot.remaining_capacity > 0 && slot.start_time)
+				// Keep slots with 0 capacity if other staff might be available
+				.filter((slot) => (slot.remaining_capacity > 0 || slot.other_staff_potentially_available === true) && slot.start_time)
 				.map((slot) => {
 					const start = new Date(slot.start_time);
+					const isPotentiallyEnquire = slot.remaining_capacity === 0 && slot.other_staff_potentially_available === true;
 					return {
 						id: slot.start_time, // Use the raw string as the ID
-						title: `Available (${slot.remaining_capacity} spots)`,
+						// Modify title for enquire state
+						title: isPotentiallyEnquire ? 'Enquire' : `Available (${slot.remaining_capacity} spots)`,
 						start,
 						end: new Date(slot.end_time),
 						allDay: false,
@@ -294,6 +305,8 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 							capacity: slot.remaining_capacity,
 							price: slot.price_per_pet,
 							rawStartTime: slot.start_time, // Store the original string key
+							// We don't necessarily need the other_staff flag in the *event resource*
+							// as eventStyleGetter will look it up in aggregatedSlots
 						},
 					} as CalendarEvent;
 				});
@@ -308,6 +321,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 				price_per_pet: slot.price_per_pet ?? 0,
 				uses_staff_capacity: slot.uses_staff_capacity ?? false,
 				zero_capacity_reason: slot.zero_capacity_reason ?? null,
+				other_staff_potentially_available: slot.other_staff_potentially_available ?? false,
 			}));
 			console.log('[fetchCalendarAvailability] Aggregated slots for lookup:', aggregatedData);
 			setAggregatedSlots(aggregatedData);
@@ -345,7 +359,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		});
 	};
 
-	// Handler for Slot Selection Toggle
+	// Handler for Slot Selection Toggle (Only for bookable slots)
 	const handleSlotSelectionToggle = (slotKey: string) => {
 		console.log('[handleSlotSelectionToggle] Toggling key:', slotKey);
 		setSelectedSlots((prevSelected) => {
@@ -357,6 +371,13 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 			}
 			return newSelected;
 		});
+		// Also set the date when a *bookable* slot is toggled
+		const slot = aggregatedSlots.find((s) => s.startTime === slotKey);
+		if (slot) {
+			const slotDate = new Date(slot.startTime);
+			slotDate.setHours(0, 0, 0, 0);
+			setSelectedBookingDate(slotDate);
+		}
 	};
 
 	// Calculate Total Price
@@ -521,36 +542,97 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		(event: CalendarEvent) => {
 			const resource = event.resource as { type?: string; capacity?: number; rawStartTime?: string };
 			if (resource?.type === 'availability-slot' && resource.rawStartTime) {
-				const isBooked = isSlotBookedBySelectedPets(resource.rawStartTime);
+				const slotKey = resource.rawStartTime;
+				const isBooked = isSlotBookedBySelectedPets(slotKey);
+				// Find the matching aggregated slot to check the other_staff flag
+				const aggSlot = aggregatedSlots.find((s) => s.startTime === slotKey);
+				const isPotentiallyEnquire = aggSlot?.totalRemainingCapacity === 0 && aggSlot?.other_staff_potentially_available === true;
+
 				if (isBooked) {
+					// Style for already booked by this client/pets
 					return {
 						style: {
-							backgroundColor: 'rgba(100, 100, 100, 0.7)', // Greyed out for booked by selection
+							backgroundColor: 'rgba(100, 100, 100, 0.7)', // Greyed out
 							borderRadius: '4px',
 							border: '1px solid #666',
 							color: '#ccc',
 							padding: '2px 5px',
 							fontSize: '0.9em',
-							cursor: 'not-allowed', // Add not-allowed cursor
+							cursor: 'not-allowed',
+						},
+					};
+				} else if (isPotentiallyEnquire) {
+					// Style for Enquiry slots
+					return {
+						style: {
+							backgroundColor: 'rgba(204, 153, 0, 0.7)', // Muted yellow/orange
+							borderRadius: '4px',
+							border: '1px solid #b38600',
+							color: 'white',
+							padding: '2px 5px',
+							fontSize: '0.9em',
+							cursor: 'pointer', // Allow clicking to enquire
+						},
+					};
+				} else {
+					// Default style for available slots
+					return {
+						style: {
+							backgroundColor: 'rgba(60, 179, 113, 0.7)', // Green
+							borderRadius: '4px',
+							border: '1px solid #2e8b57',
+							color: 'white',
+							padding: '2px 5px',
+							fontSize: '0.9em',
+							cursor: 'pointer',
 						},
 					};
 				}
-				// Default style for available slots
-				return {
-					style: {
-						backgroundColor: 'rgba(60, 179, 113, 0.7)', // Green for available
-						borderRadius: '4px',
-						border: '1px solid #2e8b57',
-						color: 'white',
-						padding: '2px 5px',
-						fontSize: '0.9em',
-					},
-				};
 			}
-			return {};
+			return {}; // Default empty style
 		},
-		[isSlotBookedBySelectedPets]
-	); // Add dependency
+		[isSlotBookedBySelectedPets, aggregatedSlots] // Add aggregatedSlots dependency
+	);
+
+	// --- Update handleEnquiryClick to open modal ---
+	const handleEnquiryClick = (slot: AggregatedSlot) => {
+		setEnquirySlot(slot); // Store the slot details for the modal
+		setIsEnquiryModalOpen(true); // Open the modal
+	};
+	// --------------------------------------------
+
+	// --- Update onSelectEvent logic ---
+	const handleEventClick = (event: CalendarEvent) => {
+		const resource = event.resource as { type?: string; rawStartTime?: string };
+		if (resource?.type === 'availability-slot' && resource.rawStartTime) {
+			const slotKey = resource.rawStartTime;
+			console.log('[handleEventClick] Event clicked, using slotKey:', slotKey);
+
+			// Find the aggregated slot details
+			const aggSlot = aggregatedSlots.find((s) => s.startTime === slotKey);
+			if (!aggSlot) {
+				console.error('Could not find aggregated slot details for key:', slotKey);
+				return;
+			}
+
+			// Check if booked by user first
+			if (isSlotBookedBySelectedPets(slotKey)) {
+				console.log('Clicked slot is already booked by selected pets.');
+				return; // Do nothing if already booked by this user
+			}
+
+			// Check if it's an enquiry slot
+			const isEnquiry = aggSlot.totalRemainingCapacity === 0 && aggSlot.other_staff_potentially_available === true;
+			if (isEnquiry) {
+				handleEnquiryClick(aggSlot); // Trigger enquiry modal
+			} else if (aggSlot.totalRemainingCapacity > 0) {
+				// It's a normally bookable slot, toggle selection and set date
+				handleSlotSelectionToggle(slotKey);
+			}
+			// Do nothing more if capacity is 0 and it's not an enquiry slot (e.g., staff_full reason)
+		}
+	};
+	// ----------------------------------
 
 	return (
 		<div className={styles.container}>
@@ -618,64 +700,93 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 				</div>
 			)}
 
-			{/* Moved Up: Available Slots Display (for the selected date) */}
-			{selectedServiceId && selectedPetIds.length > 0 && selectedBookingDate && (
+			{/* Available Slots Display (now shows for the visible week once loaded) */}
+			{selectedServiceId && selectedPetIds.length > 0 && (
 				<div className={styles.formGroup}>
-					<label>Available Slots for {selectedBookingDate.toLocaleDateString()}:</label>
-					{isLoadingCalculatedSlots && <p>Loading slots...</p>}
+					<label>
+						Available Slots for Week of {formatISO(startOfWeek(calendarViewDate, { weekStartsOn: 1 }), { representation: 'date' })}:
+					</label>
 					{error && <p className={styles.error}>{error}</p>}
-					{!isLoadingCalculatedSlots && aggregatedSlots.length > 0 && (
+					{aggregatedSlots.length > 0 ? (
 						<ul className={styles.list}>
-							{aggregatedSlots.map((slot) => {
-								const slotKey = `${slot.startTime}`;
-								const isSelected = selectedSlots.has(slotKey);
-								const petCount = selectedPetIds.length;
-								const insufficientCapacity = slot.totalRemainingCapacity < petCount;
-								const isFull = slot.totalRemainingCapacity === 0;
-								const isBookedBySelection = isSlotBookedBySelectedPets(slot.startTime);
-								const isDisabledByCapacity = isFull || insufficientCapacity;
-								const isDisabled = isDisabledByCapacity || isBookedBySelection;
-								let slotTextSuffix = isSelected ? ' (Selected)' : '';
-								// Use const for style object
-								const listItemStyle = {
-									padding: '10px',
-									border: '1px solid #555',
-									marginBottom: '5px',
-									cursor: isDisabled ? 'not-allowed' : 'pointer',
-									backgroundColor: isSelected ? '#003366' : '#222',
-									opacity: 1,
-								};
+							{aggregatedSlots
+								.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) // Sort slots chronologically
+								.map((slot) => {
+									const slotKey = `${slot.startTime}`;
+									const isSelected = selectedSlots.has(slotKey);
+									const petCount = selectedPetIds.length;
+									// --- Refined Disable/Enquire Checks ---
+									const isFull = slot.totalRemainingCapacity === 0;
+									const insufficientCapacity = slot.totalRemainingCapacity < petCount;
+									const isBookedBySelection = isSlotBookedBySelectedPets(slot.startTime);
+									// New: Check if it's enquiry only
+									const isEnquiryOnly = isFull && slot.other_staff_potentially_available === true && !isBookedBySelection;
+									// Slot is truly disabled if booked, or full/insufficient capacity *and* not an enquiry case
+									const isDisabled = isBookedBySelection || ((isFull || insufficientCapacity) && !isEnquiryOnly);
+									// --- End Refined Checks ---
 
-								if (isDisabled) {
-									listItemStyle.opacity = 0.6;
-									listItemStyle.backgroundColor = '#333';
-									if (isBookedBySelection) {
-										slotTextSuffix = ' (Already Booked)';
-									} else if (isDisabledByCapacity) {
-										slotTextSuffix = isFull ? ' (Full)' : ' (Insufficient Capacity)';
+									// Debug Log inside map
+									if (slot.startTime.includes('2025-05-05')) {
+										// Example: Log specifically for Monday slot
+										console.log('[Render Check - Monday Slot]', {
+											slotData: slot, // Log the whole slot object from state
+											isFull,
+											isBookedBySelection,
+											otherStaffFlag: slot.other_staff_potentially_available,
+											isEnquiryOnly, // Check the calculated boolean
+											isDisabled,
+										});
 									}
-								}
 
-								return (
-									<li
-										key={slotKey}
-										style={listItemStyle}
-										// Ensure onClick only triggers if !isDisabled
-										onClick={() => {
-											if (!isDisabled) {
-												handleSlotSelectionToggle(slotKey);
-											}
-										}}
-									>
-										{formatDateRange(slot.startTime, slot.endTime)} - Capacity: {slot.totalRemainingCapacity}
-										{slotTextSuffix}
-									</li>
-								);
-							})}
+									let slotTextSuffix = isSelected ? ' (Selected)' : '';
+									const listItemStyle = {
+										padding: '10px',
+										border: '1px solid #555',
+										marginBottom: '5px',
+										cursor: 'default', // Default cursor
+										backgroundColor: isSelected ? '#003366' : '#222',
+										opacity: 1,
+									};
+
+									if (isEnquiryOnly) {
+										listItemStyle.backgroundColor = '#4a4a2a'; // Enquiry color (e.g., muted yellow/orange)
+										listItemStyle.cursor = 'pointer';
+										slotTextSuffix = ' (Enquire)';
+									} else if (isDisabled) {
+										listItemStyle.opacity = 0.6;
+										listItemStyle.backgroundColor = '#333';
+										listItemStyle.cursor = 'not-allowed';
+										if (isBookedBySelection) {
+											slotTextSuffix = ' (Already Booked)';
+										} else {
+											slotTextSuffix = isFull ? ' (Full)' : ' (Insufficient Capacity)';
+										}
+									} else {
+										// Default available slot cursor
+										listItemStyle.cursor = 'pointer';
+									}
+
+									return (
+										<li
+											key={slotKey}
+											style={listItemStyle}
+											onClick={() => {
+												if (isEnquiryOnly) {
+													handleEnquiryClick(slot);
+												} else if (!isDisabled) {
+													handleSlotSelectionToggle(slotKey);
+												}
+											}}
+										>
+											{formatDateRange(slot.startTime, slot.endTime)} - Capacity: {slot.totalRemainingCapacity}
+											{slotTextSuffix}
+										</li>
+									);
+								})}
 						</ul>
-					)}
-					{!isLoadingCalculatedSlots && aggregatedSlots.length === 0 && !error && (
-						<p>No available slots found for this date and service.</p>
+					) : (
+						// Show message only if not loading and no error
+						!isLoadingCalendarDisplay && !error && <p>No available slots found for this week and service.</p>
 					)}
 				</div>
 			)}
@@ -690,23 +801,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 					<CalendarView
 						events={calendarDisplayEvents}
 						onSelectSlot={undefined}
-						onSelectEvent={(event) => {
-							const resource = event.resource as { type?: string; rawStartTime?: string };
-							if (resource?.type === 'availability-slot') {
-								const slotKey = resource.rawStartTime;
-								console.log('[onSelectEvent] Event clicked, using slotKey:', slotKey);
-								if (slotKey) {
-									handleSlotSelectionToggle(slotKey);
-									// Also set the selected date when a slot event is clicked
-									const slotDate = new Date(event.start);
-									slotDate.setHours(0, 0, 0, 0); // Ensure it's just the date part
-									console.log('[onSelectEvent] Setting selectedBookingDate:', slotDate);
-									setSelectedBookingDate(slotDate);
-								} else {
-									console.warn('[onSelectEvent] Clicked event is missing rawStartTime in resource:', event);
-								}
-							}
-						}}
+						onSelectEvent={handleEventClick}
 						views={['week']}
 						defaultView="week"
 						onNavigate={handleCalendarNavigate}
@@ -762,6 +857,32 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 					</button>
 				</div>
 			)}
+
+			{/* --- Render Enquiry Modal --- */}
+			<Modal isOpen={isEnquiryModalOpen} onClose={() => setIsEnquiryModalOpen(false)} title="Enquire About Slot">
+				{enquirySlot && (
+					<div>
+						<p>
+							The slot on <strong>{formatDateRange(enquirySlot.startTime, enquirySlot.endTime)}</strong> is currently full for your
+							usual staff member.
+						</p>
+						<p>However, another staff member may be available. Please contact us to enquire about booking this specific slot:</p>
+						<ul>
+							{/* Replace with actual contact details */}
+							<li>Phone: [Your Phone Number]</li>
+							<li>Email: [Your Email Address]</li>
+						</ul>
+						<button
+							onClick={() => setIsEnquiryModalOpen(false)}
+							className={`${styles.button} ${styles.secondary}`}
+							style={{ marginTop: '1rem' }}
+						>
+							Close
+						</button>
+					</div>
+				)}
+			</Modal>
+			{/* -------------------------- */}
 		</div>
 	);
 }
