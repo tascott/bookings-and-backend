@@ -1,6 +1,5 @@
 calculate_available_slots
 
-
     -- Validate inputs
     SELECT NULL::TIMESTAMPTZ, NULL::TIMESTAMPTZ, NULL::INT, NULL::BOOLEAN, NULL::INT[], NULL::TEXT
     WHERE in_start_date IS NULL OR in_end_date IS NULL OR in_service_id IS NULL OR in_start_date > in_end_date
@@ -25,39 +24,9 @@ calculate_available_slots
         JOIN public.service_availability r ON r.service_id = in_service_id AND r.is_active = true
         WHERE (r.specific_date = rd.potential_date OR (r.specific_date IS NULL AND EXTRACT(ISODOW FROM rd.potential_date) = ANY(r.days_of_week)))
     ),
-    -- Calculate booked pet count per field for the potential slot times
-    -- Used only to check if *all* fields are occupied when staff capacity is used.
-    BookedFieldSpots AS (
-        SELECT
-           prs.potential_start,
-           prs.potential_end,
-           f.id as field_id,
-           COUNT(bp.id) AS booked_pet_spots
-       FROM PotentialRuleSlots prs
-       JOIN public.fields f ON f.id = ANY(prs.field_ids)
-       -- Use booking_field_ids for join now
-       LEFT JOIN public.bookings b ON f.id = ANY(b.booking_field_ids)
-                          AND TSTZRANGE(b.start_time, b.end_time, '()') && TSTZRANGE(prs.potential_start, prs.potential_end, '()')
-                          AND b.status != 'cancelled'
-       LEFT JOIN public.booking_pets bp ON b.id = bp.booking_id
-       WHERE prs.use_staff_vehicle_capacity = TRUE -- Only needed for staff rules to check if all fields are blocked
-       GROUP BY prs.potential_start, prs.potential_end, f.id
-    ),
-    -- Check if all relevant fields for a rule slot are booked
-    -- This helps determine if a slot is unavailable even if staff *could* take it, because all physical spaces are full.
-    AggregatedFieldAvailability AS (
-        SELECT
-            prs.potential_start,
-            prs.potential_end,
-            COUNT(bfs.field_id) FILTER (WHERE bfs.booked_pet_spots > 0) AS booked_field_count,
-            ARRAY_LENGTH(prs.field_ids, 1) AS total_field_count
-        FROM PotentialRuleSlots prs
-        LEFT JOIN BookedFieldSpots bfs ON prs.potential_start = bfs.potential_start
-                                       AND prs.potential_end = bfs.potential_end
-                                       AND bfs.field_id = ANY(prs.field_ids)
-        WHERE prs.use_staff_vehicle_capacity = TRUE
-        GROUP BY prs.potential_start, prs.potential_end, prs.field_ids
-    ),
+    -- REMOVED BookedFieldSpots CTE - No longer needed to check field conflicts for staff rules
+    -- REMOVED AggregatedFieldAvailability CTE - No longer needed
+
     -- Determine staff availability and calculate their potential remaining capacity
     StaffCapacity AS (
       SELECT
@@ -70,9 +39,10 @@ calculate_available_slots
            ELSE EXISTS ( -- Check staff exists, is available, and has vehicle
              SELECT 1
              FROM public.staff s
-             JOIN public.staff_availability sa ON s.id = sa.staff_id
+             LEFT JOIN public.staff_availability sa ON s.id = sa.staff_id -- Use LEFT JOIN in case no specific rule exists but staff is generally available? Needs testing.
              WHERE s.id = in_client_default_staff_id
                AND s.default_vehicle_id IS NOT NULL -- Staff must have a vehicle
+               -- Check against the specific rule times/dates
                AND sa.is_available = TRUE
                AND sa.start_time <= prs.rule_start_time AND sa.end_time >= prs.rule_end_time
                AND (sa.specific_date = prs.potential_date OR (sa.specific_date IS NULL AND EXTRACT(ISODOW FROM prs.potential_date) = ANY(sa.days_of_week)))
@@ -105,24 +75,28 @@ calculate_available_slots
           )
         END::INT AS calculated_capacity
       FROM PotentialRuleSlots prs
+      WHERE prs.use_staff_vehicle_capacity = TRUE -- Only calculate this for staff rules
+    ),
+    -- Simplified NonStaffCapacity calculation (if needed for non-staff rules)
+    NonStaffCapacity AS (
+       SELECT
+         prs.potential_start,
+         prs.potential_end,
+         -- Simplified: Assume unlimited for now unless specific field capacity logic is added later
+         NULL::INT AS calculated_capacity
+       FROM PotentialRuleSlots prs
+       WHERE prs.use_staff_vehicle_capacity = FALSE
     )
-    -- Removed TotalBookedFieldCapacity CTE
-
     -- Final Aggregation per Time Slot
     SELECT
         prs.potential_start AS slot_start_time,
         prs.potential_end AS slot_end_time,
         -- Determine final remaining capacity
         CASE
-            WHEN prs.use_staff_vehicle_capacity = TRUE THEN
-                CASE
-                    -- If all associated fields are fully booked (e.g., by other services/staff), capacity is 0 regardless of *this* staff's capacity
-                    WHEN COALESCE(afa.booked_field_count, 0) = COALESCE(afa.total_field_count, 0) AND COALESCE(afa.total_field_count, 0) > 0 THEN 0
-                    -- Otherwise, use the calculated capacity for the specific staff member
-                    ELSE COALESCE(sc.calculated_capacity, 0)
-                END
-            ELSE -- Rule does not use staff vehicle capacity, treat as unlimited from rule perspective
-                NULL::INT
+            -- Directly use calculated staff capacity if rule uses staff
+            WHEN prs.use_staff_vehicle_capacity = TRUE THEN COALESCE(sc.calculated_capacity, 0)
+            -- Use non-staff capacity otherwise (currently NULL = unlimited)
+            ELSE nsc.calculated_capacity
         END AS slot_remaining_capacity,
         prs.use_staff_vehicle_capacity AS rule_uses_staff_capacity,
         prs.field_ids AS associated_field_ids,
@@ -131,35 +105,27 @@ calculate_available_slots
             -- If capacity > 0 or unlimited (NULL), reason is null
             WHEN (
                  CASE
-                    WHEN prs.use_staff_vehicle_capacity = TRUE THEN
-                        CASE WHEN COALESCE(afa.booked_field_count, 0) = COALESCE(afa.total_field_count, 0) AND COALESCE(afa.total_field_count, 0) > 0 THEN 0 ELSE COALESCE(sc.calculated_capacity, 0) END
+                    WHEN prs.use_staff_vehicle_capacity = TRUE THEN COALESCE(sc.calculated_capacity, 0)
                     ELSE 999999 -- Represent unlimited (NULL) as large number for comparison
                  END
             ) > 0 THEN NULL
-            -- If capacity is determined to be 0
-            ELSE
+            -- If capacity is determined to be 0 for staff rule
+            WHEN prs.use_staff_vehicle_capacity = TRUE THEN
                 CASE
-                    WHEN prs.use_staff_vehicle_capacity = TRUE THEN
-                        CASE
-                            -- Check if staff *could* have been available (from StaffCapacity CTE) but capacity is now 0 (vehicle full or fields blocked)
-                            WHEN sc.is_staff_available = TRUE THEN 'staff_full'::text -- Includes fields blocked case now
-                            -- Otherwise, capacity is 0 because staff weren't available/assigned/had vehicle
-                            ELSE 'no_staff'::text
-                        END
-                    -- Base capacity rules no longer exist, so 'base_full' reason is removed.
-                    -- If non-staff capacity becomes 0 due to future constraints, add a reason here.
-                    ELSE NULL::text -- Should not be 0 if use_staff_vehicle_capacity is false based on current logic
+                    -- Check if staff *could* have been available but capacity is 0 (vehicle full)
+                    WHEN sc.is_staff_available = TRUE THEN 'staff_full'::text
+                    -- Otherwise, capacity is 0 because staff weren't available/assigned/had vehicle
+                    ELSE 'no_staff'::text
                 END
+            -- Add logic here if non-staff capacity can become 0 later
+            ELSE NULL::text -- Default for non-staff rules if capacity isn't 0
         END AS zero_capacity_reason
     FROM
         PotentialRuleSlots prs
     LEFT JOIN
-        StaffCapacity sc ON prs.potential_start = sc.potential_start
-                         AND prs.potential_end = sc.potential_end
+        StaffCapacity sc ON prs.potential_start = sc.potential_start AND prs.potential_end = sc.potential_end AND prs.use_staff_vehicle_capacity = TRUE
     LEFT JOIN
-        AggregatedFieldAvailability afa ON prs.potential_start = afa.potential_start
-                                       AND prs.potential_end = afa.potential_end
-                                       AND prs.use_staff_vehicle_capacity = TRUE; -- Only join this for staff rules
+        NonStaffCapacity nsc ON prs.potential_start = nsc.potential_start AND prs.potential_end = nsc.potential_end AND prs.use_staff_vehicle_capacity = FALSE;
 
 
 ////////////////////////////////////////

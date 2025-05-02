@@ -87,24 +87,21 @@ The tabbed interface is built as a reusable component (`TabNavigation`) that can
 
 Current TODOS:
 
-- discount feature for additional pets but set to 0% for nows
-
-- Think about how we'll use the same code for "field hire" clients. Fork it, or everyone in same DB/code just with a flag?
-
+- discount feature for additional pets but set to 0% for nows - per client basis
 - calendar view for bookings (client)
-
 - addresses/map view/multi-map view (staff/admin)
-
 - calendar view for admin
-
 - assign staff, populates their dashboard for the day/week
-
-- booking refunds
-
 - email confirmations of bookings (client and admin)
 
-- stripe integration (supabase) linked to bookings via the `payments` table.
 
+// Improvement Todos
 - refactor code, reduce codebase, update docs
-
 - error handling, tests
+- caching throughout specially for api calls
+- Think about how we'll use the same code for "field hire" clients. Fork it, or everyone in same DB/code just with a flag?
+
+// Payment specific
+- stripe integration (supabase) linked to bookings via the `payments` table.
+- booking refunds (maybe hold cash until day of booking?)
+- referral system
