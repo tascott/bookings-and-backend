@@ -30,6 +30,9 @@ export type Booking = {
   client_name?: string | null;
   pet_names?: string[];
   created_at?: string;
+  assigned_staff_id?: string | null;
+  vehicle_id?: number | null;
+  assignment_notes?: string | null;
 }
 
 // Service type

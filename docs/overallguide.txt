@@ -161,9 +161,16 @@ Project Summary for AI Assistant (booking-and-accounts)
       - `rule_uses_staff_capacity`: Boolean flag.
       - `associated_field_ids`: Array of field IDs for the slot.
   - RPC Capacity Logic:
-      - If `rule_uses_staff_capacity`=TRUE: Checks availability/vehicle capacity/overlaps for the passed-in `in_client_default_staff_id`. Returns remaining vehicle capacity, or 0 if staff unavailable/no vehicle/all associated fields booked.
-      - If `rule_uses_staff_capacity`=FALSE: Calculates remaining capacity based on total bookings across all `associated_field_ids` (no specific base limit applied at this level).
-      - **Note:** The RPC returns slots even if the calculated `slot_remaining_capacity` is 0.
+      - If `rule_uses_staff_capacity`=TRUE:
+          - Checks if the passed-in `in_client_default_staff_id` is set, has a default vehicle with `pet_capacity` > 0, and is generally available via `staff_availability` for the slot time.
+          - If staff/vehicle checks pass: Calculates the total number of pets already assigned to the *same staff member* in other bookings that *overlap* with the potential `slot_start_time` and `slot_end_time`.
+          - Subtracts the calculated `total_assigned_pets` from the staff's default vehicle `pet_capacity`.
+          - Returns this difference as `slot_remaining_capacity` (minimum 0).
+          - Returns 0 if staff is unavailable, has no vehicle, or vehicle capacity is 0.
+          - **Note:** Associated fields (`associated_field_ids`) are returned for informational purposes or potential assignment later, but they **do not** impose a capacity limit in this mode. The vehicle capacity is the sole constraint.
+      - If `rule_uses_staff_capacity`=FALSE:
+          - Calculates remaining capacity based on total bookings across all `associated_field_ids` (no specific base limit applied at this level).
+          - **Note:** The RPC returns slots even if the calculated `slot_remaining_capacity` is 0.
   - **API Route Processing:**
       - For each slot returned by the RPC, the API route determines the applicable price:
           - Finds the best matching active `service_availability` rule (specific date rule > recurring day rule).
@@ -214,3 +221,22 @@ Project Summary for AI Assistant (booking-and-accounts)
 - Discrepancies can lead to runtime errors (e.g., querying non-existent columns like `pets.is_active` was encountered).
 - **Always verify column names and existence directly in the Supabase dashboard (Table Editor or SQL Editor) or via migration files** before relying on them in code or types.
 - Update types and documentation promptly after schema changes.
+
+**Calendar Component (`src/components/shared/CalendarView.tsx`)**
+- **Purpose:** Provides a reusable calendar interface for displaying date-based data like bookings, availability, or schedules.
+- **Technology:** Built using `react-big-calendar` and `date-fns` for robust date handling and pre-built calendar views.
+- **Features:**
+  - Supports Monthly, Weekly, and Daily views.
+  - Includes built-in navigation for changing dates/views.
+  - Accepts an array of events (`CalendarEvent[]`) to display data points on the calendar.
+  - Requires mapping data (e.g., bookings) to the `CalendarEvent` interface (`{ id, title, start: Date, end: Date, resource?: unknown }`).
+  - Provides callback props for user interaction:
+    - `onSelectSlot`: Triggered when a day background is clicked (passes the clicked date).
+    - `onSelectEvent`: Triggered when an existing event item is clicked (passes the event object).
+- **Usage:**
+  - Import `CalendarView` and the `CalendarEvent` type.
+  - Fetch the relevant data (e.g., bookings for a staff member).
+  - Map the fetched data to an array of `CalendarEvent` objects.
+  - Pass the event array to the `events` prop.
+  - Provide handler functions to `onSelectSlot` and `onSelectEvent` for desired interactions.
+- **Initial Implementation:** Integrated into `src/components/staff/StaffDashboard.tsx` under the "My Schedule" tab.

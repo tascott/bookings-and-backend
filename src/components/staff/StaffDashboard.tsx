@@ -7,6 +7,8 @@ import BookingManagement from '@/components/admin/BookingManagement';
 import type { User } from '@supabase/supabase-js';
 // Removed Site, Field from import as they are unused now
 import type { Booking, Service, Client, Pet } from '@/types';
+import CalendarView, { CalendarEvent } from '@/components/shared/CalendarView'; // Import CalendarView and CalendarEvent
+import Modal from '@/components/shared/Modal'; // Import the Modal component
 
 // Define a type for the client data we expect for this view
 // (Subset of what the API returns, excluding nested/redundant fields)
@@ -47,6 +49,15 @@ export default function StaffDashboard({
   const [myClients, setMyClients] = useState<StaffAssignedClient[]>([]);
   const [isLoadingMyClients, setIsLoadingMyClients] = useState(true);
   const [myClientsError, setMyClientsError] = useState<string | null>(null);
+
+  // === NEW State for Calendar ===
+  const [calendarEvents, setCalendarEvents] = useState<CalendarEvent[]>([]); // State to hold events for the calendar
+  const [isLoadingCalendar, setIsLoadingCalendar] = useState(false); // Loading state for calendar-specific data if needed
+  const [calendarError, setCalendarError] = useState<string | null>(null); // Error state for calendar data fetching
+
+  // === State for Booking Details Modal ===
+  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
+  const [selectedBookingForModal, setSelectedBookingForModal] = useState<Booking | null>(null);
 
   // === Fetching Functions ===
   const fetchData = useCallback(async () => {
@@ -109,6 +120,47 @@ export default function StaffDashboard({
     }
   }, []);
 
+  // === Placeholder Fetch Function for Calendar Data (e.g., staff schedule/bookings) ===
+  // TODO: Implement actual data fetching for staff schedule
+  const fetchCalendarData = useCallback(async () => {
+    setIsLoadingCalendar(true);
+    setCalendarError(null);
+    try {
+      // Fetch bookings assigned to this staff member
+      // Note: Use the user.id associated with the *auth* user, which should match bookings.assigned_staff_id (UUID)
+      const res = await fetch(`/api/bookings?assigned_staff_id=${user.id}`);
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || 'Failed to fetch schedule');
+      }
+      const bookingsData: Booking[] = await res.json();
+
+      // Map the fetched bookings data to the CalendarEvent format
+      const mappedEvents: CalendarEvent[] = bookingsData.map(booking => ({
+        id: booking.id,
+        // Use service_type for the title, fallback if needed.
+        // Update this if the API returns the full service name later.
+        title: booking.service_type || 'Booking',
+        // Ensure start_time and end_time are converted to Date objects
+        start: new Date(booking.start_time),
+        end: new Date(booking.end_time),
+        resource: booking, // Attach the original booking object for potential use in handlers
+        allDay: false // Assuming bookings are not all-day events unless specified otherwise
+      }));
+
+      setCalendarEvents(mappedEvents); // Update state with mapped events
+      console.log(`Fetched ${mappedEvents.length} bookings for staff calendar.`);
+
+    } catch (e) {
+      const errorMessage = e instanceof Error ? e.message : 'Failed to load schedule data';
+      console.error(errorMessage, e);
+      setCalendarError(errorMessage);
+      setCalendarEvents([]); // Clear events on error
+    } finally {
+      setIsLoadingCalendar(false);
+    }
+  }, [user.id]); // Depend on user.id
+
   // Fetch dashboard data on mount
   useEffect(() => {
     fetchData();
@@ -118,6 +170,11 @@ export default function StaffDashboard({
   useEffect(() => {
     fetchMyClients();
   }, [fetchMyClients]);
+
+  // Fetch calendar data on mount
+  useEffect(() => {
+    fetchCalendarData();
+  }, [fetchCalendarData]);
 
   // Fetch profile data (keep as is)
   useEffect(() => {
@@ -166,6 +223,27 @@ export default function StaffDashboard({
         setError(e instanceof Error ? e.message : 'Failed to update booking status');
     }
   }, []);
+
+  // === NEW Calendar Interaction Handlers ===
+  const handleCalendarDayClick = (slotInfo: { start: Date; end: Date; }) => {
+    // This handler receives the date clicked (start and end will be the same day for single clicks)
+    console.log('Calendar day clicked:', slotInfo.start);
+    // Future TODO: Implement logic, e.g., show details for that day, navigate to day view, set selected date state.
+  };
+
+  const handleCalendarEventClick = (event: CalendarEvent) => {
+    // This handler receives the specific event object clicked
+    console.log('Calendar event clicked:', event);
+    // Access original booking data via event.resource
+    // Ensure the resource is actually a Booking before setting state
+    if (event.resource && typeof event.resource === 'object' && 'start_time' in event.resource) {
+      setSelectedBookingForModal(event.resource as Booking);
+      setIsBookingModalOpen(true);
+    } else {
+      console.error('Clicked calendar event resource is not a valid Booking object:', event.resource);
+      // Optionally show an error to the user
+    }
+  };
 
   // === Helper Functions ===
 
@@ -230,11 +308,16 @@ export default function StaffDashboard({
       content: (
         <div>
           <h3>My Schedule</h3>
-          <p>View your assigned bookings and daily schedule.</p>
-          {/* Staff schedule component will be implemented here */}
-          <div /* className={styles.comingSoon} */ >
-            <p>Coming soon - calendar view of your upcoming shifts</p>
-          </div>
+          <p>View your assigned bookings and availability. Click on a booking for details.</p>
+          {isLoadingCalendar && <p>Loading schedule...</p>}
+          {calendarError && <p style={{ color: 'red' }}>Error loading schedule: {calendarError}</p>}
+          {!isLoadingCalendar && !calendarError && (
+            <CalendarView
+              events={calendarEvents}
+              onSelectSlot={handleCalendarDayClick}
+              onSelectEvent={handleCalendarEventClick}
+            />
+          )}
         </div>
       ),
     },
@@ -314,6 +397,18 @@ export default function StaffDashboard({
     },
   ];
 
+  // Helper function to format date/time
+  const formatDateTime = (isoString: string) => {
+    if (!isoString) return 'N/A';
+    try {
+        const date = new Date(isoString);
+        return date.toLocaleString(); // Adjust format as needed
+    } catch (e) {
+        console.error("Error formatting date:", isoString, e);
+        return 'Invalid Date';
+    }
+  };
+
   // === Render ===
   return (
     <>
@@ -324,6 +419,40 @@ export default function StaffDashboard({
       {/* Display loading state */}
       {isLoadingData && <p>Loading dashboard data...</p>}
       {!isLoadingData && <SidebarNavigation tabs={staffTabs} />}
+
+      {/* Booking Details Modal */}
+      <Modal
+        isOpen={isBookingModalOpen}
+        onClose={() => setIsBookingModalOpen(false)}
+        title="Booking Details"
+      >
+        {selectedBookingForModal ? (
+          <div>
+            <p><strong>Service:</strong> {selectedBookingForModal.service_type || 'N/A'}</p>
+            {/* Attempt to display client name if available */}
+            {selectedBookingForModal.client_name && (
+              <p><strong>Client:</strong> {selectedBookingForModal.client_name}</p>
+            )}
+            {/* Attempt to display pet names if available */}
+            {selectedBookingForModal.pet_names && selectedBookingForModal.pet_names.length > 0 && (
+              <p><strong>Pets:</strong> {selectedBookingForModal.pet_names.join(', ')}</p>
+            )}
+            <p><strong>Start Time:</strong> {formatDateTime(selectedBookingForModal.start_time)}</p>
+            <p><strong>End Time:</strong> {formatDateTime(selectedBookingForModal.end_time)}</p>
+            <p><strong>Status:</strong> {selectedBookingForModal.status || 'N/A'}</p>
+            <p><strong>Paid:</strong> {selectedBookingForModal.is_paid ? 'Yes' : 'No'}</p>
+            {selectedBookingForModal.assignment_notes && (
+              <p><strong>Assignment Notes:</strong> {selectedBookingForModal.assignment_notes}</p>
+            )}
+            {/* Display raw booking data for debugging (optional) */}
+            {/* <pre style={{ fontSize: '0.8em', background: '#333', padding: '10px', borderRadius: '4px', maxHeight: '200px', overflow: 'auto' }}>
+              {JSON.stringify(selectedBookingForModal, null, 2)}
+            </pre> */}
+          </div>
+        ) : (
+          <p>Loading booking details...</p>
+        )}
+      </Modal>
     </>
   );
 }

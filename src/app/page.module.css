@@ -593,3 +593,107 @@ a.secondary {
 .userCardStaff {
     grid-template-columns: 1.5fr 1fr 1fr 1.5fr 1.5fr; /* Adjusted 5 columns (Staff) */
 }
+
+/* Generic Button Style */
+.button {
+  appearance: none;
+  border-radius: 6px; /* Slightly less rounded than <a> tags */
+  height: 40px;
+  padding: 0 16px;
+  border: 1px solid transparent;
+  background: #555;
+  color: #fff;
+  font-size: 14px;
+  line-height: 1; /* Adjust for button text alignment */
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.2s, border-color 0.2s;
+  display: inline-flex; /* Align icon/text if needed */
+  align-items: center;
+  justify-content: center;
+}
+
+.button.primary {
+  background: var(--foreground);
+  color: var(--background);
+}
+
+.button.secondary {
+  background: transparent;
+  border-color: var(--gray-alpha-200);
+  color: var(--foreground);
+}
+
+/* Hover states */
+@media (hover: hover) and (pointer: fine) {
+  .button.primary:hover:not(:disabled) {
+    background: var(--button-primary-hover);
+  }
+  .button.secondary:hover:not(:disabled) {
+    background: var(--button-secondary-hover);
+    border-color: transparent;
+  }
+}
+
+.button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Slot List Styles */
+.list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem; /* Spacing between slots */
+}
+
+.listItem {
+  border: 1px solid #444;
+  padding: 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.2s, border-color 0.2s;
+  display: flex; /* Arrange elements inside the slot */
+  justify-content: space-between; /* Space out time, capacity, price */
+  align-items: center;
+  flex-wrap: wrap; /* Allow wrapping on small screens */
+  gap: 0.5rem;
+}
+
+.listItem:hover:not(.disabled) {
+  background-color: #3a3a3f;
+  border-color: #666;
+}
+
+/* Use selectedSlot class name */
+.listItem.selectedSlot {
+  border-color: #00aaff;
+  background-color: #003366;
+}
+
+.listItem.disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: #333;
+  border-color: #444;
+}
+
+.reason {
+  color: #aaa;
+  font-size: 0.85em;
+  width: 100%; /* Ensure reason takes full width if wrapped */
+  text-align: right;
+}
+
+.listCompact {
+ list-style: disc;
+ margin-left: 20px;
+ font-size: 0.9em;
+}
+
+.listItemCompact {
+  margin-bottom: 0.25rem;
+}

@@ -2,6 +2,8 @@
 
 import { useState, useCallback, useEffect, ChangeEvent } from 'react';
 import styles from "@/app/page.module.css"; // Adjust path as needed
+import CalendarView, { CalendarEvent } from '@/components/shared/CalendarView'; // Import CalendarView
+import { formatISO, parseISO, format, isSameDay, startOfWeek, endOfWeek, getDay as dateFnsGetDay, addDays } from 'date-fns'; // Import date-fns helpers and format, and startOfWeek, endOfWeek, getDay, addDays
 
 // Define required types directly or import from a shared types file later
 type Service = {
@@ -76,21 +78,36 @@ interface ClientBookingProps {
     // Add other shared props if needed, e.g., error state handlers
 }
 
+// Function to get the initial date for the calendar view
+const getInitialCalendarDate = (): Date => {
+    const today = new Date();
+    const dayOfWeek = dateFnsGetDay(today); // Sunday = 0, Monday = 1, ..., Saturday = 6
+
+    // If today is Friday (5), Saturday (6), or Sunday (0)
+    if (dayOfWeek === 5 || dayOfWeek === 6 || dayOfWeek === 0) {
+        // Calculate days until next Monday
+        const daysToAdd = dayOfWeek === 0 ? 1 : (7 - dayOfWeek + 1);
+        return addDays(today, daysToAdd);
+    }
+    // Otherwise, start the view on the current week/day
+    return today;
+};
+
 export default function ClientBooking({ services }: ClientBookingProps) {
     const [error, setError] = useState<string | null>(null); // Local error state for this component
 
     // State for slot search inputs
-    const today = new Date().toISOString().split('T')[0];
-    const nextWeekDate = new Date();
-    nextWeekDate.setDate(nextWeekDate.getDate() + 7);
-    const nextWeek = nextWeekDate.toISOString().split('T')[0];
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to start of today
+    // const todayISO = today.toISOString().split('T')[0]; // For comparisons -> No longer needed
+
+    // NEW State for single selected date from Calendar
+    const [selectedBookingDate, setSelectedBookingDate] = useState<Date | null>(null);
 
     const [selectedServiceId, setSelectedServiceId] = useState<string>('');
-    const [selectedStartDate, setSelectedStartDate] = useState<string>(today);
-    const [selectedEndDate, setSelectedEndDate] = useState<string>(nextWeek);
-    // State for the raw calculated slots from API
+    // State for the raw calculated slots from API (for the selected date)
     const [rawCalculatedSlots, setRawCalculatedSlots] = useState<CalculatedSlot[]>([]);
-    // State for the aggregated slots for display
+    // State for the aggregated slots for display (for the selected date)
     const [aggregatedSlots, setAggregatedSlots] = useState<AggregatedSlot[]>([]);
     const [isLoadingCalculatedSlots, setIsLoadingCalculatedSlots] = useState(false);
 
@@ -100,10 +117,17 @@ export default function ClientBooking({ services }: ClientBookingProps) {
     const [selectedPetIds, setSelectedPetIds] = useState<number[]>([]);
 
     // State for slots and selections
-    const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set()); // Use Set for easy add/remove, key = `${startTime}` or `${fieldId}-${startTime}`
+    const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set()); // Use Set for easy add/remove
 
     const [clientBookings, setClientBookings] = useState<ClientBookingDetails[]>([]);
     const [isLoadingBookings, setIsLoadingBookings] = useState(false);
+
+    // State for Calendar Events (visual markers)
+    const [calendarDisplayEvents, setCalendarDisplayEvents] = useState<CalendarEvent[]>([]); // Add setter back
+    const [isLoadingCalendarDisplay, setIsLoadingCalendarDisplay] = useState(false);
+
+    // State for current calendar view range - use helper function for initial state
+    const [calendarViewDate, setCalendarViewDate] = useState<Date>(getInitialCalendarDate());
 
     // Define helper here to be accessible throughout the component
     const getServiceName = (id: number) => services.find(s => s.id === id)?.name || `Service ID ${id}`;
@@ -253,41 +277,109 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         }
     };
 
-    // --- Fetch Pets ---
-    const fetchPets = useCallback(async () => {
-        // Don't reset error here, let fetchCalculatedSlots handle its errors
-        setIsLoadingPets(true);
-        try {
-            const response = await fetch('/api/pets');
-            if (!response.ok) {
-                // Don't throw here, just log and set empty pets
-                console.error(`Failed to fetch pets (HTTP ${response.status})`);
-                setPets([]);
-                setSelectedPetIds([]);
-                return;
+    // Fetch pets on mount
+    useEffect(() => {
+        const fetchPets = async () => {
+            setIsLoadingPets(true);
+            try {
+                const response = await fetch('/api/pets'); // Assuming GET /api/pets fetches the current client's pets
+                if (!response.ok) throw new Error('Failed to fetch pets');
+                const data: Pet[] = await response.json();
+                setPets(data);
+            } catch (e) {
+                setError(e instanceof Error ? e.message : 'Failed to load pets');
+                setPets([]); // Clear pets on error
+            } finally {
+                setIsLoadingPets(false);
             }
-            const data: Pet[] = await response.json();
-            setPets(data);
-            // Default select all confirmed pets
-            const confirmedPetIds = data
-                .filter(pet => pet.is_confirmed)
-                .map(pet => pet.id);
-            setSelectedPetIds(confirmedPetIds);
-        } catch (e) {
-            console.error("Fetch Pets Error:", e);
-            setPets([]);
-            setSelectedPetIds([]);
-            // Set error state? Or rely on booking error display?
-        } finally {
-            setIsLoadingPets(false);
-        }
+        };
+        fetchPets();
     }, []);
 
+    // Fetch existing client bookings on mount
     useEffect(() => {
-        fetchPets();
-    }, [fetchPets]);
+        fetchClientBookings();
+    }, []);
 
-    // --- Pet Selection Handler ---
+    // Fetch calendar availability for the current view (now week)
+    const fetchCalendarAvailability = useCallback(async (serviceId: string, viewDate: Date) => {
+        if (!serviceId) {
+            setCalendarDisplayEvents([]); // Clear markers if no service selected
+            return;
+        }
+        setIsLoadingCalendarDisplay(true);
+        setError(null); // Clear previous errors specific to this fetch
+
+        // Calculate start/end of the week based on viewDate, explicitly starting on Monday
+        const weekOptions = { weekStartsOn: 1 as const }; // Explicitly start week on Monday (1)
+        const viewStart = startOfWeek(viewDate, weekOptions);
+        const viewEnd = endOfWeek(viewDate, weekOptions);
+        const startDateStr = formatISO(viewStart, { representation: 'date' });
+        const endDateStr = formatISO(viewEnd, { representation: 'date' });
+
+        console.log(`Fetching calendar availability for service ${serviceId} from ${startDateStr} to ${endDateStr} (Week View)`);
+
+        try {
+            const response = await fetch(`/api/available-slots?service_id=${serviceId}&start_date=${startDateStr}&end_date=${endDateStr}`);
+            if (!response.ok) {
+                 let errorMsg = 'Failed to fetch calendar availability';
+                 try {
+                     const errorData = await response.json();
+                     errorMsg = errorData.error || errorMsg;
+                 } catch (jsonError: unknown) {
+                     console.warn('Failed to parse calendar availability error response as JSON:', jsonError);
+                 }
+                 throw new Error(errorMsg);
+            }
+
+            const slotsData: CalculatedSlot[] = await response.json();
+
+            // Process data to find unique dates with > 0 capacity
+            const availableDates = new Set<string>();
+            slotsData.forEach(slot => {
+                if (slot.remaining_capacity > 0 && slot.start_time) {
+                    try {
+                        const datePart = slot.start_time.split('T')[0];
+                        // Ensure the date is not in the past before adding
+                        const slotDate = parseISO(datePart);
+                        if (slotDate >= today) {
+                           availableDates.add(datePart);
+                        }
+                    } catch (e) {
+                        console.error("Error parsing slot start_time for availability check:", slot.start_time, e);
+                    }
+                }
+            });
+
+            // Map unique dates to dummy CalendarEvent objects
+            const dummyEvents: CalendarEvent[] = Array.from(availableDates).map(dateStr => ({
+                id: `available-${dateStr}`, // Unique ID for the marker
+                title: 'Available',       // Simple text, could be hidden with CSS if needed
+                start: parseISO(dateStr),  // Date object for the start
+                end: parseISO(dateStr),    // Date object for the end
+                allDay: true,             // Mark as all-day event
+                resource: { type: 'availability-marker' } // Add resource type for potential styling/filtering
+            }));
+
+            setCalendarDisplayEvents(dummyEvents);
+            console.log(`Created ${dummyEvents.length} availability markers for the calendar week.`);
+
+        } catch (e) {
+            const message = e instanceof Error ? e.message : 'Failed to load calendar availability';
+            console.error(message, e);
+            setError(message); // Set component error state
+            setCalendarDisplayEvents([]); // Clear markers on error
+        } finally {
+            setIsLoadingCalendarDisplay(false);
+        }
+    }, []); // Dependency array remains empty as params are passed
+
+    // Trigger fetchCalendarAvailability when service or view date changes
+    useEffect(() => {
+        fetchCalendarAvailability(selectedServiceId, calendarViewDate);
+    }, [selectedServiceId, calendarViewDate, fetchCalendarAvailability]);
+
+    // Handler for Pet Selection Change
     const handlePetSelectionChange = (event: ChangeEvent<HTMLInputElement>) => {
         const petId = parseInt(event.target.value, 10);
         const isChecked = event.target.checked;
@@ -303,8 +395,9 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         });
     };
 
-    // --- Slot Selection Handler ---
+    // Handler for Slot Selection Toggle
     const handleSlotSelectionToggle = (slotKey: string) => {
+        console.log('handleSlotSelectionToggle called with key:', slotKey); // Log entry
         setSelectedSlots(prevSelected => {
             const newSelected = new Set(prevSelected);
             if (newSelected.has(slotKey)) {
@@ -316,7 +409,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         });
     };
 
-    // --- Calculate Total Price ---
+    // Calculate Total Price
     const calculateTotalPrice = () => {
         if (selectedSlots.size === 0 || selectedPetIds.length === 0) {
             return 0;
@@ -351,53 +444,48 @@ export default function ClientBooking({ services }: ClientBookingProps) {
         return total * selectedPetIds.length;
     };
 
-    const totalPrice = calculateTotalPrice();
-
-    // --- Book Selected Slots Handler ---
+    // Handle Booking Submission
     const handleBookSelectedSlots = async () => {
         setError(null); // Clear previous errors
-
-        if (selectedSlots.size === 0) {
-            setError('Please select at least one slot.');
-            return;
-        }
-        if (selectedPetIds.length === 0) {
-            setError('Please select at least one pet.');
-            return;
-        }
-        if (!selectedServiceId) {
-            setError('Internal error: Service ID not found.');
-            return;
+        // Validate essential selections
+        if (!selectedBookingDate || selectedSlots.size === 0 || selectedPetIds.length === 0 || !selectedServiceId) {
+             alert('Please select a date, a service, at least one pet, and at least one time slot.');
+             return;
         }
 
-        console.log("Booking selected slots:", selectedSlots);
+        console.log("Booking for date:", selectedBookingDate.toLocaleDateString());
+        console.log("Booking selected slots (startTimes):", selectedSlots);
         console.log("Booking for pets:", selectedPetIds);
 
-        setIsLoadingCalculatedSlots(true); // Reuse loading state or add a new one?
+        setIsLoadingBookings(true); // Use the dedicated booking loading state
 
         let bookingSuccess = true;
         const bookingResults = [];
 
+        // Iterate through each selected slot (identified by startTime string)
         for (const slotKey of selectedSlots) {
-            // The slotKey is the start_time string from AggregatedSlot
             const startTime = slotKey;
-            // Find the corresponding aggregated slot to get end_time and service_id
+            // Find the corresponding aggregated slot details from state
             const slotDetails = aggregatedSlots.find(s => s.startTime === startTime);
 
             if (!slotDetails) {
                 console.error(`Could not find details for selected slot key: ${slotKey}`);
-                bookingResults.push({ slot: slotKey, success: false, error: 'Slot details not found.' });
+                bookingResults.push({ slot: slotKey, success: false, error: 'Slot details not found internally.' });
                 bookingSuccess = false;
                 continue; // Skip to next slot
             }
 
+            // Construct the payload for the API
             const payload = {
-                service_id: parseInt(selectedServiceId, 10), // Ensure service ID is an integer
-                start_time: slotDetails.startTime,
-                end_time: slotDetails.endTime,
+                service_id: parseInt(selectedServiceId, 10),
+                start_time: slotDetails.startTime, // Use the found start time
+                end_time: slotDetails.endTime,     // Use the found end time
                 pet_ids: selectedPetIds,
-                // Field ID might not be needed if API handles allocation based on service/time/capacity
+                // Note: The API should handle field assignment based on service/time/capacity
+                // date: selectedBookingDate.toISOString().split('T')[0] // Pass date if API needs it explicitly
             };
+
+            console.log("Sending booking payload:", payload);
 
             try {
                 const response = await fetch('/api/client-booking', {
@@ -407,7 +495,13 @@ export default function ClientBooking({ services }: ClientBookingProps) {
                 });
 
                 if (!response.ok) {
-                    const errorData = await response.json();
+                    let errorData = { error: `Booking failed (HTTP ${response.status})` };
+                    try {
+                       errorData = await response.json();
+                    } catch (jsonError) {
+                        // Log the error if parsing JSON fails
+                        console.warn('Could not parse booking error response as JSON:', jsonError);
+                    }
                     throw new Error(errorData.error || `Booking failed (HTTP ${response.status})`);
                 }
                 const result = await response.json();
@@ -423,297 +517,293 @@ export default function ClientBooking({ services }: ClientBookingProps) {
             }
         } // End loop through selectedSlots
 
-        setIsLoadingCalculatedSlots(false);
+        setIsLoadingBookings(false);
 
         if (bookingSuccess) {
             alert('All selected slots booked successfully!'); // Simple feedback for now
             setSelectedSlots(new Set()); // Clear selection on success
+            setSelectedBookingDate(null); // Clear selected date
             setRawCalculatedSlots([]); // Clear results
             setAggregatedSlots([]); // Clear aggregated results
-            // Optionally refetch slots or redirect
+            fetchClientBookings(); // Refresh the list of client's bookings
+            // Optionally refetch calendar availability if needed
         } else {
             // Provide more detailed error feedback
             const failedSlots = bookingResults.filter(r => !r.success);
-            setError(`Failed to book ${failedSlots.length} slot(s). Please try again or contact support. Errors: ${failedSlots.map(f => `Slot ${f.slot?.substring(11, 16)}: ${f.error}`).join(', ')}`);
+            setError(`Failed to book ${failedSlots.length} slot(s). Errors: ${failedSlots.map(f => `Slot starting ${new Date(f.slot ?? '').toLocaleTimeString()}: ${f.error}`).join('; ')}`);
+            // Consider only clearing *failed* slots from selection?
         }
     };
 
-    // --- Fetch Calculated Slots from API ---
-    const fetchCalculatedSlots = async () => {
-        const serviceIdNum = parseInt(selectedServiceId, 10);
-        if (!selectedServiceId || !selectedStartDate || !selectedEndDate || isNaN(serviceIdNum)) {
-            setError('Please select a valid service and date range.');
+    // Fetch Calculated Slots FOR THE SELECTED DATE
+    const fetchCalculatedSlotsForDate = useCallback(async (serviceId: string, date: Date) => {
+        if (!serviceId || !date) {
+            setRawCalculatedSlots([]);
+            setAggregatedSlots([]);
             return;
         }
-        setIsLoadingCalculatedSlots(true);
-        setRawCalculatedSlots([]); // Clear previous raw results
-        setAggregatedSlots([]); // Clear previous aggregated results
-        setError(null);
 
-        // Find the selected service details to check the flag
-        const selectedService = services.find(s => s.id === serviceIdNum);
-        if (!selectedService) {
-            setError('Selected service details not found.');
-            setIsLoadingCalculatedSlots(false);
-            return;
-        }
+        setIsLoadingCalculatedSlots(true);
+        setError(null);
+        setRawCalculatedSlots([]);
+        setAggregatedSlots([]);
+        setSelectedSlots(new Set()); // Clear selections when date changes
+
+        // Format the date correctly as YYYY-MM-DD based on its local representation
+        const dateString = format(date, 'yyyy-MM-dd');
+        console.log(`Fetching slots for date string: ${dateString}`); // Add log
 
         try {
-            const queryParams = new URLSearchParams({
-                service_id: selectedServiceId,
-                start_date: selectedStartDate,
-                end_date: selectedEndDate,
-            });
-            const response = await fetch(`/api/available-slots?${queryParams.toString()}`);
+            // Fetch slots only for the specific selected date
+            const response = await fetch(`/api/available-slots?service_id=${serviceId}&start_date=${dateString}&end_date=${dateString}`);
 
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || `Failed to fetch slots (HTTP ${response.status})`);
+                let errorMsg = 'Failed to fetch available slots';
+                try {
+                    const errorData = await response.json();
+                    errorMsg = errorData.error || errorMsg;
+                } catch (jsonError: unknown) {
+                    // Ignore if response is not JSON, log the unknown error
+                    console.warn('Failed to parse error response as JSON:', jsonError);
+                }
+                throw new Error(errorMsg);
             }
 
             const data: CalculatedSlot[] = await response.json();
-            setRawCalculatedSlots(data); // Always store raw data
-
-            // Aggregate the data for display ONLY IF service doesn't require field selection
-            if (!selectedService.requires_field_selection) {
-                const aggregated = aggregateSlots(data, serviceIdNum);
-                setAggregatedSlots(aggregated);
-            } else {
-                setAggregatedSlots([]); // Ensure aggregated is empty if showing raw
-            }
-
-            await fetchClientBookings();
+            console.log(`Raw calculated slots for ${dateString}:`, data);
+            setRawCalculatedSlots(data);
+            const serviceNum = parseInt(serviceId, 10);
+            const aggregated = aggregateSlots(data, serviceNum);
+            console.log(`Aggregated slots for ${dateString}:`, aggregated);
+            setAggregatedSlots(aggregated);
 
         } catch (e) {
-            const errorMessage = e instanceof Error ? e.message : 'Failed to load available slots.';
+            const errorMessage = e instanceof Error ? e.message : 'An unknown error occurred';
+            console.error("Slot fetching error:", errorMessage);
             setError(errorMessage);
-            setRawCalculatedSlots([]); // Clear raw slots on error
-            setAggregatedSlots([]); // Clear aggregated slots too
         } finally {
             setIsLoadingCalculatedSlots(false);
         }
+    }, [aggregateSlots]); // Include dependencies like aggregateSlots
+
+    // === Calendar Interaction Handlers ===
+    const handleCalendarDayClick = (slotInfo: { start: Date; end: Date }) => {
+        // Create a NEW Date object to avoid mutating the one from the event
+        const clickedDate = new Date(slotInfo.start);
+        clickedDate.setHours(0, 0, 0, 0); // Modify the copy
+
+        // Prevent selecting today or past dates
+        if (clickedDate < today) { // Allow selecting today if needed, but original logic prevented it
+            alert("Bookings must be made for a future date.");
+            return;
+        }
+
+        console.log('Calendar day selected:', clickedDate);
+        setSelectedBookingDate(clickedDate);
+
+        if (selectedServiceId) {
+            fetchCalculatedSlotsForDate(selectedServiceId, clickedDate);
+        } else {
+             setRawCalculatedSlots([]);
+             setAggregatedSlots([]);
+             setError("Please select a service first.");
+        }
     };
-    // -------------------------------------
+
+    // NEW Handler for Calendar Navigation
+    const handleCalendarNavigate = (newDate: Date) => {
+        console.log("Calendar navigating to:", newDate);
+        setCalendarViewDate(newDate); // Update the view date state
+        // Fetching is handled by the useEffect watching calendarViewDate
+    };
+
+    // === Helper function for calendar day styling ===
+    const dayPropGetter = useCallback((date: Date) => {
+        // Check if this date has an availability marker
+        // const dateStr = format(date, 'yyyy-MM-dd'); // Removed unused variable
+        const hasAvailability = calendarDisplayEvents.some(event =>
+            // Use type assertion to access resource properties
+            (event.resource as { type?: string })?.type === 'availability-marker' &&
+            isSameDay(event.start as Date, date)
+        );
+
+        if (hasAvailability) {
+            return {
+                style: {
+                    backgroundColor: 'rgba(60, 179, 113, 0.2)', // Lighter green background
+                    borderRadius: '2px',
+                }
+            };
+        }
+        return {};
+    }, [calendarDisplayEvents]);
 
     return (
-        <section>
-            <h2>Available Services & Times</h2>
+        <div className={styles.container}>
+            <h2 className={styles.title}>Create New Booking</h2>
 
-            {/* Slot Search Form */}
-            <div style={{ marginBottom: '1.5rem', padding: '1rem', border: '1px solid #ddd', borderRadius: '4px' }}>
-                <h3>Find Available Slots</h3>
-                {services.length === 0 ? (
-                    <p>Loading services...</p>
-                ) : (
-                    <div>
-                        <label htmlFor="clientServiceSelect">Service:</label>
-                        <select
-                            id="clientServiceSelect"
-                            value={selectedServiceId}
-                            onChange={(e) => { setSelectedServiceId(e.target.value); setRawCalculatedSlots([]); setAggregatedSlots([]); setSelectedSlots(new Set()); }}
-                            required
-                            style={{ marginRight: '1rem' }}
-                        >
-                            <option value="">-- Select a Service --</option>
-                            {services.map(service => (
-                                <option key={service.id} value={service.id}>{service.name}</option>
-                            ))}
-                        </select>
-                    </div>
-                )}
-                <div style={{ marginTop: '0.5rem' }}>
-                    <label htmlFor="clientStartDate">From:</label>
-                    <input
-                        type="date"
-                        id="clientStartDate"
-                        value={selectedStartDate}
-                        onChange={(e) => setSelectedStartDate(e.target.value)}
-                        min={today}
-                        required
-                        style={{ marginRight: '1rem' }}
-                    />
-                    <label htmlFor="clientEndDate">To:</label>
-                    <input
-                        type="date"
-                        id="clientEndDate"
-                        value={selectedEndDate}
-                        onChange={(e) => setSelectedEndDate(e.target.value)}
-                        min={selectedStartDate}
-                        required
-                        style={{ marginRight: '1rem' }}
-                    />
-                </div>
+            {/* Service Selection */}
+            <div className={styles.formGroup}>
+                <label htmlFor="service-select">Select Service:</label>
+                <select
+                    id="service-select"
+                    value={selectedServiceId}
+                    onChange={(e) => {
+                        setSelectedServiceId(e.target.value);
+                        setSelectedBookingDate(null);
+                        setRawCalculatedSlots([]);
+                        setAggregatedSlots([]);
+                        setSelectedSlots(new Set());
+                        setError(null);
+                        // Fetch availability for new service immediately
+                        // fetchCalendarAvailability(e.target.value, calendarViewDate); // This is handled by useEffect
+                    }}
+                    required
+                    className={styles.input}
+                >
+                    <option value="">-- Select a Service --</option>
+                    {services.map(service => (
+                        <option key={service.id} value={service.id}>
+                            {service.name}
+                        </option>
+                    ))}
+                </select>
+            </div>
 
-                {/* --- Pet Selection Section --- */}
-                <div style={{ marginTop: '1rem', borderTop: '1px dashed #ccc', paddingTop: '1rem' }}>
-                    <h4>Select Pet(s) for Booking</h4>
+            {/* Pet Selection - Moved Up, Render only if service is selected */}
+            {selectedServiceId && (
+                <div className={styles.formGroup}>
+                    <label>Select Pets:</label>
                     {isLoadingPets ? (
-                        <p>Loading your pets...</p>
-                    ) : pets.length === 0 ? (
-                        <p>You have no pets registered. Please add pets in the "My Pets" section.</p>
-                    ) : (
-                        <div>
+                        <p>Loading pets...</p>
+                    ) : pets.length > 0 ? (
+                        <ul className={styles.list}>
                             {pets.map(pet => (
-                                <div key={pet.id} style={{ marginBottom: '0.25rem' }}>
-                                    <input
-                                        type="checkbox"
-                                        id={`pet-${pet.id}`}
-                                        value={pet.id}
-                                        checked={selectedPetIds.includes(pet.id)}
-                                        onChange={handlePetSelectionChange}
-                                        style={{ marginRight: '0.5rem' }}
-                                        disabled={!pet.is_confirmed}
-                                    />
-                                    <label
-                                        htmlFor={`pet-${pet.id}`}
-                                        style={{
-                                            color: pet.is_confirmed ? 'white' : '#999',
-                                            fontStyle: pet.is_confirmed ? 'normal' : 'italic'
-                                        }}
-                                    >
-                                        {pet.name} {pet.breed ? `(${pet.breed})` : ''}
-                                        {!pet.is_confirmed && ' - Awaiting confirmation'}
+                                <li key={pet.id} className={styles.listItemCompact}>
+                                    <label>
+                                        <input
+                                            type="checkbox"
+                                            value={pet.id}
+                                            checked={selectedPetIds.includes(pet.id)}
+                                            onChange={handlePetSelectionChange}
+                                            style={{ marginRight: '8px' }}
+                                        />
+                                        {pet.name} ({pet.breed})
                                     </label>
-                                </div>
+                                </li>
                             ))}
-                        </div>
+                        </ul>
+                    ) : (
+                         <p>You have no pets registered. Please add pets in the &apos;My Pets&apos; section.</p>
                     )}
                 </div>
-                {/* -------------------------- */}
+            )}
 
-                <button
-                    onClick={fetchCalculatedSlots}
-                    disabled={isLoadingCalculatedSlots || !selectedServiceId || !selectedStartDate || !selectedEndDate}
-                    style={{ marginTop: '1rem' }}
-                >
-                    {isLoadingCalculatedSlots ? 'Searching...' : 'Find Slots'}
-                </button>
-            </div>
-
-            {/* Display Error Messages */}
-            {error && <p style={{ color: 'red', marginTop: '1rem' }}>Error: {error}</p>}
-
-            {/* Results Section */}
-            <div style={{ marginTop: '1.5rem' }}>
-                {isLoadingCalculatedSlots ? (
-                    <p>Loading available slots...</p>
-                ) : (
-                    <>
-                        <h3>Available Slots</h3>
-                        {(() => {
-                            // Find the selected service details again for the flag
-                            const selectedService = services.find(s => s.id === parseInt(selectedServiceId || '0', 10));
-
-                            // Case 1: Service requires field selection - Render Raw Slots
-                            if (selectedService?.requires_field_selection) {
-                                if (rawCalculatedSlots.length === 0) {
-                                    return <p>No specific field slots found for the selected criteria. Try different dates or services.</p>;
-                                }
-                                // Render raw slots grouped by field? Or just list? Let's list for now.
-                                // TODO: Improve rendering for field-specific slots if needed
-                                return (
-                                    <div>
-                                        {rawCalculatedSlots.map((slot, index) => {
-                                            const isBooked = isSlotBookedBySelectedPets(slot.start_time);
-                                            return (
-                                                <div
-                                                    key={`${slot.start_time}-${index}`}
-                                                    style={{
-                                                        border: '1px solid #444',
-                                                        padding: '10px',
-                                                        marginBottom: '10px',
-                                                        borderRadius: '4px',
-                                                        opacity: isBooked ? 0.5 : 1,
-                                                        cursor: isBooked ? 'not-allowed' : 'default' // Raw slots not clickable yet
-                                                    }}
-                                                >
-                                                    <p><strong>Time:</strong> {formatDateRange(slot.start_time, slot.end_time)}</p>
-                                                    <p><strong>Capacity:</strong> {slot.remaining_capacity}</p>
-                                                    <p><strong>Price:</strong> {formatPrice(slot.price_per_pet ?? selectedService.default_price ?? 0)}</p>
-                                                    {/* Add selection mechanism if needed */}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                );
-                            }
-                            // Case 2: Service does NOT require field selection - Render Aggregated Slots
-                            else {
-                                if (aggregatedSlots.length === 0) {
-                                    return <p>No available slots found for the selected criteria. Try different dates or services.</p>;
-                                }
-                                return (
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-                                        {aggregatedSlots.map((slot) => {
-                                            const slotKey = slot.startTime; // Key for selection when not field-specific
-                                            const isSelected = selectedSlots.has(slotKey);
-                                            const isBooked = isSlotBookedBySelectedPets(slot.startTime);
-                                            const canSelect = slot.totalRemainingCapacity > 0 && !isBooked;
-
-                                            // Differentiate reason for zero capacity
-                                            const isUnavailable = slot.zero_capacity_reason === 'no_staff';
-                                            const isFull = slot.zero_capacity_reason === 'staff_full' || slot.zero_capacity_reason === 'base_full';
-
-                                            return (
-                                                <div
-                                                    key={slotKey}
-                                                    style={{
-                                                        // Adjust border/background/opacity for unavailable/full states
-                                                        border: `2px solid ${isSelected && !isBooked ? '#00aaff' : (isBooked ? '#888' : (isUnavailable ? '#777' : (isFull ? '#666' : '#555' )))}`,
-                                                        padding: '1rem',
-                                                        borderRadius: '4px',
-                                                        cursor: canSelect ? 'pointer' : 'not-allowed',
-                                                        opacity: canSelect ? 1 : (isBooked ? 0.5 : (isUnavailable ? 0.6 : (isFull ? 0.7 : 0.6))), // Adjust opacity levels
-                                                        background: isSelected && !isBooked ? '#003366' : (isBooked ? '#444' : (isUnavailable ? '#333' : (isFull ? '#3a3a3f' : '#333')))// Adjust background levels
-                                                    }}
-                                                    onClick={() => canSelect && handleSlotSelectionToggle(slotKey)}
-                                                >
-                                                    {/* <p><strong>Service:</strong> {slot.serviceName}</p> */}
-                                                    <p><strong>Time:</strong> {formatDateRange(slot.startTime, slot.endTime)}</p>
-                                                    <p><strong>Total Remaining Capacity:</strong> {slot.totalRemainingCapacity}</p>
-                                                    <p><strong>Price per Pet:</strong> {formatPrice(slot.price_per_pet)}</p>
-                                                    {isBooked && <p style={{ color: '#aaa', fontWeight: 'bold' }}>Booked by You</p>}
-                                                    {isSelected && !isBooked && <p style={{ color: '#00aaff', fontWeight: 'bold' }}>Selected</p>}
-                                                    {isUnavailable && <p style={{ color: '#bbb', fontWeight: 'bold' }}>Unavailable</p>}
-                                                    {isFull && (
-                                                        <>
-                                                            <p style={{ color: '#bbb', fontWeight: 'bold' }}>Fully Booked</p>
-                                                            {/* Keep Notify Me only if truly full */}
-                                                            <button
-                                                                className="secondary"
-                                                                style={{fontSize: '0.8rem', padding: '0.3rem 0.6rem', marginTop: '0.5rem'}}
-                                                                onClick={(e) => { e.stopPropagation(); alert('Notify Me feature coming soon!'); }}
-                                                            >
-                                                                Notify Me
-                                                            </button>
-                                                        </>
-                                                    )}
-                                                </div>
-                                            );
-                                        })}
-                                    </div>
-                                );
-                            }
-                        })()}
-                    </>
-                )}
-            </div>
-
-            {/* Total Price and Booking Button */}
-            {(rawCalculatedSlots.length > 0 || aggregatedSlots.length > 0) && (
-                <div className={styles.bookingSummary}>
-                     <p><strong>Selected Pets:</strong> {selectedPetIds.length}</p>
-                     <p><strong>Selected Slots:</strong> {selectedSlots.size}</p>
-                     <p><strong>Total Price:</strong> £{(totalPrice ?? 0).toFixed(2)}</p>
-                     <button
-                        onClick={handleBookSelectedSlots}
-                        disabled={selectedSlots.size === 0 || selectedPetIds.length === 0}
-                        className={styles.mainBookButton}
-                    >
-                        Book Selected Slots
-                    </button>
+            {/* Moved Up: Selected Date Display */}
+            {selectedServiceId && selectedPetIds.length > 0 && selectedBookingDate && (
+                 <div className={styles.formGroup}>
+                    <p>Selected Date: <strong>{selectedBookingDate.toLocaleDateString()}</strong></p>
                 </div>
             )}
-        </section>
-    );
-}
+
+            {/* Moved Up: Available Slots Display (for the selected date) */}
+            {selectedServiceId && selectedPetIds.length > 0 && selectedBookingDate && (
+                 <div className={styles.formGroup}>
+                    <label>Available Slots for {selectedBookingDate.toLocaleDateString()}:</label>
+                    {isLoadingCalculatedSlots && <p>Loading slots...</p>}
+                    {error && <p className={styles.error}>{error}</p>}
+                    {!isLoadingCalculatedSlots && aggregatedSlots.length > 0 && (
+                        <ul className={styles.list}>
+                            {aggregatedSlots.map(slot => {
+                                const slotKey = `${slot.startTime}`;
+                                const isSelected = selectedSlots.has(slotKey);
+                                const petCount = selectedPetIds.length;
+                                const insufficientCapacity = slot.totalRemainingCapacity < petCount;
+                                const isBookedBySelection = isSlotBookedBySelectedPets(slot.startTime);
+                                const isDisabled = insufficientCapacity || isBookedBySelection || slot.totalRemainingCapacity === 0;
+
+                                console.log(`Mapping slot with key: ${slotKey}`, {isDisabled, isSelected, slot});
+
+                                // Simplified return for debugging
+                                return (
+                                    <li
+                                        key={slotKey}
+                                        style={{
+                                            padding: '10px',
+                                            border: '1px solid #555',
+                                            marginBottom: '5px',
+                                            cursor: isDisabled ? 'not-allowed' : 'pointer',
+                                            backgroundColor: isSelected ? '#003366' : (isDisabled ? '#333' : '#222'),
+                                            opacity: isDisabled ? 0.6 : 1
+                                        }}
+                                        onClick={() => {
+                                            if (!isDisabled) {
+                                                handleSlotSelectionToggle(slotKey);
+                                            }
+                                        }}
+                                    >
+                                        {formatDateRange(slot.startTime, slot.endTime)} - Capacity: {slot.totalRemainingCapacity} {isSelected ? '(Selected)' : ''}
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                    {!isLoadingCalculatedSlots && aggregatedSlots.length === 0 && !error && (
+                        <p>No available slots found for this date and service.</p>
+                    )}
+                </div>
+            )}
+
+            {/* Date Selection Calendar - Render only if service AND pets are selected */}
+            {selectedServiceId && selectedPetIds.length > 0 && (
+                 <div className={styles.formGroup}>
+                    <label>Select Date:</label>
+                    {isLoadingCalendarDisplay && <p>Loading available dates...</p>}
+                    {/* Display general errors only when not loading specific slots */}
+                    {error && !isLoadingCalculatedSlots && <p className={styles.error}>{error}</p>}
+                    <CalendarView
+                        events={[]}
+                        onSelectSlot={handleCalendarDayClick}
+                        onSelectEvent={() => {}}
+                        views={['week']}
+                        defaultView='week'
+                        onNavigate={handleCalendarNavigate}
+                        date={calendarViewDate}
+                        dayPropGetter={dayPropGetter}
+                    />
+                </div>
+            )}
+
+            {/* Booking Summary and Action - Ensure this is outside other conditionals */}
+            {selectedSlots.size > 0 && selectedPetIds.length > 0 && (
+                <div className={styles.formGroup}>
+                   <h3>Booking Summary</h3>
+                   <p>Selected Date: {selectedBookingDate?.toLocaleDateString()}</p>
+                   <p>Selected Pets: {pets.filter(p => selectedPetIds.includes(p.id)).map(p => p.name).join(', ')}</p>
+                   <p>Selected Slots:</p>
+                   <ul className={styles.listCompact}>
+                       {Array.from(selectedSlots).map(slotKey => {
+                           const slot = aggregatedSlots.find(s => s.startTime === slotKey);
+                           return (
+                               <li key={slotKey}>
+                                   {slot ? `${formatDateRange(slot.startTime, slot.endTime)} @ ${formatPrice(slot.price_per_pet)}/pet` : `Slot details not found`}
+                               </li>
+                           );
+                       })}
+                   </ul>
+
+                   <p>Total Price: <strong>{formatPrice(calculateTotalPrice())}</strong></p>
+                   {/* Ensure button and closing tags are correct */}
+                   <button
+                       onClick={handleBookSelectedSlots}
+                       disabled={isLoadingCalculatedSlots || isLoadingBookings}
+                       className={`${styles.button} ${styles.primary}`}
+                   >
+                       {isLoadingBookings ? 'Booking...' : 'Book Selected Slots'}
+                   </button>
+                </div> // Closing tag for styles.formGroup
+            )}
+
+        </div> // Closing tag for styles.container
+    ); // Closing tag for return statement
+} // Closing tag for function component
