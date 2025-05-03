@@ -106,7 +106,13 @@ export default function Home() {
     supabase.auth.getUser().then(({ data: { user }, error: userError }) => {
         setUser(user);
         if (userError) {
-            console.error("Error fetching user on initial load:", userError);
+            // Only log error if it's *not* an expected session missing error
+            if (userError.name !== 'AuthSessionMissingError') {
+                console.error("Error fetching user on initial load:", userError);
+            } else {
+                // Optionally log that the user is not logged in, or do nothing
+                console.log("Initial load: No active session found.");
+            }
         }
         checkUserAndProfile(user).finally(() => {
             setIsLoadingInitial(false); // Set initial loading false after user and profile check
@@ -118,6 +124,50 @@ export default function Home() {
       const newUser = session?.user ?? null;
       const previousUser = user; // Capture previous user state for comparison
       setUser(newUser);
+
+      // --- Logic to Send Welcome Email on First Sign In ---
+      // Check if user changed from null to a valid user (first sign in)
+      if (!previousUser && newUser) {
+          console.log('First sign-in detected, attempting to send welcome email for:', newUser.email);
+
+          // Fetch profile data again here to pass to API, or rely on previous fetch
+          // Let's re-fetch to be sure we pass current data
+          supabase
+            .from('profiles')
+            .select('first_name') // Only need first name for email
+            .eq('user_id', newUser.id)
+            .single()
+            .then(({ data: profileData, error: profileError }) => {
+                if (profileError) {
+                    console.error('Error fetching profile during welcome email check:', profileError);
+                    // Proceed without name? Or skip email? Let's proceed without name for now.
+                }
+
+                // Trigger the API call
+                fetch('/api/send-welcome-email', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        email: newUser.email,
+                        firstName: profileData?.first_name, // Pass first name if available
+                    }),
+                })
+                .then(async (res) => {
+                    if (!res.ok) {
+                        const errorBody = await res.json();
+                        console.error('Error response from /api/send-welcome-email:', errorBody);
+                    } else {
+                        console.log('Successfully triggered welcome email API for:', newUser.email);
+                    }
+                })
+                .catch((fetchError) => {
+                    console.error('Fetch error calling /api/send-welcome-email:', fetchError);
+                });
+            });
+      }
+      // --- End Welcome Email Logic ---
 
       // Only reset dependent state if the user actually changed (login/logout)
       if (newUser?.id !== previousUser?.id) {

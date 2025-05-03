@@ -250,3 +250,6 @@ Project Summary for AI Assistant (booking-and-accounts)
   - Pass the event array to the `events` prop.
   - Provide handler functions to `onSelectSlot` and `onSelectEvent` for desired interactions.
 - **Initial Implementation:** Integrated into `src/components/staff/StaffDashboard.tsx` under the "My Schedule" tab.
+
+**See emailguide.txt for email specific info**
+

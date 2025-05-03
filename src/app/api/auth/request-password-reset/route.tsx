@@ -30,10 +30,11 @@ export async function POST(request: Request) {
     console.error('NEXT_PUBLIC_SITE_URL environment variable is not set.');
     return NextResponse.json({ error: 'Server configuration error.' }, { status: 500 });
   }
-  const resetPasswordPath = '/reset-password'; // Path for the password reset page
-  const redirectTo = `${siteUrl}${resetPasswordPath}`;
+  // --- Update redirectTo to use the new callback route ---
+  const callbackPath = '/api/auth/callback'; // New callback path
+  const redirectTo = `${siteUrl}${callbackPath}`;
 
-  console.log(`Requesting password reset for ${email}, redirecting to: ${redirectTo}`);
+  console.log(`Requesting password reset for ${email}, using callback redirect: ${redirectTo}`);
 
   // --- Use generateLink via Admin client to get the link server-side ---
   // Note: Ensure the user email exists before calling this or handle potential errors.
@@ -65,19 +66,24 @@ export async function POST(request: Request) {
   // --- Send Custom Email via Resend ---
   try {
     // Fetch user's first name for personalization (best effort)
-    let userName = 'there';
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('first_name')
-      .eq('email', email) // Match profile by email
-      .single();
+    // --- Removed profile fetch by email as 'profiles.email' column doesn't exist ---
+    // let userName = 'there';
+    // const { data: profile, error: profileError } = await supabaseAdmin
+    //   .from('profiles')
+    //   .select('first_name')
+    //   .eq('email', email) // Match profile by email - This caused the error
+    //   .single();
 
-    if (profileError) {
-      console.warn(`Could not fetch profile for ${email} during password reset: ${profileError.message}`);
-      // Proceed without name if fetch fails
-    } else if (profile?.first_name) {
-      userName = profile.first_name;
-    }
+    // if (profileError) {
+    //   console.warn(`Could not fetch profile for ${email} during password reset: ${profileError.message}`);
+    //   // Proceed without name if fetch fails
+    // } else if (profile?.first_name) {
+    //   userName = profile.first_name;
+    // }
+    // --- End of removed section ---
+
+    // Use a generic greeting
+    const userName = 'there';
 
     // Await the render call, passing the generated link
     const emailHtml = await render(

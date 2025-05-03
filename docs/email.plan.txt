@@ -2,54 +2,51 @@ Email Strategy & Plan:
 Goal: Integrate transactional and potentially other email notifications into the application, allowing users basic control over optional emails.
 Core Technology:
 Sending Service: Resend (already set up).
-Sending Trigger: Centralized Next.js API route (/api/send-email, already created).
-Email Content: Use React Email library (react-email, @react-email/components) to build reusable, type-safe email templates directly within the Next.js app using React components. This keeps everything in one codebase.
+Sending Trigger: Centralized utility function (`src/utils/sendEmail.ts`).
+Email Content: Use React Email library (`react-email`, `@react-email/components`) to build reusable, type-safe email templates (`src/emails`).
+
 Phased Implementation Plan:
-Phase 1: Booking Confirmation Emails (Client & Admin)
-Get Recipient Emails:
-Client: Update the /api/client-booking API route to fetch the booking client's email address (likely requires joining profiles or fetching the current user's session data). Alternatively, modify ClientBooking.tsx to fetch the current user's profile data and pass the email when calling the booking API (less ideal). Let's assume for now the /api/client-booking backend can fetch the client email.
-Admin: Use the RESEND_EMAIL environment variable (admin@bonnies.dog) as the recipient.
-Create Basic Templates:
-Install React Email: npm install react-email @react-email/components @react-email/render
-Create a new directory: src/emails
-Create basic template components: src/emails/BookingConfirmationClient.tsx and src/emails/BookingConfirmationAdmin.tsx. Include relevant details (service, date, time, pets, client name for admin).
-Modify Booking API (/api/client-booking):
-After successfully creating the booking(s) in the database:
-Render the client email HTML using render(<BookingConfirmationClient {...props} />).
-Render the admin email HTML using render(<BookingConfirmationAdmin {...props} />).
-Make two separate internal calls to the /api/send-email logic (or directly use the Resend SDK if preferred within the backend API route) - one for the client, one for the admin. Pass the rendered HTML.
-(Self-correction: Instead of calling the /api/send-email route* from the /api/client-booking route, it's better practice for /api/client-booking to directly use the Resend SDK itself or call a shared utility function). Let's create a utility function.
-Create Email Utility:
-Create src/utils/sendEmail.ts. This function will take email parameters (to, subject, html), initialize Resend, and call resend.emails.send(). This avoids duplicating the Resend client setup.
-Update /api/send-email/route.ts to potentially just call this utility (or keep it as a public endpoint if needed for other triggers).
-Update /api/client-booking to import and use this utility function.
-Remove Test Call: Remove the test email call we previously added to ClientBooking.tsx's handleBookSelectedSlots.
-Phase 2: User Email Preferences
-Database Schema: Add boolean columns to the profiles table (e.g., email_allow_promotional, email_allow_informational, both defaulting to true).
-API Update (/api/profile): Modify the PUT handler to allow updating these new preference fields.
-UI Update (src/components/client/ProfileManagement.tsx or similar): Add checkboxes/toggles in the user's profile editing section to control these preferences.
-Check Logic: Before sending promotional or informational emails (in later phases), the sending logic (e.g., within the specific API route or utility function) must fetch the user's profile and check the corresponding preference flag. Booking and Cancellation emails will ignore these flags.
+
 Phase 3: Email Templates Management & Refinement
-Develop Templates: Create more robust React Email templates for different scenarios (cancellations, password resets, welcome emails, etc.) in src/emails. Use @react-email/components for common elements (buttons, links, etc.).
-Template Content: Decide if template content (specific wording, images) needs to be dynamic or managed outside code. For now, keep it within the React components. If CMS-like editing is needed later, explore integrating with a Headless CMS or storing text snippets in the database.
+- Develop Templates: Create more robust React Email templates for different scenarios (cancellations, etc.) in `src/emails`. Use `@react-email/components` for common elements.
+- Template Content: Decide if template content (specific wording, images) needs to be dynamic or managed outside code. For now, keep it within the React components.
+
 Phase 4: Other Common Emails
-Password Reset:
-Add UI elements for "Forgot Password".
-Create API routes (/api/auth/request-password-reset, /api/auth/reset-password).
-Use Supabase Auth helpers (resetPasswordForEmail, updateUser) for the core logic.
-Trigger sending a password reset email (using a dedicated template) from the request route, including a unique reset token/link.
-Welcome Email: After successful user sign-up (within the sign-up logic or potentially via a Supabase Auth trigger/hook), trigger sending a welcome email using a dedicated template.
+- Welcome Email: After successful user sign-up (within the sign-up logic or potentially via a Supabase Auth trigger/hook), trigger sending a welcome email using a dedicated template.
+
 Phase 5: Admin Email Management
-New Dashboard Section: Create an "Email Management" section for Admins.
-Functionality (Future): This could potentially allow admins to:
-View email sending logs/status (requires logging Resend responses).
-Manually trigger certain emails (e.g., re-send confirmation).
-Manage basic template content (if not using React Email directly or integrating CMS).
+- New Dashboard Section: Create an "Email Management" section for Admins.
+- Functionality (Future): This could potentially allow admins to:
+  - View email sending logs/status (requires logging Resend responses).
+  - Manually trigger certain emails (e.g., re-send confirmation).
+  - Manage basic template content (if not using React Email directly or integrating CMS).
+
 Ongoing Tasks:
-Code Separation: Keep email templates in src/emails, use the src/utils/sendEmail.ts utility, and call the utility from relevant API routes.
-Documentation (docs/overallguide.txt):
-Add details about the email sending setup (Resend, API Key env var).
-Document the /api/send-email route (if kept public) and the sendEmail utility.
-Explain the email templating approach (React Email, src/emails dir).
-Document the email preference flags in the profiles table and how they're used.
-Bulk Emailing: As you noted, you're happy to handle bulk/marketing emails via Gmail externally. This plan focuses only on transactional emails sent from the application itself.
+- Code Separation: Keep email templates in `src/emails`, use the `src/utils/sendEmail.ts` utility, and call the utility from relevant API routes.
+- Documentation (`docs/overallguide.txt`):
+  - Add details about the email sending setup (Resend, API Key env var).
+  - Document the `sendEmail` utility.
+  - Explain the email templating approach (React Email, `src/emails` dir).
+  - Document the email preference flags in the `profiles` table and how they're used.
+- Bulk Emailing: As noted, bulk/marketing emails are handled externally (e.g., via Gmail). This plan focuses only on transactional emails sent from the application itself.
+
+---
+Completed Steps & Notes (For Future AI/Developers):
+
+Summary of Completed Work:
+- Phase 1 (Booking Confirmation): Implemented client and admin booking confirmation emails triggered from `/api/client-booking` using the `sendEmail` utility and templates (`BookingConfirmationClient.tsx`, `BookingConfirmationAdmin.tsx`).
+- Phase 2 (User Email Preferences): Added `email_allow_promotional` and `email_allow_informational` booleans to `profiles` table. Profile update API (`/api/profile`) and UI (`ProfileManagement.tsx`) allow users to manage these preferences. *Note: Logic to CHECK these preferences before sending non-essential emails still needs implementation where appropriate.*
+- Phase 4 (Password Reset):
+    - UI: `/forgot-password` page created, linked from login.
+    - API (Request): `/api/auth/request-password-reset` route created. Uses `supabaseAdmin.auth.admin.generateLink` -> sends custom email (`PasswordReset.tsx`) via `sendEmail` utility. Tells Supabase to redirect to `/api/auth/callback`.
+    - API (Callback): `/api/auth/callback` route created. Receives callback from Supabase, preserves URL hash fragment (`#access_token=...`), and redirects to `/reset-password`.
+    - Page (Reset): `/reset-password` page created. **Critically**, it uses `@supabase/ssr`'s `createBrowserClient` but *manually* parses the `#access_token` and `#refresh_token` from `window.location.hash`. It then calls `supabase.auth.setSession()` explicitly in a `useEffect` hook. Only after this manual session setting succeeds does it allow the user to submit the form, which then calls `supabase.auth.updateUser()` successfully. *Note: Relying on `onAuthStateChange` did not work for this flow.*
+- Setup: Resend integration is complete (`sendEmail.ts`, `RESEND_API_KEY` env var). React Email is installed and used for templates in `src/emails`. A base layout (`BaseLayout.tsx`) exists.
+- Email Verification: Implemented using a custom email (`VerifyEmail.tsx`) triggered by `/api/auth/request-email-verification`. *Requires `NEXT_PUBLIC_SITE_URL` env var.*
+
+Key Gotchas & Info:
+- Password Reset Fragment Handling: The client-side `/reset-password` page **must** manually parse the `#access_token` and `#refresh_token` from the URL fragment and explicitly call `supabase.auth.setSession()` using the client instance created by `@supabase/ssr`'s `createBrowserClient()`. The automatic session detection via `onAuthStateChange` does not reliably work for this flow in the Next.js App Router context, and middleware/server-side code cannot see the fragment.
+- Custom Emails vs. Supabase Default: Ensure Supabase's default emails for password reset/email verification are DISABLED in Supabase settings if using custom emails.
+- `generateLink`: `/api/auth/request-password-reset` uses the *admin* client for `generateLink`.
+- `NEXT_PUBLIC_SITE_URL`: Crucial for generating correct callback/redirect URLs. Set in `.env.local` (e.g., `http://localhost:3000`).
+- Profile Data Fetching: API routes typically fetch user-specific profile data using `supabaseAdmin` based on the user ID obtained from the standard server client.
