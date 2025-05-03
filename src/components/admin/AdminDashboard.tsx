@@ -10,6 +10,7 @@ import ServiceAvailabilityManagement from './ServiceAvailabilityManagement';
 import ClientManagement from './ClientManagement';
 import VehicleManagement from './VehicleManagement';
 import StaffAvailabilityManagement from './StaffAvailabilityManagement';
+import EmailManagement from './EmailManagement';
 import { createClient } from '@/utils/supabase/client';
 import type { User } from '@supabase/supabase-js';
 import type { UserWithRole, Site, Field, Booking, Service, ServiceAvailability, Vehicle, StaffMemberListItem, Staff } from '@/types';
@@ -778,6 +779,11 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 			id: 'staff_availability',
 			label: 'Staff Availability',
 			content: <StaffAvailabilityManagement />,
+		},
+		{
+			id: 'email',
+			label: 'Email Management',
+			content: <EmailManagement />,
 		},
 	];
 

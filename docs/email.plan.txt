@@ -7,10 +7,6 @@ Email Content: Use React Email library (`react-email`, `@react-email/components`
 
 Phased Implementation Plan:
 
-Phase 3: Email Templates Management & Refinement
-- Develop Templates: Create more robust React Email templates for different scenarios (cancellations, etc.) in `src/emails`. Use `@react-email/components` for common elements.
-- Template Content: Decide if template content (specific wording, images) needs to be dynamic or managed outside code. For now, keep it within the React components.
-
 Phase 4: Other Common Emails
 - Welcome Email: After successful user sign-up (within the sign-up logic or potentially via a Supabase Auth trigger/hook), trigger sending a welcome email using a dedicated template.
 

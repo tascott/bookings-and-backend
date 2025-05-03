@@ -92,8 +92,9 @@ Current TODOS:
 - addresses/map view/multi-map view (staff/admin)
 - calendar view for admin
 - assign staff, populates their dashboard for the day/week
-- email confirmations of bookings (client and admin)
+- add email template editing UI
 - remove all inline CSS for a design system (different file for button, nav, colors, etc)
+- Implement Email Preference Checks: We added email_allow_promotional and email_allow_informational flags to the profiles table, but we haven't added logic anywhere to check these flags before sending emails that would fall into those categories. (Currently, all emails sent are arguably transactional - booking, password, welcome - so this might not be immediately necessary, but it's a remaining piece).
 
 // Improvement Todos
 - refactor code, reduce codebase, update docs
