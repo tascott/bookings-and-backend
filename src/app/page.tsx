@@ -131,16 +131,24 @@ export default function Home() {
           console.log('First sign-in detected, attempting to send welcome email for:', newUser.email);
 
           // Fetch profile data again here to pass to API, or rely on previous fetch
-          // Let's re-fetch to be sure we pass current data
+          // Let's re-fetch to be sure we pass current data, including the flag
           supabase
             .from('profiles')
-            .select('first_name') // Only need first name for email
+            // Fetch first_name AND welcome_email_sent
+            .select('first_name, welcome_email_sent')
             .eq('user_id', newUser.id)
             .single()
             .then(({ data: profileData, error: profileError }) => {
                 if (profileError) {
                     console.error('Error fetching profile during welcome email check:', profileError);
-                    // Proceed without name? Or skip email? Let's proceed without name for now.
+                    // Don't proceed if we can't check the flag
+                    return;
+                }
+
+                // Check if email was already sent
+                if (profileData?.welcome_email_sent) {
+                    console.log(`Welcome email already sent for ${newUser.email}, skipping.`);
+                    return;
                 }
 
                 // Trigger the API call
@@ -160,6 +168,20 @@ export default function Home() {
                         console.error('Error response from /api/send-welcome-email:', errorBody);
                     } else {
                         console.log('Successfully triggered welcome email API for:', newUser.email);
+                        // --- Mark email as sent in DB ---
+                        fetch('/api/mark-welcome-sent', { method: 'POST' })
+                          .then(async (markRes) => {
+                              if (!markRes.ok) {
+                                  const markErrorBody = await markRes.json();
+                                  console.error('Error response from /api/mark-welcome-sent:', markErrorBody);
+                              } else {
+                                  console.log(`Successfully marked welcome email sent for ${newUser.email} in DB.`);
+                              }
+                          })
+                          .catch((markFetchError) => {
+                              console.error('Fetch error calling /api/mark-welcome-sent:', markFetchError);
+                          });
+                        // --- End marking email as sent ---
                     }
                 })
                 .catch((fetchError) => {
