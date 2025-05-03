@@ -3,6 +3,7 @@
 import { useState } from 'react'; // Import useState
 import { useSearchParams } from 'next/navigation'; // Import hook
 import styles from "@/app/page.module.css"; // Adjust path as needed
+import Link from 'next/link';
 
 // Define props for the component
 interface AuthFormProps {
@@ -76,6 +77,14 @@ export default function AuthForm({ login, signup }: AuthFormProps) {
                 <div style={{ marginTop: '1rem' }}> {/* Added margin for spacing */}
                     <label htmlFor="password">Password:</label>
                     <input id="password" name="password" type="password" required placeholder="••••••••" />
+                    {/* Add Forgot Password Link - only show in login mode */}
+                    {authMode === 'login' && (
+                        <div style={{ textAlign: 'right', marginTop: '0.5rem', fontSize: '0.8em' }}>
+                            <Link href="/forgot-password" style={{ color: 'blue', textDecoration: 'underline' }}>
+                                Forgot Password?
+                            </Link>
+                        </div>
+                    )}
                 </div>
 
                 {/* Buttons Section */}

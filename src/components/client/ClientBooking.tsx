@@ -5,16 +5,7 @@ import styles from '@/app/page.module.css'; // Adjust path as needed
 import CalendarView, { CalendarEvent } from '@/components/shared/CalendarView'; // Import CalendarView
 import Modal from '@/components/shared/Modal'; // Import Modal component
 import { formatISO, isSameDay, startOfWeek, endOfWeek, getDay as dateFnsGetDay, addDays } from 'date-fns'; // Import date-fns helpers and format, and startOfWeek, endOfWeek, getDay, addDays
-
-// Define required types directly or import from a shared types file later
-type Service = {
-	id: number;
-	name: string;
-	description: string | null;
-	created_at: string;
-	requires_field_selection: boolean;
-	default_price?: number | null; // Add price
-};
+import { Service } from '@/types';
 
 // Updated to match actual API response structure from console log
 type CalculatedSlot = {
@@ -490,7 +481,31 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		setIsLoadingBookings(false);
 
 		if (bookingSuccess) {
-			alert('All selected slots booked successfully!'); // Simple feedback for now
+			// --- Send Test Email ---
+			// const emailPayload = {
+			// 	to: process.env.NEXT_PUBLIC_RESEND_EMAIL || 'admin@bonnies.dog', // Send TO admin for testing
+			// 	subject: 'TEST Booking Confirmation',
+			// 	html: `<p>This is a test email to confirm a booking was made. Details:</p><p>Date: ${selectedBookingDate?.toLocaleDateString()}</p><p>Slots: ${Array.from(selectedSlots).join(', ')}</p><p>Pets: ${selectedPetIds.join(', ')}</p>`
+			// };
+
+			// try {
+			// 	console.log('Attempting to send test booking confirmation email...', emailPayload);
+			// 	const emailRes = await fetch('/api/send-email', {
+			// 		method: 'POST',
+			// 		headers: { 'Content-Type': 'application/json' },
+			// 		body: JSON.stringify(emailPayload)
+			// 	});
+			// 	if (!emailRes.ok) {
+			// 		 console.error('Test email send failed:', await emailRes.text());
+			// 	} else {
+			// 		 console.log('Test email sent successfully:', await emailRes.json());
+			// 	}
+			// } catch (emailError) {
+			// 	console.error('Error calling /api/send-email:', emailError);
+			// }
+			// --- End Test Email ---
+
+			alert('All selected slots booked successfully!'); // Keep original alert for now
 			setSelectedSlots(new Set()); // Clear selection on success
 			setSelectedBookingDate(null); // Clear selected date
 			setRawCalculatedSlots([]); // Clear results

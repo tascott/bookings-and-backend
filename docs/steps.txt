@@ -93,7 +93,7 @@ Current TODOS:
 - calendar view for admin
 - assign staff, populates their dashboard for the day/week
 - email confirmations of bookings (client and admin)
-
+- remove all inline CSS for a design system (different file for button, nav, colors, etc)
 
 // Improvement Todos
 - refactor code, reduce codebase, update docs

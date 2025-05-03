@@ -10,7 +10,7 @@ export async function GET() {
 
   const { data: profile, error } = await supabaseAdmin
     .from('profiles')
-    .select('user_id, first_name, last_name, phone')
+    .select('user_id, first_name, last_name, phone, email_allow_promotional, email_allow_informational')
     .eq('user_id', user.id)
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 404 });
@@ -29,7 +29,13 @@ export async function PUT(request: Request) {
   } catch {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 });
   }
-  const allowedFields = ['first_name', 'last_name', 'phone'];
+  const allowedFields = [
+	'first_name',
+	'last_name',
+	'phone',
+	'email_allow_promotional',
+	'email_allow_informational'
+  ];
   const updateFields = Object.fromEntries(
     Object.entries(updateData).filter(([key]) => allowedFields.includes(key))
   );

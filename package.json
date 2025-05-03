@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@react-email/components": "^0.0.38",
+    "@react-email/render": "^1.1.0",
     "@supabase/auth-ui-react": "^0.4.7",
     "@supabase/auth-ui-shared": "^0.1.8",
     "@supabase/ssr": "^0.6.1",
@@ -18,7 +20,9 @@
     "next": "15.3.0",
     "react": "^19.0.0",
     "react-big-calendar": "^1.18.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "react-email": "^4.0.11",
+    "resend": "^4.5.0"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",

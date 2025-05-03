@@ -13,15 +13,32 @@ interface ClientDashboardProps {
   user: User;
 }
 
+// Define profile type including new fields
+interface ProfileData {
+  user_id?: string; // Assuming user_id is fetched
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email_allow_promotional: boolean;
+  email_allow_informational: boolean;
+}
+
 export default function ClientDashboard({
   user,
 }: ClientDashboardProps) {
-  // Profile state
-  const [profile, setProfile] = useState<{ first_name: string; last_name: string; phone: string } | null>(null);
+  // Profile state using the new interface
+  const [profile, setProfile] = useState<ProfileData | null>(null);
   const [profileLoading, setProfileLoading] = useState(false);
   const [profileError, setProfileError] = useState<string | null>(null);
   const [editProfile, setEditProfile] = useState(false);
-  const [editFields, setEditFields] = useState({ first_name: '', last_name: '', phone: '' });
+  // Update editFields state type and initial values
+  const [editFields, setEditFields] = useState({
+    first_name: '',
+    last_name: '',
+    phone: '',
+    email_allow_promotional: true, // Default to true
+    email_allow_informational: true // Default to true
+  });
   const [isSaving, setIsSaving] = useState(false);
 
   // Add state for services
@@ -78,13 +95,20 @@ export default function ClientDashboard({
     setEditFields({
       first_name: profile.first_name || '',
       last_name: profile.last_name || '',
-      phone: profile.phone || ''
+      phone: profile.phone || '',
+      email_allow_promotional: profile.email_allow_promotional ?? true, // Initialize from profile or default
+      email_allow_informational: profile.email_allow_informational ?? true // Initialize from profile or default
     });
     setEditProfile(true);
   };
   const cancelEdit = () => setEditProfile(false);
   const handleEditChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setEditFields(f => ({ ...f, [e.target.name]: e.target.value }));
+    // Handle checkboxes separately for boolean conversion
+    const { name, value, type, checked } = e.target;
+    setEditFields(f => ({
+      ...f,
+      [name]: type === 'checkbox' ? checked : value
+    }));
   };
   const saveProfile = async () => {
     setIsSaving(true);
@@ -154,6 +178,12 @@ export default function ClientDashboard({
               <p><strong>First Name:</strong> {profile.first_name || 'N/A'}</p>
               <p><strong>Last Name:</strong> {profile.last_name || 'N/A'}</p>
               <p><strong>Phone:</strong> {profile.phone || 'N/A'}</p>
+              {/* Display Email Preferences */}
+              <p><strong>Email Preferences:</strong></p>
+              <ul style={{ listStyle: 'none', paddingLeft: '1em' }}>
+                <li>Promotional Emails: {profile.email_allow_promotional ? 'Allowed' : 'Blocked'}</li>
+                <li>Informational Emails: {profile.email_allow_informational ? 'Allowed' : 'Blocked'}</li>
+              </ul>
               <button onClick={startEdit}>Edit</button>
             </div>
           ) : (
@@ -167,8 +197,31 @@ export default function ClientDashboard({
               <label>Phone:<br />
                 <input name="phone" value={editFields.phone} onChange={handleEditChange} style={{ background: '#333', color: '#fff', border: '1px solid #555', borderRadius: 4, padding: 4, width: '100%' }} />
               </label><br />
-              <button onClick={saveProfile} disabled={isSaving} style={{ color: '#fff', background: '#28a745', border: 'none', padding: '6px 16px', borderRadius: 4, marginRight: 8 }}>Save</button>
-              <button onClick={cancelEdit} disabled={isSaving} style={{ color: '#fff', background: '#6c757d', border: 'none', padding: '6px 16px', borderRadius: 4 }}>Cancel</button>
+              {/* Add Email Preference Checkboxes */}
+              <div style={{ marginTop: '1em' }}>
+                <label style={{ display: 'block', marginBottom: '0.5em' }}>
+                  <input
+                    type="checkbox"
+                    name="email_allow_promotional"
+                    checked={editFields.email_allow_promotional}
+                    onChange={handleEditChange}
+                    style={{ marginRight: '8px' }}
+                  />
+                  Allow Promotional Emails (e.g., special offers)
+                </label>
+                <label style={{ display: 'block' }}>
+                  <input
+                    type="checkbox"
+                    name="email_allow_informational"
+                    checked={editFields.email_allow_informational}
+                    onChange={handleEditChange}
+                    style={{ marginRight: '8px' }}
+                  />
+                  Allow Informational Emails (e.g., policy updates, tips - excludes booking confirmations)
+                </label>
+              </div>
+              <button onClick={saveProfile} disabled={isSaving} style={{ color: '#fff', background: '#28a745', border: 'none', padding: '6px 16px', borderRadius: 4, marginRight: 8, marginTop: '1em' }}>Save</button>
+              <button onClick={cancelEdit} disabled={isSaving} style={{ color: '#fff', background: '#6c757d', border: 'none', padding: '6px 16px', borderRadius: 4, marginTop: '1em' }}>Cancel</button>
             </div>
           )}
         </div>
