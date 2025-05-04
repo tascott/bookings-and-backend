@@ -1,54 +1,177 @@
 /* src/app/dashboard-styles.css */
 
+:root {
+  /* Light Theme Variables */
+  --bg-color: #f8f9fa;
+  --text-color: #343a40;
+  --card-bg-color: #ffffff;
+  --border-color: #dee2e6;
+  --heading-color: #343a40;
+  --link-color: #3b82f6;
+  --link-hover-color: #2563eb;
+  --subtle-text-color: #6c757d;
+  --input-bg-color: #ffffff;
+  --input-text-color: #495057;
+  --input-border-color: #ced4da;
+  --input-focus-border-color: #80bdff;
+  --input-focus-shadow-color: rgba(59, 130, 246, 0.25);
+  --placeholder-color: #adb5bd;
+  --primary-btn-bg-color: #3b82f6;
+  --primary-btn-text-color: #ffffff;
+  --primary-btn-hover-bg-color: #2563eb;
+  --primary-btn-focus-shadow-color: rgba(59, 130, 246, 0.3);
+  --secondary-btn-bg-color: #6c757d;
+  --secondary-btn-text-color: #ffffff;
+  --secondary-btn-hover-bg-color: #5a6268;
+  --secondary-btn-focus-shadow-color: rgba(108, 117, 125, 0.3);
+  --danger-btn-bg-color: #dc3545;
+  --danger-btn-text-color: #ffffff;
+  --danger-btn-hover-bg-color: #c82333;
+  --danger-btn-focus-shadow-color: rgba(220, 53, 69, 0.3);
+  --disabled-btn-bg-color: #adb5bd;
+  --disabled-btn-text-color: #6c757d;
+  --table-bg-color: #ffffff;
+  --table-border-color: #dee2e6;
+  --table-header-bg-color: #f8f9fa;
+  --table-header-text-color: #495057;
+  --table-row-even-bg-color: #f8f9fa;
+  --table-row-hover-bg-color: #e9ecef;
+  --slot-card-border-color: #dee2e6;
+  --slot-card-bg-color: #ffffff;
+  --slot-card-selected-border-color: #3b82f6;
+  --slot-card-selected-bg-color: rgba(59, 130, 246, 0.1);
+  --slot-card-selected-shadow-color: rgba(59, 130, 246, 0.25);
+  --slot-card-booked-border-color: #ced4da;
+  --slot-card-booked-bg-color: #e9ecef;
+  --slot-card-strong-color: #495057;
+  --tab-border-color: #dee2e6;
+  --tab-text-color: #6c757d;
+  --tab-active-text-color: #3b82f6;
+  --tab-active-border-color: #3b82f6;
+  --tab-hover-text-color: #212529;
+  --tab-hover-border-color: #e9ecef;
+  --error-text-color: #721c24;
+  --error-bg-color: #f8d7da;
+  --error-border-color: #f5c6cb;
+  --success-text-color: #155724;
+  --success-bg-color: #d4edda;
+  --success-border-color: #c3e6cb;
+  --shadow-color: rgba(0, 0, 0, 0.1);
+}
+
+.dark body, body.dark {
+/* Dark Theme Variable Overrides */
+  --bg-color: #1e1e1e;
+  --text-color: #e0e0e0;
+  --card-bg-color: #2a2a2e;
+  --border-color: #444;
+  --heading-color: #ffffff;
+  --link-color: #60a5fa; /* Brighter blue for dark */
+  --link-hover-color: #93c5fd;
+  --subtle-text-color: #b0b8c4;
+  --input-bg-color: #333;
+  --input-text-color: #e0e0e0;
+  --input-border-color: #555;
+  --input-focus-border-color: #60a5fa;
+  --input-focus-shadow-color: rgba(96, 165, 250, 0.3);
+  --placeholder-color: #777;
+  --primary-btn-bg-color: #3b82f6;
+  --primary-btn-text-color: #ffffff;
+  --primary-btn-hover-bg-color: #2563eb;
+  --primary-btn-focus-shadow-color: rgba(59, 130, 246, 0.3);
+  --secondary-btn-bg-color: #4b5563;
+  --secondary-btn-text-color: #e0e0e0;
+  --secondary-btn-hover-bg-color: #6b7280;
+  --secondary-btn-focus-shadow-color: rgba(107, 114, 128, 0.3);
+  --danger-btn-bg-color: #dc2626;
+  --danger-btn-text-color: #ffffff;
+  --danger-btn-hover-bg-color: #b91c1c;
+  --danger-btn-focus-shadow-color: rgba(220, 38, 38, 0.3);
+  --disabled-btn-bg-color: #555;
+  --disabled-btn-text-color: #999;
+  --table-bg-color: #333;
+  --table-border-color: #4a4a4f;
+  --table-header-bg-color: #444;
+  --table-header-text-color: #e5e7eb;
+  --table-row-even-bg-color: #3a3a3f;
+  --table-row-hover-bg-color: #4a4a4f;
+  --slot-card-border-color: #555;
+  --slot-card-bg-color: #333;
+  --slot-card-selected-border-color: #3b82f6;
+  --slot-card-selected-bg-color: #2c3e50;
+  --slot-card-selected-shadow-color: rgba(59, 130, 246, 0.3);
+  --slot-card-booked-border-color: #666;
+  --slot-card-booked-bg-color: #444;
+  --slot-card-strong-color: #d1d5db;
+  --tab-border-color: #444;
+  --tab-text-color: #9ca3af;
+  --tab-active-text-color: #60a5fa;
+  --tab-active-border-color: #60a5fa;
+  --tab-hover-text-color: #d1d5db;
+  --tab-hover-border-color: #555;
+  --error-text-color: #f87171;
+  --error-bg-color: rgba(239, 68, 68, 0.1);
+  --error-border-color: rgba(239, 68, 68, 0.3);
+  --success-text-color: #4ade80;
+  --success-bg-color: rgba(74, 222, 128, 0.1);
+  --success-border-color: rgba(74, 222, 128, 0.3);
+  --shadow-color: rgba(0, 0, 0, 0.2);
+}
+
+/* src/app/dashboard-styles.css */
+
 /* --- General Layout & Theme --- */
 body {
-  /* background-color: #f4f7fc; Darker background if preferred: #1a1d21; */
-  background-color: #1e1e1e; /* Dark theme background */
-  color: #e0e0e0; /* Light text for dark theme */
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  /* Use CSS Variables */
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  /* Use a font stack closer to the target screenshot */
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   line-height: 1.6;
   margin: 0;
   padding: 0;
 }
 
 main, section {
-  max-width: 1200px;
-  margin: 2rem auto;
+  /* Remove max-width to allow full-width */
+  /* max-width: 1200px; */
+  /* Adjust margin to remove auto centering, keep vertical margin */
+  width: 100%;
   padding: 1.5rem 2rem;
-  background-color: #2a2a2e; /* Slightly lighter card background */
+  background-color: var(--card-bg-color);
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); /* Adjusted shadow for dark theme */
+  box-shadow: 0 2px 8px var(--shadow-color);
 }
 
 h1, h2, h3, h4, h5, h6 {
-  color: #ffffff; /* White headings */
+  color: var(--heading-color);
   margin-top: 0;
   margin-bottom: 1rem;
   font-weight: 600;
 }
 
-h2 { font-size: 1.8rem; border-bottom: 1px solid #444; padding-bottom: 0.5rem; margin-bottom: 1.5rem;}
+h2 { font-size: 1.8rem; border-bottom: 1px solid var(--border-color); padding-bottom: 0.5rem; margin-bottom: 1.5rem;}
 h3 { font-size: 1.4rem; margin-bottom: 1rem; }
-h4 { font-size: 1.2rem; margin-bottom: 0.8rem; color: #b0b8c4; }
+h4 { font-size: 1.2rem; margin-bottom: 0.8rem; color: var(--subtle-text-color); }
 
 p {
   margin-bottom: 1rem;
 }
 
 a {
-  color: #3b82f6; /* Brighter link color */
+  color: var(--link-color);
   text-decoration: none;
   transition: color 0.2s ease;
 }
 
 a:hover {
-  color: #60a5fa;
+  color: var(--link-hover-color);
   text-decoration: underline;
 }
 
 hr {
   border: none;
-  border-top: 1px solid #444; /* Darker divider */
+  border-top: 1px solid var(--border-color);
   margin: 1.5rem 0;
 }
 
@@ -57,7 +180,7 @@ label {
   display: block;
   margin-bottom: 0.5rem;
   font-weight: 500;
-  color: #c0c5ce; /* Lighter label color */
+  color: var(--input-text-color); /* Match input text color */
 }
 
 input[type="text"],
@@ -71,10 +194,10 @@ select {
   width: 100%;
   padding: 0.8rem 1rem;
   margin-bottom: 1rem;
-  border: 1px solid #555; /* Darker border */
+  border: 1px solid var(--input-border-color);
   border-radius: 6px;
-  background-color: #333; /* Dark input background */
-  color: #e0e0e0; /* Light input text */
+  background-color: var(--input-bg-color);
+  color: var(--input-text-color);
   font-size: 1rem;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
   box-sizing: border-box; /* Include padding and border in element's total width and height */
@@ -84,14 +207,14 @@ input:focus,
 textarea:focus,
 select:focus {
   outline: none;
-  border-color: #3b82f6; /* Highlight color on focus */
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  border-color: var(--input-focus-border-color);
+  box-shadow: 0 0 0 0.2rem var(--input-focus-shadow-color);
 }
 
 /* Style placeholders */
 input::placeholder,
 textarea::placeholder {
-  color: #777; /* Lighter placeholder text */
+  color: var(--placeholder-color);
   opacity: 1;
 }
 
@@ -99,7 +222,7 @@ textarea::placeholder {
 input[type="checkbox"],
 input[type="radio"] {
   margin-right: 0.5rem;
-  accent-color: #3b82f6; /* Use theme color for check/radio */
+  accent-color: var(--link-color); /* Use link color for accent */
   vertical-align: middle;
 }
 
@@ -138,15 +261,15 @@ button,
   text-align: center;
   cursor: pointer;
   transition: background-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
-  background-color: #3b82f6; /* Primary button color */
-  color: #ffffff;
+  background-color: var(--primary-btn-bg-color);
+  color: var(--primary-btn-text-color);
   text-decoration: none; /* Remove underline from link buttons */
 }
 
 button:hover,
 .button:hover {
-  background-color: #2563eb;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  background-color: var(--primary-btn-hover-bg-color);
+  box-shadow: 0 2px 8px var(--primary-btn-focus-shadow-color);
 }
 
 button:active,
@@ -156,8 +279,8 @@ button:active,
 
 button:disabled,
 .button:disabled {
-  background-color: #555; /* Disabled button color */
-  color: #999;
+  background-color: var(--disabled-btn-bg-color);
+  color: var(--disabled-btn-text-color);
   cursor: not-allowed;
   opacity: 0.7;
 }
@@ -165,24 +288,24 @@ button:disabled,
 /* Secondary/Alternative button styles */
 button.secondary,
 .button.secondary {
-  background-color: #4b5563; /* Secondary color */
-  color: #e0e0e0;
+  background-color: var(--secondary-btn-bg-color);
+  color: var(--secondary-btn-text-color);
 }
 button.secondary:hover,
 .button.secondary:hover {
-  background-color: #6b7280;
-  box-shadow: 0 2px 8px rgba(107, 114, 128, 0.3);
+  background-color: var(--secondary-btn-hover-bg-color);
+  box-shadow: 0 2px 8px var(--secondary-btn-focus-shadow-color);
 }
 
 button.danger,
 .button.danger {
-  background-color: #dc2626; /* Danger color */
-  color: #ffffff;
+  background-color: var(--danger-btn-bg-color);
+  color: var(--danger-btn-text-color);
 }
 button.danger:hover,
 .button.danger:hover {
-  background-color: #b91c1c;
-  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+  background-color: var(--danger-btn-hover-bg-color);
+  box-shadow: 0 2px 8px var(--danger-btn-focus-shadow-color);
 }
 
 /* --- Tables --- */
@@ -190,33 +313,35 @@ table {
   width: 100%;
   border-collapse: collapse;
   margin-bottom: 1.5rem;
-  background-color: #333; /* Table background */
+  background-color: var(--table-bg-color);
   border-radius: 6px;
   overflow: hidden; /* Ensures border radius applies to content */
+  border: 1px solid var(--table-border-color);
 }
 
 th, td {
   padding: 0.9rem 1rem;
   text-align: left;
-  border-bottom: 1px solid #4a4a4f; /* Darker table border */
+  border-bottom: 1px solid var(--table-border-color);
 }
 
 th {
-  background-color: #444; /* Header background */
-  color: #e5e7eb; /* Header text color */
+  background-color: var(--table-header-bg-color);
+  color: var(--table-header-text-color);
   font-weight: 600;
   font-size: 0.9rem;
   text-transform: uppercase;
   letter-spacing: 0.5px;
+  border-bottom-width: 2px; /* Make header border slightly thicker */
 }
 
 /* Alternating row colors */
 tbody tr:nth-child(even) {
-  background-color: #3a3a3f; /* Slightly different background for even rows */
+  background-color: var(--table-row-even-bg-color);
 }
 
 tbody tr:hover {
-  background-color: #4a4a4f; /* Hover effect */
+  background-color: var(--table-row-hover-bg-color);
 }
 
 /* Table actions */
@@ -234,25 +359,25 @@ td .actions button {
 
 /* Available Slots Cards (from ClientBooking.tsx) */
 .slot-card {
-  border: 2px solid #555;
+  border: 1px solid var(--slot-card-border-color);
   padding: 1rem;
   border-radius: 6px;
-  background-color: #333;
+  background-color: var(--slot-card-bg-color);
   transition: all 0.2s ease;
   margin-bottom: 1rem; /* Add space between cards */
 }
 
 .slot-card.selected {
-  border-color: #3b82f6;
-  background-color: #2c3e50; /* Slightly different selected background */
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  border-color: var(--slot-card-selected-border-color);
+  background-color: var(--slot-card-selected-bg-color);
+  box-shadow: 0 0 0 2px var(--slot-card-selected-shadow-color);
 }
 
 .slot-card.booked {
-  opacity: 0.5;
+  opacity: 0.65; /* Adjusted opacity */
   cursor: not-allowed;
-  border-color: #666;
-  background-color: #444;
+  border-color: var(--slot-card-booked-border-color);
+  background-color: var(--slot-card-booked-bg-color);
 }
 
 .slot-card p {
@@ -262,23 +387,23 @@ td .actions button {
     margin-bottom: 0;
 }
 .slot-card strong {
-    color: #d1d5db;
+    color: var(--slot-card-strong-color);
 }
 
 /* Tab Navigation */
 .tab-navigation {
   display: flex;
-  border-bottom: 2px solid #444;
+  border-bottom: 1px solid var(--tab-border-color);
   margin-bottom: 1.5rem;
 }
 
 .tab-navigation button {
   padding: 0.8rem 1.5rem;
-  margin-bottom: -2px; /* Overlap border */
+  margin-bottom: -1px; /* Overlap border */
   border: none;
   border-bottom: 2px solid transparent;
   background: none;
-  color: #9ca3af;
+  color: var(--tab-text-color);
   font-size: 1rem;
   font-weight: 500;
   cursor: pointer;
@@ -286,38 +411,39 @@ td .actions button {
 }
 
 .tab-navigation button.active {
-  color: #3b82f6;
-  border-bottom-color: #3b82f6;
+  color: var(--tab-active-text-color);
+  border-bottom-color: var(--tab-active-border-color);
   font-weight: 600;
 }
 
 .tab-navigation button:hover:not(.active) {
-  color: #d1d5db;
+  color: var(--tab-hover-text-color);
+  border-bottom-color: var(--tab-hover-border-color);
 }
 
 /* Dashboard Sections / Cards */
 .dashboard-section {
-    background-color: #2a2a2e;
+    background-color: var(--card-bg-color);
     padding: 1.5rem;
     border-radius: 8px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    box-shadow: 0 2px 8px var(--shadow-color);
     margin-bottom: 2rem;
 }
 
 /* Error/Success Messages */
 .error-message {
-    color: #f87171; /* Red for errors */
-    background-color: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: var(--error-text-color);
+    background-color: var(--error-bg-color);
+    border: 1px solid var(--error-border-color);
     padding: 0.8rem 1rem;
     border-radius: 6px;
     margin-bottom: 1rem;
 }
 
 .success-message {
-    color: #4ade80; /* Green for success */
-    background-color: rgba(74, 222, 128, 0.1);
-    border: 1px solid rgba(74, 222, 128, 0.3);
+    color: var(--success-text-color);
+    background-color: var(--success-bg-color);
+    border: 1px solid var(--success-border-color);
     padding: 0.8rem 1rem;
     border-radius: 6px;
     margin-bottom: 1rem;
@@ -356,4 +482,76 @@ td .actions button {
   th, td {
     padding: 0.7rem 0.8rem;
   }
+}
+
+/* --- Header Styles --- */
+.page-header {
+  background-color: var(--card-bg-color); /* Use card background for header */
+  padding: 1rem 2rem; /* Consistent padding */
+  border-bottom: 1px solid var(--border-color);
+  /* Remove any potential max-width from parent affecting this */
+  width: 100%;
+  box-shadow: 0 2px 8px var(--shadow-color);
+  box-sizing: border-box; /* Include padding/border in width */
+  /* Add flex to align controls */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.page-header h1 {
+  margin-bottom: 0; /* Remove space below title */
+  margin-top: 0;
+  border-bottom: none; /* Remove default h border if any */
+}
+
+.page-header .header-controls { /* Target the new wrapper div */
+  display: flex;
+  align-items: center;
+  gap: 1.5rem; /* Space between user info and theme toggle */
+}
+
+.page-header .user-info {
+  display: flex;
+  align-items: center;
+  /* justify-content: space-between; Removed, handled by header-controls */
+  gap: 1rem;
+}
+
+.page-header .user-info p {
+  margin-bottom: 0; /* Remove default paragraph margin */
+  color: var(--subtle-text-color);
+}
+
+.page-header .user-info button,
+.page-header .theme-toggle { /* Style both buttons similarly */
+  padding: 0.5rem 1rem; /* Slightly smaller button */
+  font-size: 0.9rem;
+  /* Ensure secondary button styles apply */
+  background-color: var(--secondary-btn-bg-color);
+  color: var(--secondary-btn-text-color);
+}
+
+.page-header .user-info button:hover,
+.page-header .theme-toggle:hover {
+  background-color: var(--secondary-btn-hover-bg-color);
+  box-shadow: 0 2px 8px var(--secondary-btn-focus-shadow-color);
+}
+
+/* Theme Icon Toggle Specific Styles */
+.theme-icon-toggle {
+  background: none;
+  border: none;
+  color: var(--text-color);
+  font-size: 1.5rem; /* Make icon larger */
+  padding: 0.25rem; /* Minimal padding */
+  cursor: pointer;
+  line-height: 1; /* Ensure icon is vertically centered */
+  border-radius: 4px; /* Slight rounding */
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.theme-icon-toggle:hover {
+  background-color: var(--table-row-hover-bg-color); /* Subtle hover background */
+  color: var(--link-color);
 }

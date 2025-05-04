@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { createClient } from '@/utils/supabase/client';
 import type { User } from '@supabase/supabase-js';
+// import { useRouter } from 'next/navigation'; // Removed unused import
 import styles from "./page.module.css";
 import { login, signup } from './actions';
 import AuthForm from '@/components/AuthForm';
@@ -10,21 +11,27 @@ import AdminDashboard from '@/components/admin/AdminDashboard';
 import StaffDashboard from '@/components/staff/StaffDashboard';
 import ClientDashboard from '@/components/client/ClientDashboard';
 
+// Define UserRole type locally
+type UserRole = 'admin' | 'staff' | 'client' | null | 'loading';
+
 export default function Home() {
   const [user, setUser] = useState<User | null>(null);
-  const [role, setRole] = useState<string | null>(null);
+  // const [profile, setProfile] = useState<UserProfile | null>(null); // Removed unused state
+  const [role, setRole] = useState<UserRole>('loading'); // Use defined UserRole type
+  const [theme, setTheme] = useState('light'); // Add theme state, default light
   const [isLoadingInitial, setIsLoadingInitial] = useState(true);
   const [isLoadingRole, setIsLoadingRole] = useState(false);
-  const [error, setError] = useState<string | null>(null); // Keep error for auth/role fetching
+  // const [error, setError] = useState<string | null>(null); // Removed unused error state
   const [firstName, setFirstName] = useState<string | null>(null);
   const [lastName, setLastName] = useState<string | null>(null);
   const [businessType, setBusinessType] = useState<string | null>(null); // <-- State remains
   const supabase = createClient();
+  // const router = useRouter(); // Removed unused variable
 
   const fetchUserRole = async (userId: string) => {
     setIsLoadingRole(true);
     setRole(null);
-    setError(null); // Clear previous errors when fetching role
+    // const [error, setError] = useState<string | null>(null); // Removed unused error state
     try {
       // Fetch from staff, don't assume single row
       const { data: staffData, error: staffError } = await supabase
@@ -60,9 +67,9 @@ export default function Home() {
       return null;
     } catch (err) {
       // Log unexpected errors (like connection issues, RLS problems)
-      const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.';
+      // const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred.'; // Removed unused variable
       console.error("Error fetching user role:", err);
-      setError(`Error fetching user role: ${errorMessage}`); // Set error state
+      // const [error, setError] = useState<string | null>(null); // Removed unused error state
       return null;
     } finally {
       setIsLoadingRole(false);
@@ -70,6 +77,14 @@ export default function Home() {
   };
 
   // Removed fetchAllUsers function
+
+  // Effect 0: Load theme from local storage on mount
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('theme') || 'light';
+    setTheme(savedTheme);
+    // Add class to body for global styling access if needed, though page-level is often sufficient
+    document.body.className = savedTheme;
+  }, []);
 
   // Effect 1: Check auth state and fetch profile/affiliations
   useEffect(() => {
@@ -223,7 +238,7 @@ export default function Home() {
       if (newUser?.id !== previousUser?.id) {
           console.log('Auth state changed, resetting role and profile.');
           setRole(null);
-          setError(null);
+          // const [error, setError] = useState<string | null>(null); // Removed unused error state
           setIsLoadingRole(false);
           setFirstName(null); // Clear name state
           setLastName(null); // Clear name state
@@ -258,15 +273,23 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, role, isLoadingRole]); // Depend on user object, role, and loading state
 
+  // Function to toggle theme
+  const toggleTheme = () => {
+    const newTheme = theme === 'light' ? 'dark' : 'light';
+    setTheme(newTheme);
+    localStorage.setItem('theme', newTheme);
+    document.body.className = newTheme; // Update body class as well
+  };
+
   const handleLogout = async () => {
     const { error: signOutError } = await supabase.auth.signOut(); // Renamed error variable
     if (signOutError) {
       console.error('Error logging out:', signOutError);
-      setError('Failed to log out.');
-    } else {
-      // No need to clear state manually, onAuthStateChange handles it
+      // const [error, setError] = useState<string | null>(null); // Removed unused error state
        // Clear the URL parameters after successful logout (optional, good practice)
        window.history.replaceState({}, '', '/');
+    } else {
+      // No need to clear state manually, onAuthStateChange handles it
     }
   };
 
@@ -278,18 +301,15 @@ export default function Home() {
     return user?.email || 'User'; // Fallback to email or generic 'User'
   };
 
-  if (isLoadingInitial) {
-    return <div>Loading application...</div>; // More descriptive loading message
-  }
-
-  return (
-    <div className={styles.page}>
-      <header>
-        <h1>Booking & Accounts</h1>
-        {user ? (
-          <div>
+  // Wrap header content in a div with a class for styling
+  const renderHeader = () => (
+    <div className="page-header">
+      <h1>Bonnies</h1>
+      <div className="header-controls">
+        {user && (
+          <div className="user-info">
             <p>
-              Welcome, {getUserDisplayName()}!
+              Welcome, {getUserDisplayName()}
               {isLoadingRole ? (
                 <span> (Checking role...)</span>
               ) : (
@@ -300,14 +320,29 @@ export default function Home() {
               {businessType && <span> ({businessType})</span>}
               {/* --- END ADDED --- */}
             </p>
-            <button onClick={handleLogout}>Logout</button>
+            <button onClick={handleLogout} className="button secondary">Logout</button>
           </div>
-        ) : (
-          <p>Please log in or sign up.</p>
         )}
-        {/* Display auth/role errors in the header */}
-        {error && <p className={styles.error}>Error: {error}</p>}
-      </header>
+        <button
+          onClick={toggleTheme}
+          className="theme-icon-toggle"
+          title={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
+          aria-label={`Switch to ${theme === 'light' ? 'Dark' : 'Light'} Mode`}
+        >
+          {theme === 'light' ? '🌙' : '☀️'}
+        </button>
+      </div>
+    </div>
+  );
+
+  if (isLoadingInitial) {
+    return <div>Loading application...</div>; // More descriptive loading message
+  }
+
+  return (
+    <div className={`${styles.page} ${theme}`}>
+      {/* Render header outside the form/dashboard logic if user might be logged in */}
+      {renderHeader()}
 
       {!user && !isLoadingInitial && ( // Show AuthForm only when not logged in and initial load is done
         <AuthForm login={login} signup={signup} />

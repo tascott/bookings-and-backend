@@ -7,12 +7,13 @@
 
 .sidebarNav {
   width: 220px; /* Adjust width as needed */
-  background-color: #2a2a2e; /* Example dark sidebar background */
+  background-color: var(--table-header-bg-color); /* Use a slightly off-white/gray variable */
   padding: 1.5rem 1rem;
-  border-right: 1px solid #444;
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  box-shadow: 0 2px 8px var(--shadow-color);
 }
 
 .sidebarButton {
@@ -20,7 +21,7 @@
   width: 100%;
   padding: 0.8rem 1rem;
   background-color: transparent;
-  color: #d1d5db; /* Example text color */
+  color: var(--subtle-text-color); /* Use subtle text color */
   border: none;
   border-radius: 4px;
   text-align: left;
@@ -30,20 +31,21 @@
 }
 
 .sidebarButton:hover {
-  background-color: #3a3a3f;
-  color: #ffffff;
+  background-color: var(--table-row-hover-bg-color); /* Use table hover background */
+  color: var(--text-color); /* Use main text color */
 }
 
 .sidebarButton.active {
-  background-color: #3b82f6; /* Example active background */
-  color: #ffffff;
+  background-color: var(--primary-btn-bg-color); /* Use primary color */
+  color: var(--primary-btn-text-color);
   font-weight: 600;
 }
 
 .mainContent {
   flex: 1; /* Takes up remaining space */
-  padding: 1.5rem 2rem;
+  padding: 1.5rem 2rem; /* Match padding from dashboard-styles */
   overflow-y: auto; /* Allow content to scroll if needed */
+  background-color: var(--bg-color); /* Ensure main content bg matches body */
 }
 
 /* Adjustments for smaller screens if needed */
@@ -55,7 +57,7 @@
   .sidebarNav {
     width: 100%;
     border-right: none;
-    border-bottom: 1px solid #444;
+    border-bottom: 1px solid var(--border-color);
     flex-direction: row;
     overflow-x: auto;
     padding: 0.5rem;
