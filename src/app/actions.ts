@@ -37,13 +37,14 @@ export async function signup(formData: FormData) {
   const firstName = formData.get('firstName') as string
   const lastName = formData.get('lastName') as string
   const phone = formData.get('phone') as string
+  const businessType = formData.get('businessType') as string
   // Get optional pet name
   // const petName = formData.get('petName') as string | null
 
   const supabase = await createClient()
 
   // Basic server-side validation
-  if (!email || !password || !firstName || !lastName || !phone) {
+  if (!email || !password || !firstName || !lastName || !phone || !businessType) {
     // Redirect back to signup with an error message
     // Consider a more specific error message
     return redirect('/?message=Missing required fields for signup.')
@@ -54,6 +55,7 @@ export async function signup(formData: FormData) {
     first_name: firstName,
     last_name: lastName,
     phone: phone,
+    business_type: businessType,
     // Include pet_name only if provided and the trigger handles it
     // pet_name: petName && petName.trim() !== '' ? petName.trim() : undefined
   }

@@ -61,9 +61,14 @@ export default function AuthForm({ login, signup }: AuthFormProps) {
                             <input id="phone" name="phone" type="tel" required placeholder="(xxx) xxx-xxxx" />
                         </div>
 
-                        <div style={{ marginTop: '1rem' }}> {/* Added margin for spacing */}
-                            <label htmlFor="petName">Pet&apos;s Name (Optional):</label>
-                            <input id="petName" name="petName" type="text" placeholder="Fido" />
+                        <div style={{ marginTop: '1rem' }}>
+                            <label htmlFor="businessType">Business Type: (will auto populate in future)</label>
+                            <select id="businessType" name="businessType" required style={{ width: '100%', padding: '0.5rem', marginTop: '0.25rem', boxSizing: 'border-box' }}>
+                                <option value="" disabled>Select type...</option>
+                                <option value="Pet Services">Pet Services</option>
+                                <option value="Field Hire">Field Hire</option>
+                                {/* Add other business types as needed */}
+                            </select>
                         </div>
                     </>
                 )}

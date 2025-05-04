@@ -11,6 +11,7 @@ import { Service } from '@/types';
 // Define props for the client dashboard - Only needs user now
 interface ClientDashboardProps {
   user: User;
+  businessType?: string | null; // <-- Add optional businessType prop
 }
 
 // Define profile type including new fields
@@ -25,6 +26,7 @@ interface ProfileData {
 
 export default function ClientDashboard({
   user,
+  businessType, // <-- Destructure businessType
 }: ClientDashboardProps) {
   // Profile state using the new interface
   const [profile, setProfile] = useState<ProfileData | null>(null);
@@ -43,8 +45,6 @@ export default function ClientDashboard({
 
   // Add state for services
   const [services, setServices] = useState<Service[]>([]);
-  const [isLoadingServices, setIsLoadingServices] = useState(false);
-  const [servicesError, setServicesError] = useState<string | null>(null);
 
   // Fetch profile on mount
   useEffect(() => {
@@ -67,8 +67,6 @@ export default function ClientDashboard({
 
   // Fetch services on mount
   const fetchServices = useCallback(async () => {
-    setIsLoadingServices(true);
-    setServicesError(null);
     try {
       // Clients likely fetch all active services
       const response = await fetch('/api/services?active=true'); // Assuming an ?active=true filter exists or is added
@@ -78,10 +76,7 @@ export default function ClientDashboard({
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to load services';
       console.error("Error fetching services:", errorMessage);
-      setServicesError(errorMessage);
       setServices([]); // Set to empty array on error
-    } finally {
-      setIsLoadingServices(false);
     }
   }, []);
 
@@ -135,7 +130,7 @@ export default function ClientDashboard({
   };
 
   // Define tabs for the client dashboard
-  const clientTabs = [
+  const baseClientTabs = [
     {
       id: 'book',
       label: 'Book Services',
@@ -143,8 +138,6 @@ export default function ClientDashboard({
         // Pass the fetched services and loading/error states
         <ClientBooking
             services={services}
-            isLoadingServices={isLoadingServices}
-            servicesError={servicesError}
         />
       ),
     },
@@ -228,6 +221,14 @@ export default function ClientDashboard({
       ),
     },
   ];
+
+  // Filter tabs based on businessType
+  const clientTabs = baseClientTabs.filter(tab => {
+    if (tab.id === 'pets' && businessType === 'Field Hire') {
+      return false; // Hide 'My Pets' for Field Hire
+    }
+    return true; // Show all other tabs
+  });
 
   return (
     <>

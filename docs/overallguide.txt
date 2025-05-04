@@ -45,13 +45,19 @@ Project Summary for AI Assistant (booking-and-accounts)
 
 **Database Schema Summary:**
 - **auth.users:** Managed by Supabase Auth. Columns: id (uuid, PK), email, etc.
-- **profiles:** user_id (uuid, PK, FK to users.id), first_name, last_name, phone.
+- **profiles:** user_id (uuid, PK, FK to users.id), first_name, last_name, phone, email_allow_promotional, email_allow_informational. (No business_type).
 - **clients:** id (serial PK), user_id (uuid, FK to profiles.user_id), email, default_staff_id (integer, FK to staff.id). (No profile fields directly).
 - **staff:** id (serial PK), user_id (uuid, FK to profiles.user_id), role (admin/staff), notes, default_vehicle_id (bigint, FK to vehicles.id).
 - **staff_availability:** id (bigint PK), staff_id (integer, FK to staff.id), start_time, end_time, days_of_week (integer[]), specific_date (date), is_available (boolean), created_at, updated_at.
+- **user_business_affiliations:** user_id (uuid, PK, FK to auth.users), business_type (TEXT, PK), created_at (timestamptz). Links users to business areas.
 - **sites, fields, services, service_availability, bookings, booking_clients, pets, booking_pets, payments, vehicles:** See below for details.
 
 **Table Details:**
+- **profiles:** (See Schema Summary) - Does not contain `business_type`. Names/phone stored here.
+- **user_business_affiliations:**
+    - user_id (uuid, PK, FK to users.id)
+    - business_type (TEXT, PK) - e.g., 'Pet Services', 'Field Hire'
+    - created_at (timestamptz)
 - **sites:** id, name, address, is_active
 - **fields:** id, site_id (FK), name, field_type
 - **services:** id, name, description, created_at, requires_field_selection, default_price, service_type (TEXT NOT NULL CHECK(service_type IN ('Field Hire', 'Daycare')))
@@ -77,6 +83,7 @@ Project Summary for AI Assistant (booking-and-accounts)
 
 **Foreign Key Relationships:**
 - profiles.user_id → users.id
+- user_business_affiliations.user_id → auth.users.id
 - clients.user_id → profiles.user_id
 - clients.default_staff_id → staff.id
 - staff.user_id → profiles.user_id
@@ -186,7 +193,12 @@ Project Summary for AI Assistant (booking-and-accounts)
   - `service-availability` endpoints now handle `use_staff_vehicle_capacity` (boolean) instead of `capacity_type` and require `field_ids` (array). No longer uses `base_capacity`.
 
 **Component/File Structure:**
-- **src/app/page.tsx:** Main entry point. Handles authentication state and renders the correct dashboard (Admin, Staff, Client) based on user role. Does not manage application-wide data state.
+- **src/app/page.tsx:** Main entry point.
+  - Handles authentication state.
+  - Fetches user profile (`profiles`) and business affiliations (`user_business_affiliations`).
+  - Determines user role (`staff`, `client`, or `admin`).
+  - Determines the *current* business context. **For now, it prioritizes 'Pet Services' if the user is affiliated.** Passes this context (`businessType`) to the relevant dashboard.
+  - Renders the correct dashboard (Admin, Staff, Client) based on role.
 - **src/components/admin/AdminDashboard.tsx:** Container for admin features. Fetches and manages state for users, sites, fields, services, vehicles, bookings, availability etc., needed for its child components (UserManagement, SiteFieldManagement, ServiceManagement...). Contains action handlers.
 - **src/components/admin/UserManagement.tsx:** View staff/admin, assign roles/vehicles.
 - **src/components/admin/ClientManagement.tsx:** List/search clients (clients only), assign default staff, manage client info/pets via modal. Fetches its own client data.
@@ -194,7 +206,11 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **src/components/admin/ServiceManagement.tsx:** Manage services. Includes dropdown for `service_type` on add/edit and filtering by type.
 - **src/components/admin/SiteFieldManagement.tsx:** Manage sites/fields.
 - **src/components/admin/ServiceAvailabilityManagement.tsx:** Manage service availability rules. UI updated to use `use_staff_vehicle_capacity` checkbox instead of `capacity_type`; field selection is always present. No longer uses `base_capacity` field.
-- **src/components/client/ClientDashboard.tsx:** Container for client features. Fetches and manages state for services, profile, etc., needed for its child components.
+- **src/components/client/ClientDashboard.tsx:** Container for client features.
+  - Receives `user` and the current `businessType` context as props.
+  - Fetches data relevant to the client view (e.g., profile details, services).
+  - Uses the `businessType` prop to conditionally render UI elements (e.g., hides 'My Pets' navigation if `businessType` is 'Field Hire').
+  - Contains child components like `ClientBooking`, `PetManagement`, `MyBookings`.
 - **src/components/client/ClientBooking.tsx:** Client booking UI.
   - Fetches availability using `calculate_available_slots` RPC (which now uses 'Europe/London').
   - Displays slots in calendar and list format.
@@ -211,13 +227,22 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **src/utils/supabase/client.ts, server.ts, admin.ts:** Supabase client initializers.
 
 **SQL/Data Insertion Best Practices:**
-- Insert users into `auth.users` first, then `profiles`, then `clients` or `staff`.
+- User signs up via `AuthForm`.
+- `signup` server action calls `supabase.auth.signUp`, passing `first_name`, `last_name`, `phone`, and `business_type` (from the form dropdown) in `options.data`.
+- `handle_new_user` trigger on `auth.users` table:
+  - Inserts into `profiles` using metadata (`first_name`, `last_name`, `phone`).
+  - Inserts into `clients` using `user_id` and `email`.
+  - Inserts into `user_business_affiliations` using `user_id` and `business_type` from metadata.
 - Only insert columns that exist in the table.
-- Use `ON CONFLICT DO NOTHING` for idempotency.
+- Use `ON CONFLICT DO NOTHING` for idempotency where appropriate.
 - `clients` table does not have `first_name`, `last_name`, `phone`, `created_at`.
 - `staff` table gets names/phone via `profiles` join.
 
 **Best Practices for LLMs/Developers:**
+- **Multi-Frontend Architecture:** The system is designed for multiple frontends (e.g., `pet-services.app`, `field-hire.app`) sharing a single Supabase backend.
+- **User Affiliation:** Use the `user_business_affiliations` table to check which business areas a user has access to.
+- **Business Context:** Each frontend application is responsible for establishing its "business context" (e.g., 'Pet Services' or 'Field Hire'). UI elements and logic should be filtered based on both the user's affiliations and the current context.
+- **Shared Resources:** The shared database allows resources like `fields` to be booked by users from different business contexts, with availability correctly tracked.
 - Use `/api/clients` for client-only lists/search in UI.
 - Use `/api/users` for role management and mixed user lists.
 - Check schema and this document before writing SQL or API code.

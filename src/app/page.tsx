@@ -18,6 +18,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null); // Keep error for auth/role fetching
   const [firstName, setFirstName] = useState<string | null>(null);
   const [lastName, setLastName] = useState<string | null>(null);
+  const [businessType, setBusinessType] = useState<string | null>(null); // <-- State remains
   const supabase = createClient();
 
   const fetchUserRole = async (userId: string) => {
@@ -70,37 +71,62 @@ export default function Home() {
 
   // Removed fetchAllUsers function
 
-  // Effect 1: Check auth state and fetch profile
+  // Effect 1: Check auth state and fetch profile/affiliations
   useEffect(() => {
-    const checkUserAndProfile = async (currentUser: User | null) => {
+    // --- UPDATED: Function to fetch profile and affiliations ---
+    const fetchProfileAndAffiliations = async (currentUser: User | null) => {
        if (currentUser) {
-         // Fetch profile details after getting user
+         // Fetch profile details (first name, last name)
          const { data: profile, error: profileError } = await supabase
            .from('profiles')
-           .select('first_name, last_name')
+           .select('first_name, last_name') // Removed business_type
            .eq('user_id', currentUser.id)
            .single();
 
          if (profileError) {
            console.error("Error fetching profile:", profileError);
-           // Don't block rendering, just won't have name
            setFirstName(null);
            setLastName(null);
          } else if (profile) {
            setFirstName(profile.first_name);
            setLastName(profile.last_name);
          } else {
-           // Profile might not exist yet
            console.warn(`Profile not found for user ${currentUser.id}`);
            setFirstName(null);
            setLastName(null);
          }
+
+         // Fetch business affiliations
+         const { data: affiliations, error: affiliationError } = await supabase
+           .from('user_business_affiliations')
+           .select('business_type')
+           .eq('user_id', currentUser.id);
+
+         if (affiliationError) {
+           console.error("Error fetching business affiliations:", affiliationError);
+           setBusinessType(null);
+         } else if (affiliations && affiliations.length > 0) {
+           // Prioritize 'Pet Services' for this app's context
+           const hasPetServices = affiliations.some(aff => aff.business_type === 'Pet Services');
+           if (hasPetServices) {
+             setBusinessType('Pet Services');
+           } else {
+             // Fallback if no 'Pet Services' (shouldn't happen for this app)
+             setBusinessType(affiliations[0].business_type);
+           }
+         } else {
+           console.warn(`No business affiliations found for user ${currentUser.id}`);
+           setBusinessType(null);
+         }
+
        } else {
-         // No user, clear profile state
+         // No user, clear profile and affiliation state
          setFirstName(null);
          setLastName(null);
+         setBusinessType(null);
        }
     };
+    // --- END UPDATED FUNCTION ---
 
     // Initial check
     supabase.auth.getUser().then(({ data: { user }, error: userError }) => {
@@ -114,9 +140,11 @@ export default function Home() {
                 console.log("Initial load: No active session found.");
             }
         }
-        checkUserAndProfile(user).finally(() => {
-            setIsLoadingInitial(false); // Set initial loading false after user and profile check
+        // --- Use updated function ---
+        fetchProfileAndAffiliations(user).finally(() => {
+            setIsLoadingInitial(false);
         });
+        // --- END ---
     });
 
 
@@ -197,8 +225,12 @@ export default function Home() {
           setRole(null);
           setError(null);
           setIsLoadingRole(false);
-          // Fetch profile for the new user or clear it
-          checkUserAndProfile(newUser);
+          setFirstName(null); // Clear name state
+          setLastName(null); // Clear name state
+          setBusinessType(null); // Clear business type state
+          // --- Use updated function ---
+          fetchProfileAndAffiliations(newUser);
+          // --- END ---
       } else {
           // If only session refreshed, user is the same, don't reset role/profile
           console.log('Auth session refreshed, user unchanged.');
@@ -264,6 +296,9 @@ export default function Home() {
                  // Display role or indicate if no role assigned
                 role ? <span> (Role: {role})</span> : <span> (Role not assigned)</span>
               )}
+              {/* --- ADDED: Display Business Type --- */}
+              {businessType && <span> ({businessType})</span>}
+              {/* --- END ADDED --- */}
             </p>
             <button onClick={handleLogout}>Logout</button>
           </div>
@@ -303,6 +338,7 @@ export default function Home() {
                  // Pass only necessary props, ClientDashboard will fetch its own data
                 <ClientDashboard
                   user={user}
+                  businessType={businessType}
                   // Removed props: services
                 />
               )}

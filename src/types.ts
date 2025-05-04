@@ -90,12 +90,14 @@ export type Pet = {
 };
 
 // Profile type
-export type Profile = {
+export interface Profile {
 	user_id: string;
-	first_name: string;
-	last_name: string;
-	phone: string;
-};
+	first_name: string | null;
+	last_name: string | null;
+	phone: string | null;
+	email_allow_promotional?: boolean | null;
+	email_allow_informational?: boolean | null;
+}
 
 // Client type
 export type Client = {
