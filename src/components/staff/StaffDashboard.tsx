@@ -9,6 +9,14 @@ import type { User } from '@supabase/supabase-js';
 import type { Booking, Service, Client, Pet } from '@/types';
 import CalendarView, { CalendarEvent } from '@/components/shared/CalendarView'; // Import CalendarView and CalendarEvent
 import Modal from '@/components/shared/Modal'; // Import the Modal component
+import { startOfDay, isSameDay } from 'date-fns'; // Keep for filtering Today's Bookings
+
+// Define a type for the data stored in the CalendarEvent resource
+// This helps with type safety when accessing it later
+interface SlotResource {
+    bookings: Booking[];
+    timeKey: string;
+}
 
 // Define a type for the client data we expect for this view
 // (Subset of what the API returns, excluding nested/redundant fields)
@@ -23,6 +31,42 @@ type StaffAssignedClient = Omit<Client, 'profiles' | 'staff' | 'default_staff_na
 interface StaffDashboardProps {
   user: User;
 }
+
+// --- Time/Date Formatting Helpers (Simplified) ---
+
+// Formatter for time slots - Extract HH:mm
+const formatTime = (isoString: string): string => {
+    if (!isoString || !isoString.includes('T')) return 'N/A';
+    try {
+        const timePart = isoString.split('T')[1];
+        return timePart.substring(0, 5); // Get HH:mm
+    } catch (e) {
+        console.error("Error extracting time:", isoString, e);
+        return 'Invalid Time';
+    }
+};
+
+// Simple date formatter for display - Extract YYYY-MM-DD
+const formatDate = (isoString: string): string => {
+    if (!isoString || !isoString.includes('T')) return 'Invalid Date';
+    try {
+        return isoString.split('T')[0];
+    } catch {
+        return 'Invalid Date';
+    }
+};
+
+// Helper to create a consistent time slot key for grouping calendar events
+const getTimeSlotKey = (booking: Booking): string => {
+    // Key includes Date and HH:mm-HH:mm for calendar grouping
+    return `${formatDate(booking.start_time)} ${formatTime(booking.start_time)} - ${formatTime(booking.end_time)}`;
+};
+
+// Helper to format date and time together for display (e.g., in modal)
+const formatDateTimeForDisplay = (isoString: string): string => {
+    if (!isoString) return 'N/A';
+    return `${formatDate(isoString)} ${formatTime(isoString)}`;
+};
 
 export default function StaffDashboard({
   user,
@@ -55,9 +99,10 @@ export default function StaffDashboard({
   const [isLoadingCalendar, setIsLoadingCalendar] = useState(false); // Loading state for calendar-specific data if needed
   const [calendarError, setCalendarError] = useState<string | null>(null); // Error state for calendar data fetching
 
-  // === State for Booking Details Modal ===
-  const [isBookingModalOpen, setIsBookingModalOpen] = useState(false);
-  const [selectedBookingForModal, setSelectedBookingForModal] = useState<Booking | null>(null);
+  // === State for Booking Details Modal - UPDATED ===
+  const [isSlotModalOpen, setIsSlotModalOpen] = useState(false); // Renamed
+  const [selectedSlotBookings, setSelectedSlotBookings] = useState<Booking[] | null>(null); // Renamed and typed as array
+  const [selectedSlotTimeKey, setSelectedSlotTimeKey] = useState<string | null>(null); // Store the slot time key for the modal title
 
   // === Fetching Functions ===
   const fetchData = useCallback(async () => {
@@ -120,14 +165,11 @@ export default function StaffDashboard({
     }
   }, []);
 
-  // === Placeholder Fetch Function for Calendar Data (e.g., staff schedule/bookings) ===
-  // TODO: Implement actual data fetching for staff schedule
+  // === Fetch Function for Calendar Data - Use simplified formatting ===
   const fetchCalendarData = useCallback(async () => {
     setIsLoadingCalendar(true);
     setCalendarError(null);
     try {
-      // Fetch bookings assigned to this staff member
-      // Note: Use the user.id associated with the *auth* user, which should match bookings.assigned_staff_id (UUID)
       const res = await fetch(`/api/bookings?assigned_staff_id=${user.id}`);
       if (!res.ok) {
         const errorData = await res.json();
@@ -135,21 +177,52 @@ export default function StaffDashboard({
       }
       const bookingsData: Booking[] = await res.json();
 
-      // Map the fetched bookings data to the CalendarEvent format
-      const mappedEvents: CalendarEvent[] = bookingsData.map(booking => ({
-        id: booking.id,
-        // Use service_type for the title, fallback if needed.
-        // Update this if the API returns the full service name later.
-        title: booking.service_type || 'Booking',
-        // Ensure start_time and end_time are converted to Date objects
-        start: new Date(booking.start_time),
-        end: new Date(booking.end_time),
-        resource: booking, // Attach the original booking object for potential use in handlers
-        allDay: false // Assuming bookings are not all-day events unless specified otherwise
-      }));
+      const groupedSlots = new Map<string, Booking[]>();
+      bookingsData.forEach(booking => {
+          const key = getTimeSlotKey(booking); // Uses simplified helpers
+          if (!groupedSlots.has(key)) {
+              groupedSlots.set(key, []);
+          }
+          groupedSlots.get(key)?.push(booking);
+      });
 
-      setCalendarEvents(mappedEvents); // Update state with mapped events
-      console.log(`Fetched ${mappedEvents.length} bookings for staff calendar.`);
+      const mappedEventsOrNull: (CalendarEvent | null)[] = Array.from(groupedSlots.entries()).map(([slotKey, bookingsInSlot]) => {
+          if (bookingsInSlot.length === 0) return null;
+          const firstBooking = bookingsInSlot[0];
+          const startTime = new Date(firstBooking.start_time); // For positioning
+          const endTime = new Date(firstBooking.end_time);   // For positioning
+
+          // **FIX:** Use simplified formatTime for the text display in the title
+          // const timeDisplayOptions: Intl.DateTimeFormatOptions = {
+          //     timeZone: 'Europe/London',
+          //     hour: '2-digit',
+          //     minute: '2-digit',
+          //     hour12: false // Use 24-hour format HH:mm
+          // };
+          // const timeDisplay = `${startTime.toLocaleTimeString('en-GB', timeDisplayOptions)} - ${endTime.toLocaleTimeString('en-GB', timeDisplayOptions)}`;
+          const timeDisplay = `${formatTime(firstBooking.start_time)} - ${formatTime(firstBooking.end_time)}`;
+
+          const resourceData: SlotResource = {
+              bookings: bookingsInSlot,
+              timeKey: slotKey
+          };
+
+          return {
+              id: slotKey,
+              title: `${timeDisplay} (${bookingsInSlot.length} Booking${bookingsInSlot.length > 1 ? 's' : ''})`, // Title uses HH:mm (extracted)
+              start: startTime, // Use Date object for positioning
+              end: endTime,   // Use Date object for positioning
+              resource: resourceData,
+              allDay: false
+          };
+      });
+
+      const mappedEvents: CalendarEvent[] = mappedEventsOrNull.filter(
+          (event): event is CalendarEvent => event !== null
+      );
+
+      setCalendarEvents(mappedEvents);
+      console.log(`Fetched and grouped ${bookingsData.length} bookings into ${mappedEvents.length} calendar slots.`);
 
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to load schedule data';
@@ -159,7 +232,7 @@ export default function StaffDashboard({
     } finally {
       setIsLoadingCalendar(false);
     }
-  }, [user.id]); // Depend on user.id
+  }, [user.id]);
 
   // Fetch dashboard data on mount
   useEffect(() => {
@@ -226,22 +299,20 @@ export default function StaffDashboard({
 
   // === NEW Calendar Interaction Handlers ===
   const handleCalendarDayClick = (slotInfo: { start: Date; end: Date; }) => {
-    // This handler receives the date clicked (start and end will be the same day for single clicks)
     console.log('Calendar day clicked:', slotInfo.start);
-    // Future TODO: Implement logic, e.g., show details for that day, navigate to day view, set selected date state.
   };
 
+  // Calendar event click - UPDATED RESOURCE CHECK
   const handleCalendarEventClick = (event: CalendarEvent) => {
-    // This handler receives the specific event object clicked
-    console.log('Calendar event clicked:', event);
-    // Access original booking data via event.resource
-    // Ensure the resource is actually a Booking before setting state
-    if (event.resource && typeof event.resource === 'object' && 'start_time' in event.resource) {
-      setSelectedBookingForModal(event.resource as Booking);
-      setIsBookingModalOpen(true);
+    console.log('Calendar slot event clicked:', event);
+    // Type check the resource using the SlotResource interface
+    const resource = event.resource as SlotResource; // Assert type after checking
+    if (resource && typeof resource === 'object' && Array.isArray(resource.bookings) && typeof resource.timeKey === 'string') {
+      setSelectedSlotBookings(resource.bookings);
+      setSelectedSlotTimeKey(resource.timeKey);
+      setIsSlotModalOpen(true);
     } else {
-      console.error('Clicked calendar event resource is not a valid Booking object:', event.resource);
-      // Optionally show an error to the user
+      console.error('Clicked calendar event resource is not valid:', event.resource);
     }
   };
 
@@ -289,18 +360,31 @@ export default function StaffDashboard({
   const staffTabs = [
     {
       id: 'bookings',
-      label: 'Today\'s Bookings', // Maybe filter bookings for today?
-      content: (
-        <BookingManagement
-          role="staff"
-          bookings={bookings} // Pass local state
-          isLoadingBookings={isLoadingData} // Use consolidated loading state
-          services={services} // Pass local state
-          error={error} // Pass local state
-          refetchBookings={fetchData} // Pass main data fetcher
-          handleToggleBookingPaidStatus={handleToggleBookingPaidStatus} // Pass handler
-        />
-      ),
+      label: 'Today\'s Bookings',
+      content: (() => {
+        // Filter bookings for today before passing to the component
+        const today = startOfDay(new Date());
+        const todaysBookings = bookings.filter(booking => {
+          try {
+            return isSameDay(new Date(booking.start_time), today);
+          } catch (e) {
+            console.error("Error parsing booking start_time:", booking.start_time, e);
+            return false; // Exclude if date is invalid
+          }
+        });
+
+        return (
+          <BookingManagement
+            role="staff"
+            bookings={todaysBookings} // Pass FILTERED bookings
+            isLoadingBookings={isLoadingData} // Use consolidated loading state
+            services={services} // Pass local state
+            error={error} // Pass local state
+            refetchBookings={fetchData} // Pass main data fetcher
+            handleToggleBookingPaidStatus={handleToggleBookingPaidStatus} // Pass handler
+          />
+        );
+      })(),
     },
     {
       id: 'schedule',
@@ -308,7 +392,7 @@ export default function StaffDashboard({
       content: (
         <div>
           <h3>My Schedule</h3>
-          <p>View your assigned bookings and availability. Click on a booking for details.</p>
+          <p>View your assigned booking slots. Click on a slot for details.</p>
           {isLoadingCalendar && <p>Loading schedule...</p>}
           {calendarError && <p style={{ color: 'red' }}>Error loading schedule: {calendarError}</p>}
           {!isLoadingCalendar && !calendarError && (
@@ -397,18 +481,6 @@ export default function StaffDashboard({
     },
   ];
 
-  // Helper function to format date/time
-  const formatDateTime = (isoString: string) => {
-    if (!isoString) return 'N/A';
-    try {
-        const date = new Date(isoString);
-        return date.toLocaleString(); // Adjust format as needed
-    } catch (e) {
-        console.error("Error formatting date:", isoString, e);
-        return 'Invalid Date';
-    }
-  };
-
   // === Render ===
   return (
     <>
@@ -420,34 +492,33 @@ export default function StaffDashboard({
       {isLoadingData && <p>Loading dashboard data...</p>}
       {!isLoadingData && <SidebarNavigation tabs={staffTabs} />}
 
-      {/* Booking Details Modal */}
+      {/* Booking Details Modal - UPDATED */}
       <Modal
-        isOpen={isBookingModalOpen}
-        onClose={() => setIsBookingModalOpen(false)}
-        title="Booking Details"
+        isOpen={isSlotModalOpen} // Use updated state
+        onClose={() => setIsSlotModalOpen(false)}
+        title={`Bookings for Slot: ${selectedSlotTimeKey ? selectedSlotTimeKey : 'Details'}`} // Title uses slot key directly
       >
-        {selectedBookingForModal ? (
-          <div>
-            <p><strong>Service:</strong> {selectedBookingForModal.service_type || 'N/A'}</p>
-            {/* Attempt to display client name if available */}
-            {selectedBookingForModal.client_name && (
-              <p><strong>Client:</strong> {selectedBookingForModal.client_name}</p>
-            )}
-            {/* Attempt to display pet names if available */}
-            {selectedBookingForModal.pet_names && selectedBookingForModal.pet_names.length > 0 && (
-              <p><strong>Pets:</strong> {selectedBookingForModal.pet_names.join(', ')}</p>
-            )}
-            <p><strong>Start Time:</strong> {formatDateTime(selectedBookingForModal.start_time)}</p>
-            <p><strong>End Time:</strong> {formatDateTime(selectedBookingForModal.end_time)}</p>
-            <p><strong>Status:</strong> {selectedBookingForModal.status || 'N/A'}</p>
-            <p><strong>Paid:</strong> {selectedBookingForModal.is_paid ? 'Yes' : 'No'}</p>
-            {selectedBookingForModal.assignment_notes && (
-              <p><strong>Assignment Notes:</strong> {selectedBookingForModal.assignment_notes}</p>
-            )}
-            {/* Display raw booking data for debugging (optional) */}
-            {/* <pre style={{ fontSize: '0.8em', background: '#333', padding: '10px', borderRadius: '4px', maxHeight: '200px', overflow: 'auto' }}>
-              {JSON.stringify(selectedBookingForModal, null, 2)}
-            </pre> */}
+        {selectedSlotBookings && selectedSlotBookings.length > 0 ? (
+          <div style={{ maxHeight: '70vh', overflowY: 'auto' }}> {/* Add scroll for long lists */}
+            {selectedSlotBookings.map((booking) => (
+                <div key={booking.id} style={{ marginBottom: '1rem', paddingBottom: '1rem', borderBottom: '1px solid #444' }}>
+                    <p><strong>Booking ID:</strong> {booking.id}</p>
+                    <p><strong>Service:</strong> {booking.service_type || 'N/A'}</p>
+                    {booking.client_name && (
+                      <p><strong>Client:</strong> {booking.client_name}</p>
+                    )}
+                    {booking.pet_names && booking.pet_names.length > 0 && (
+                      <p><strong>Pets:</strong> {booking.pet_names.join(', ')}</p>
+                    )}
+                    <p><strong>Start:</strong> {formatDateTimeForDisplay(booking.start_time)}</p>
+                    <p><strong>End:</strong> {formatDateTimeForDisplay(booking.end_time)}</p>
+                    <p><strong>Status:</strong> {booking.status || 'N/A'}</p>
+                    <p><strong>Paid:</strong> {booking.is_paid ? 'Yes' : 'No'}</p>
+                    {booking.assignment_notes && (
+                      <p><strong>Assignment Notes:</strong> {booking.assignment_notes}</p>
+                    )}
+                </div>
+             ))}
           </div>
         ) : (
           <p>Loading booking details...</p>

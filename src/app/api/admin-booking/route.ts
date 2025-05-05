@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { createAdminClient } from '@/utils/supabase/admin';
+import { toZonedTime, format } from 'date-fns-tz'; // Corrected import name
 
 export async function POST(request: Request) {
     const supabase = await createClient();
@@ -95,11 +96,20 @@ export async function POST(request: Request) {
             throw new Error(`Service with ID ${inputData.service_id} not found.`);
         }
 
-        const requestedStartTime = new Date(inputData.start_time);
-        const requestedDayOfWeek = requestedStartTime.getUTCDay(); // 0 = Sun, 6 = Sat
-        const requestedDate = inputData.start_time.split('T')[0];
-        const requestedTimeStart = inputData.start_time.substring(11, 19);
-        const requestedTimeEnd = inputData.end_time.substring(11, 19);
+        // --- MODIFICATION: Convert times to London timezone before extracting parts ---
+        const londonTimeZone = 'Europe/London';
+        const requestedStartTimeUTC = new Date(inputData.start_time);
+        const requestedEndTimeUTC = new Date(inputData.end_time);
+
+        const requestedStartTimeLondon = toZonedTime(requestedStartTimeUTC, londonTimeZone);
+        // We only need the start time to determine the date and day for rule matching
+        // const requestedEndTimeLondon = toZonedTime(requestedEndTimeUTC, londonTimeZone);
+
+        const requestedDayOfWeekLondon = parseInt(format(requestedStartTimeLondon, 'i', { timeZone: londonTimeZone })); // ISO day of week (1=Mon, 7=Sun)
+        const requestedDateLondon = format(requestedStartTimeLondon, 'yyyy-MM-dd', { timeZone: londonTimeZone });
+        const requestedTimeStartLondon = format(requestedStartTimeLondon, 'HH:mm:ss', { timeZone: londonTimeZone });
+        const requestedTimeEndLondon = format(requestedEndTimeUTC, 'HH:mm:ss', { timeZone: londonTimeZone }); // Use original UTC end time for consistency? Or London? Let's stick to London for comparison.
+        // --- END MODIFICATION ---
 
         // Fetch potentially matching rules
         const { data: potentialRules, error: ruleFetchError } = await supabaseAdmin
@@ -111,15 +121,32 @@ export async function POST(request: Request) {
         if (ruleFetchError) throw new Error(`Error fetching availability rules: ${ruleFetchError.message}`);
         if (!potentialRules || potentialRules.length === 0) throw new Error('No active availability rules found for this service.');
 
-        // Find the exact rule matching date/time
+        // Find the exact rule matching date/time (using London time parts)
         const availabilityRule = potentialRules.find(rule => {
+             // --- MODIFICATION: Compare using London date/day ---
             const dateOrDayMatch = (
-                (rule.specific_date && rule.specific_date === requestedDate) ||
-                (!rule.specific_date && rule.days_of_week && rule.days_of_week.includes(requestedDayOfWeek))
+                (rule.specific_date && rule.specific_date === requestedDateLondon) ||
+                (!rule.specific_date && rule.days_of_week && rule.days_of_week.includes(requestedDayOfWeekLondon))
             );
-            if (!dateOrDayMatch) return false;
+            if (!dateOrDayMatch) {
+                 console.log(`Admin Booking Rule ${rule.id} Skipped: Date/Day mismatch (Rule Date: ${rule.specific_date}, Rule Days: ${rule.days_of_week}, Req London Date: ${requestedDateLondon}, Req London Day: ${requestedDayOfWeekLondon})`);
+                 return false;
+            }
+             // --- END MODIFICATION ---
+
+             // --- MODIFICATION: Compare using London time ---
             // Check time match: requested slot should be within the rule's time
-            return requestedTimeStart >= rule.start_time && requestedTimeEnd <= rule.end_time;
+            // Assuming rule times are stored as HH:MM or HH:MM:SS
+             const ruleStartTime = rule.start_time.length === 5 ? rule.start_time + ':00' : rule.start_time;
+             const ruleEndTime = rule.end_time.length === 5 ? rule.end_time + ':00' : rule.end_time;
+             const timeMatch = requestedTimeStartLondon >= ruleStartTime && requestedTimeEndLondon <= ruleEndTime;
+            if (!timeMatch) {
+                 console.log(`Admin Booking Rule ${rule.id} Skipped: Time mismatch (Rule Start: ${ruleStartTime}, Rule End: ${ruleEndTime}, Req London Start: ${requestedTimeStartLondon}, Req London End: ${requestedTimeEndLondon})`);
+                return false;
+            }
+             // --- END MODIFICATION ---
+             console.log(`Admin Booking Rule ${rule.id} Matched.`);
+            return true;
         });
 
         if (!availabilityRule) {

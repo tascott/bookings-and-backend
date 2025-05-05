@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useCallback, FormEvent } from 'react';
+import React, { useState, useCallback, FormEvent, useMemo } from 'react';
 import styles from "@/app/page.module.css"; // Adjust path as needed
 import TabNavigation from '@/components/TabNavigation'; // Import TabNavigation
+// import { format } from 'date-fns'; // REMOVED unused format import
 // Import necessary types
 import { Booking, Pet, Service } from '@/types'; // Removed unused Site, Field imports
 
@@ -35,24 +36,57 @@ interface BookingManagementProps {
 const formatDateTimeLocal = (isoString: string | null | undefined): string => {
     if (!isoString) return '';
     try {
-        const date = new Date(isoString);
-        // Adjust for timezone offset to display correctly in local time input
-        const timezoneOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
-        const localDate = new Date(date.getTime() - timezoneOffset);
-        return localDate.toISOString().slice(0, 16);
+        // For naive timestamps (like \'2025-05-05T10:00:00\'),
+        // we can directly take the first 16 characters.
+        // No timezone offset adjustment needed.
+        // const date = new Date(isoString);
+        // const timezoneOffset = date.getTimezoneOffset() * 60000; // offset in milliseconds
+        // const localDate = new Date(date.getTime() - timezoneOffset);
+        // return localDate.toISOString().slice(0, 16);
+        if (isoString.length >= 16) {
+            return isoString.slice(0, 16); // Returns \'YYYY-MM-DDTHH:mm\'
+        } else {
+            console.warn("Malformed ISO string for datetime-local input:", isoString);
+            return '';
+        }
     } catch (e) {
-        console.error("Error formatting date:", e);
+        console.error("Error formatting naive date for input:", isoString, e);
         return '';
     }
 };
 
-// Simple date formatter for display
+// Simple date formatter for display - Extract YYYY-MM-DD
 const formatDate = (isoString: string): string => {
+    if (!isoString || !isoString.includes('T')) return 'Invalid Date';
     try {
-        return new Date(isoString).toLocaleDateString(undefined, { timeZone: 'UTC' });
+        return isoString.split('T')[0];
     } catch {
         return 'Invalid Date';
     }
+};
+
+// Formatter for time slots - Extract HH:mm
+const formatTime = (isoString: string): string => {
+    if (!isoString || !isoString.includes('T')) return 'N/A';
+    try {
+        // Extract HH:mm part after 'T'
+        const timePart = isoString.split('T')[1];
+        return timePart.substring(0, 5); // Get HH:mm
+    } catch (e) {
+        console.error("Error extracting time:", isoString, e);
+        return 'Invalid Time';
+    }
+};
+
+// Helper to create a consistent time slot key
+// const getTimeSlotKey = (booking: Booking): string => {
+//    return `${formatTime(booking.start_time)} - ${formatTime(booking.end_time)}`;
+// };
+// Removing date part from key as this component often shows multiple dates
+// Or keep it if grouping should be per day+slot?
+// For now, assume grouping is just by time HH:mm-HH:mm within the displayed list
+const getTimeSlotKey = (booking: Booking): string => {
+    return `${formatTime(booking.start_time)} - ${formatTime(booking.end_time)}`;
 };
 
 export default function BookingManagement({
@@ -97,6 +131,30 @@ export default function BookingManagement({
     const [addBookingError, setAddBookingError] = useState<string | null>(null);
     const [isCreatingBooking, setIsCreatingBooking] = useState(false);
     // --- END NEW State ---
+
+    // --- Group Bookings for Display ---
+    const groupedBookings = useMemo(() => {
+        const groups = new Map<string, Booking[]>();
+        bookings // Use the bookings prop directly
+            // Sort primarily by date, then by time slot key
+            .sort((a, b) => {
+                const dateA = new Date(a.start_time).getTime();
+                const dateB = new Date(b.start_time).getTime();
+                if (dateA !== dateB) {
+                    return dateA - dateB;
+                }
+                // If dates are same, sort by time slot key (lexicographically)
+                return getTimeSlotKey(a).localeCompare(getTimeSlotKey(b));
+            })
+            .forEach(booking => {
+                const key = getTimeSlotKey(booking);
+                if (!groups.has(key)) {
+                    groups.set(key, []);
+                }
+                groups.get(key)?.push(booking);
+            });
+        return groups;
+    }, [bookings]); // Recalculate only when bookings prop changes
 
     // --- Edit Booking Handlers ---
     const handleEditBookingClick = useCallback((booking: Booking) => {
@@ -390,293 +448,362 @@ export default function BookingManagement({
     };
     // --- END NEW Admin Handlers ---
 
-    // Define view content separately
-    const viewBookingsContent = (
-        <>
-            <h3>Existing Bookings</h3>
-             {localError && <p style={{ color: 'red' }}>Operation Error: {localError}</p>}
+    // --- Define Tab Content ---
+
+    // Content for the Existing Bookings view
+    const existingBookingsView = (
+        <div className={styles.tableContainer}>
+            {parentError && <p className={styles.errorText}>Error loading bookings: {parentError}</p>}
+            {localError && <p className={styles.errorText}>Error: {localError}</p>}
             {isLoadingBookings ? (
                 <p>Loading bookings...</p>
-            ) : parentError && !localError && (!bookings || bookings.length === 0) ? (
-                <p style={{ color: 'red' }}>Error loading bookings: {parentError}</p>
-            ) : !bookings || bookings.length === 0 ? (
-                <p>No bookings found.</p>
+            ) : groupedBookings.size === 0 ? (
+                <p>No bookings found{role === 'staff' ? ' for today' : ''}.</p> // Clarify for staff view
             ) : (
-                <div className={styles.userList}>
-                    <div className={`${styles.userCardHeader} ${role !== 'admin' ? styles.userCardHeaderStaff : ''}`}>
-                        <div>Client</div>
-                        <div>Pet(s)</div>
-                        <div>Service</div>
-                        <div>Time</div>
-                        {role === 'admin' && <> {/* Admin only columns */}
-                            <div>Status</div>
-                            <div>Paid</div>
-                            <div className={styles.userAction}>Actions</div>
-                        </>}
-                    </div>
-                    {bookings.map((booking) => (
-                        <div key={booking.id} className={`${styles.userCard} ${role !== 'admin' ? styles.userCardStaff : ''}`}>
-                            <div>{booking.client_name || (booking.client_id ? `Client ID ${booking.client_id}` : 'N/A')}</div>
-                            <div>{booking.pet_names?.join(', ') || 'N/A'}</div>
-                            <div>{booking.service_type || 'N/A'}</div>
-                            <div>
-                                {formatDateTimeLocal(booking.start_time).replace('T', ' ')} -
-                                {formatDateTimeLocal(booking.end_time).replace('T', ' ')}
-                            </div>
-                             {role === 'admin' && <> {/* Admin only columns */}
-                                <div>{booking.status}</div>
-                                <div>
-                                    <button
-                                        onClick={() => handleToggleBookingPaidStatus(booking.id, booking.is_paid)}
-                                        className={`button small ${booking.is_paid ? 'success' : 'secondary'}`}
-                                        disabled={isSubmitting}
-                                    >
-                                        {booking.is_paid ? 'Paid' : 'Mark Paid'}
-                                    </button>
-                                </div>
-                                <div className={styles.userAction}>
-                                    <button onClick={() => handleEditBookingClick(booking)} className="button secondary small" style={{ marginRight: '0.5rem' }} disabled={isSubmitting}>Edit</button>
-                                    <button onClick={() => handleDeleteBooking(booking.id)} className="button danger small" disabled={isSubmitting}>Delete</button>
-                                </div>
-                            </>}
-                        </div>
-                    ))}
-                </div>
-            )}
-        </>
-    );
-
-    // Define NEW add content separately
-    const newAddBookingContent = (
-        <div style={{ padding: '1rem' }}>
-            <h3>Create New Booking (Admin)</h3>
-            {addBookingError && <p style={{ color: 'red' }}>{addBookingError}</p>}
-
-            {/* 1. Client Selection */}
-            <div style={{ marginBottom: '1.5rem', position: 'relative' }}>
-                <label htmlFor="clientSearch">Search Client (Name/Email):</label>
-                <input
-                    type="text"
-                    id="clientSearch"
-                    value={clientSearchTerm}
-                    onChange={handleClientSearchChange}
-                    placeholder="Enter 2+ characters..."
-                    className="input"
-                    disabled={!!selectedClient}
-                />
-                {isSearchingClients && <p>Searching...</p>}
-                {clientSearchResults.length > 0 && (
-                    <ul style={{ position: 'absolute', background: '#444', border: '1px solid #666', listStyle: 'none', padding: '0.5rem', margin: 0, zIndex: 10, maxHeight: '200px', overflowY: 'auto' }}>
-                        {clientSearchResults.map(client => (
-                            <li key={client.id} onClick={() => handleSelectClient(client)} style={{ cursor: 'pointer', padding: '0.3rem 0.5rem', borderBottom: '1px solid #555' }}>
-                                {client.first_name} {client.last_name} ({client.email})
-                            </li>
+                <table className={styles.table}>
+                    <thead>
+                        <tr>
+                            {/* Add Date column if role is admin, as multiple dates might show */}
+                            {role === 'admin' && <th>Date</th>}
+                            <th>Client</th>
+                            <th>Pet(s)</th>
+                            <th>Service</th>
+                            <th>Time Slot</th>
+                            <th>Status</th>
+                            <th>Paid</th>
+                            {role === 'admin' && <th>Notes</th>}
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {/* Iterate through grouped bookings */}
+                        {Array.from(groupedBookings.entries()).map(([timeSlot, bookingsInGroup]) => (
+                            <React.Fragment key={timeSlot}>
+                                {/* Separator row shows only the Time Slot */}
+                                <tr className={styles.timeSlotSeparator}>
+                                     {/* Adjust colspan dynamically */}
+                                    <td colSpan={role === 'admin' ? 9 : 8}>
+                                        <strong>{timeSlot}</strong>
+                                    </td>
+                                </tr>
+                                {bookingsInGroup.map(booking => (
+                                    <tr key={booking.id}>
+                                        {/* Conditionally show Date column for admin */}
+                                        {role === 'admin' && <td>{formatDate(booking.start_time)}</td>}
+                                        <td>{booking.client_name || 'N/A'}</td>
+                                        <td>{booking.pet_names?.join(', ') || 'N/A'}</td>
+                                        <td>{booking.service_type || 'N/A'}</td>
+                                        <td>{timeSlot}</td>
+                                        <td>{booking.status || 'N/A'}</td>
+                                        <td>
+                                            <input
+                                                type="checkbox"
+                                                checked={!!booking.is_paid}
+                                                onChange={() => handleToggleBookingPaidStatus(booking.id, !!booking.is_paid)}
+                                                disabled={isSubmitting}
+                                            />
+                                        </td>
+                                        {role === 'admin' && <td>{booking.assignment_notes || '-'}</td>}
+                                        <td>
+                                            {role === 'admin' ? (
+                                                <>
+                                                    <button
+                                                        onClick={() => handleEditBookingClick(booking)}
+                                                        className={`${styles.button} ${styles.buttonSmall} ${styles.buttonSecondary}`}
+                                                        disabled={isSubmitting}
+                                                    >
+                                                        Edit
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDeleteBooking(booking.id)}
+                                                        className={`${styles.button} ${styles.buttonSmall} ${styles.buttonDanger}`}
+                                                        disabled={isSubmitting}
+                                                    >
+                                                        Delete
+                                                    </button>
+                                                </>
+                                            ) : (
+                                                // Staff view: Placeholder button (was alert, now just text or disabled)
+                                                 <button
+                                                    className={`${styles.button} ${styles.buttonSmall} ${styles.buttonSecondary}`}
+                                                    onClick={() => alert(`Details for booking ${booking.id}`)} // Keep alert for now
+                                                    disabled={isSubmitting} // Keep disabled state consistent
+                                                 >
+                                                     Details
+                                                 </button>
+                                            )}
+                                        </td>
+                                    </tr>
+                                ))}
+                            </React.Fragment>
                         ))}
-                    </ul>
-                )}
-                {selectedClient && (
-                    <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#3a3a3e', borderRadius: '4px' }}>
-                        Selected: <strong>{[selectedClient.first_name, selectedClient.last_name].filter(Boolean).join(' ') || selectedClient.email}</strong>
-                        <button onClick={() => { setSelectedClient(null); setClientPets([]); setSelectedPetIds(new Set()); setAvailableSlots([]); setSelectedSlots(new Set()); }} style={{ marginLeft: '1rem' }} className="button danger small">Change</button>
-                    </div>
-                )}
-            </div>
-
-            {/* 2. Pet Selection (Show only if client selected) */}
-            {selectedClient && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                    <label>Select Pet(s):</label>
-                    {isLoadingClientPets ? (
-                        <p>Loading pets...</p>
-                    ) : clientPets.length > 0 ? (
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-                            {clientPets.map(pet => (
-                                <label key={pet.id} style={{ background: '#444', padding: '0.5rem 1rem', borderRadius: '4px' }}>
-                                    <input
-                                            type="checkbox"
-                                        value={pet.id}
-                                        checked={selectedPetIds.has(pet.id)}
-                                        onChange={handlePetSelectionChange}
-                                        style={{ marginRight: '0.5rem' }}
-                                    />
-                                    {pet.name}
-                                </label>
-                            ))}
-                        </div>
-                    ) : (
-                        <p>This client has no active pets.</p>
-                    )}
-                </div>
+                    </tbody>
+                </table>
             )}
-
-             {/* 3. Service & Date Selection (Show only if client selected) */}
-             {selectedClient && (
-                <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
-                    <div style={{ flex: 2 }}>
-                        <label htmlFor="adminBookingService">Select Service:</label>
-                                <select
-                            id="adminBookingService"
-                            value={selectedServiceId}
-                            onChange={handleServiceChange}
-                                    required
-                            className="input"
-                            disabled={selectedPetIds.size === 0} // Disable if no pets selected
-                        >
-                            <option value="">-- Select Service --</option>
-                            {services.map(service => (
-                                <option key={service.id} value={service.id}>{service.name}</option>
-                                    ))}
-                                </select>
-                            </div>
-                    <div style={{ flex: 1 }}>
-                        <label htmlFor="adminBookingStartDate">Start Date:</label>
-                                <input
-                            type="date"
-                            id="adminBookingStartDate"
-                            value={selectedStartDate}
-                            onChange={e => setSelectedStartDate(e.target.value)}
-                                    required
-                            className="input"
-                            disabled={!selectedServiceId} // Disable if no service
-                                />
-                            </div>
-                    <div style={{ flex: 1 }}>
-                        <label htmlFor="adminBookingEndDate">End Date:</label>
-                                <input
-                            type="date"
-                            id="adminBookingEndDate"
-                            value={selectedEndDate}
-                            onChange={e => setSelectedEndDate(e.target.value)}
-                                    required
-                            className="input"
-                            disabled={!selectedServiceId} // Disable if no service
-                                />
-                            </div>
-                     <button
-                        type="button"
-                        onClick={fetchAvailableSlotsForAdmin}
-                        disabled={isLoadingSlots || !selectedServiceId || !selectedStartDate || !selectedEndDate}
-                        className="button primary"
-                    >
-                        {isLoadingSlots ? 'Finding Slots...' : 'Find Slots'}
-                    </button>
-                </div>
-             )}
-
-             {/* 4. Slot Display & Selection (Show only if slots loaded) */}
-             {availableSlots.length > 0 && (
-                <div style={{ marginBottom: '1.5rem' }}>
-                    <h4>Available Slots (Admin View)</h4>
-                    <p style={{ fontSize: '0.9em', color: '#bbb' }}>Select a slot to book. Availability status shown is for clients (you can override).</p>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '1rem' }}>
-                        {availableSlots.map((slot) => {
-                            const slotKey = slot.start_time;
-                            const isSelected = selectedSlots.has(slotKey);
-                            const isUnavailable = slot.zero_capacity_reason === 'no_staff';
-                            const isFull = slot.zero_capacity_reason === 'staff_full' || slot.remaining_capacity === 0; // Consider 0 capacity as full too
-                            const isAvailableClient = !isUnavailable && !isFull;
-
-                            return (
-                                <div
-                                    key={slotKey}
-                                    style={{
-                                        border: `2px solid ${isSelected ? '#00aaff' : '#555'}`,
-                                        padding: '1rem',
-                                        borderRadius: '4px',
-                                        cursor: 'pointer',
-                                        opacity: isSelected ? 1 : 0.9,
-                                        background: isSelected ? '#003366' : '#333'
-                                    }}
-                                    onClick={() => handleSlotSelectionToggleForAdmin(slotKey)}
-                                >
-                                    <p><strong>Time:</strong> {formatDate(slot.start_time)} {new Date(slot.start_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })} - {new Date(slot.end_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}</p>
-                                    <p><strong>Client Status:</strong>
-                                        {isAvailableClient ? <span style={{ color: 'lightgreen' }}> Available ({slot.remaining_capacity ?? 'Unlimited'})</span>
-                                        : isFull ? <span style={{ color: 'orange' }}> Fully Booked</span>
-                                        : isUnavailable ? <span style={{ color: '#aaa' }}> No Staff/Unavailable</span>
-                                        : ' Unknown'}
-                                    </p>
-                                    <p style={{ fontSize: '0.8em', color: '#ccc' }}>Fields: {slot.field_ids?.join(', ') || 'N/A'}</p>
-                                    {isSelected && <p style={{ color: '#00aaff', fontWeight: 'bold' }}>SELECTED</p>}
-                            </div>
-                            );
-                        })}
-                            </div>
-                            </div>
-             )}
-
-             {/* 5. Booking Action Button (Show if slot selected) */}
-             {selectedSlots.size > 0 && selectedClient && selectedPetIds.size > 0 && (
-                <div style={{ marginTop: '2rem', textAlign: 'center' }}>
-                     <button
-                        type="button"
-                        onClick={handleAdminBookingSubmit}
-                        disabled={isCreatingBooking}
-                        className="button primary large"
-                    >
-                        {isCreatingBooking ? 'Creating Booking...'
-                         : `Book Slot for ${[selectedClient.first_name, selectedClient.last_name].filter(Boolean).join(' ') || selectedClient.email}` // Combine name fields or fallback to email
-                        }
-                                </button>
-                </div>
-             )}
         </div>
     );
 
-    // Define Tabs for Admin (Using NEW add content)
+    // Content for the Add Booking view (Admin only)
+    const addBookingView = (
+        <div className={styles.formSection}>
+            <h3>Create New Booking (Admin)</h3>
+            {addBookingError && <p className={styles.errorText}>{addBookingError}</p>}
+
+            {/* 1. Client Selection */}
+            {/* ... (existing client search input and results display) ... */}
+             <div style={{ marginBottom: '1.5rem', position: 'relative' }}>
+                 <label htmlFor="clientSearch">Search Client (Name/Email):</label>
+                 <input
+                     type="text"
+                     id="clientSearch"
+                     value={clientSearchTerm}
+                     onChange={handleClientSearchChange}
+                     placeholder="Enter 2+ characters..."
+                     className={styles.input}
+                     disabled={!!selectedClient}
+                 />
+                 {isSearchingClients && <p>Searching...</p>}
+                 {clientSearchResults.length > 0 && (
+                     <ul className={styles.searchResultsList}>
+                         {clientSearchResults.map(client => (
+                             <li key={client.id} onClick={() => handleSelectClient(client)}>
+                                 {client.first_name} {client.last_name} ({client.email})
+                             </li>
+                         ))}
+                     </ul>
+                 )}
+                 {selectedClient && (
+                     <div className={styles.selectedItemBox}>
+                         Selected: <strong>{[selectedClient.first_name, selectedClient.last_name].filter(Boolean).join(' ') || selectedClient.email}</strong>
+                         <button onClick={() => { setSelectedClient(null); setClientPets([]); setSelectedPetIds(new Set()); setAvailableSlots([]); setSelectedSlots(new Set()); }} className={`${styles.button} ${styles.buttonSmall} ${styles.buttonDanger}`} style={{ marginLeft: '1rem' }}>Change</button>
+                     </div>
+                 )}
+             </div>
+
+            {/* 2. Pet Selection */}
+            {selectedClient && (
+                 <div style={{ marginBottom: '1.5rem' }}>
+                     <label>Select Pet(s):</label>
+                     {isLoadingClientPets ? (
+                         <p>Loading pets...</p>
+                     ) : clientPets.length > 0 ? (
+                         <div className={styles.checkboxGroupContainer}>
+                             {clientPets.map(pet => (
+                                 <label key={pet.id} className={styles.checkboxLabel}>
+                                     <input
+                                             type="checkbox"
+                                         value={pet.id}
+                                         checked={selectedPetIds.has(pet.id)}
+                                         onChange={handlePetSelectionChange}
+                                         style={{ marginRight: '0.5rem' }}
+                                     />
+                                     {pet.name}
+                                 </label>
+                             ))}
+                         </div>
+                     ) : (
+                         <p>This client has no active pets.</p>
+                     )}
+                 </div>
+             )}
+
+            {/* 3. Service & Date Selection */}
+            {selectedClient && (
+                 <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '1rem', alignItems: 'flex-end' }}>
+                     <div style={{ flex: 2 }}>
+                         <label htmlFor="adminBookingService">Select Service:</label>
+                                 <select
+                             id="adminBookingService"
+                             value={selectedServiceId}
+                             onChange={handleServiceChange}
+                                     required
+                             className={styles.input}
+                             disabled={selectedPetIds.size === 0}
+                         >
+                             <option value="">-- Select Service --</option>
+                             {services.map(service => (
+                                 <option key={service.id} value={service.id}>{service.name}</option>
+                                     ))}
+                                 </select>
+                             </div>
+                     <div style={{ flex: 1 }}>
+                         <label htmlFor="adminBookingStartDate">Start Date:</label>
+                                 <input
+                             type="date"
+                             id="adminBookingStartDate"
+                             value={selectedStartDate}
+                             onChange={e => setSelectedStartDate(e.target.value)}
+                                     required
+                             className={styles.input}
+                             disabled={!selectedServiceId}
+                                 />
+                             </div>
+                     <div style={{ flex: 1 }}>
+                         <label htmlFor="adminBookingEndDate">End Date:</label>
+                                 <input
+                             type="date"
+                             id="adminBookingEndDate"
+                             value={selectedEndDate}
+                             onChange={e => setSelectedEndDate(e.target.value)}
+                                     required
+                             className={styles.input}
+                             disabled={!selectedServiceId}
+                                 />
+                             </div>
+                      <button
+                         type="button"
+                         onClick={fetchAvailableSlotsForAdmin}
+                         disabled={isLoadingSlots || !selectedServiceId || !selectedStartDate || !selectedEndDate}
+                         className={`${styles.button} ${styles.buttonPrimary}`}
+                     >
+                         {isLoadingSlots ? 'Finding Slots...' : 'Find Slots'}
+                     </button>
+                 </div>
+              )}
+
+            {/* 4. Slot Display & Selection */}
+             {availableSlots.length > 0 && (
+                 <div style={{ marginBottom: '1.5rem' }}>
+                     <h4>Available Slots (Admin View)</h4>
+                     <p className={styles.subtleText}>Select a slot to book. Availability status shown is for clients (you can override).</p>
+                     <div className={styles.slotSelectionContainer}>
+                         {availableSlots.map((slot) => {
+                             const slotKey = slot.start_time;
+                             const isSelected = selectedSlots.has(slotKey);
+                            // ... (slot status logic)
+                             const isUnavailable = slot.zero_capacity_reason === 'no_staff';
+                             const isFull = slot.zero_capacity_reason === 'staff_full' || slot.remaining_capacity === 0; // Consider 0 capacity as full too
+                             const isAvailableClient = !isUnavailable && !isFull;
+
+                             return (
+                                 <div
+                                     key={slotKey}
+                                     className={`${styles.slotCard} ${isSelected ? styles.slotCardSelected : ''} ${!isAvailableClient ? styles.slotCardUnavailable : ''}`}
+                                     onClick={() => handleSlotSelectionToggleForAdmin(slotKey)}
+                                 >
+                                     <p><strong>Time:</strong> {formatDate(slot.start_time)} {formatTime(slot.start_time)} - {formatTime(slot.end_time)}</p>
+                                     <p><strong>Client Status:</strong>
+                                         {isAvailableClient ? <span style={{ color: 'lightgreen' }}> Available ({slot.capacity_display ?? slot.remaining_capacity ?? 'Unlimited'})</span>
+                                         : isFull ? <span style={{ color: 'orange' }}> Fully Booked</span>
+                                         : isUnavailable ? <span style={{ color: '#aaa' }}> No Staff/Unavailable</span>
+                                         : ' Unknown'}
+                                     </p>
+                                     <p className={styles.subtleText}>Fields: {slot.field_ids?.join(', ') || 'N/A'}</p>
+                                     {isSelected && <p style={{ color: '#00aaff', fontWeight: 'bold' }}>SELECTED</p>}
+                             </div>
+                             );
+                         })}
+                             </div>
+                             </div>
+              )}
+
+            {/* 5. Booking Action Button */}
+            {selectedSlots.size > 0 && selectedClient && selectedPetIds.size > 0 && (
+                 <div style={{ marginTop: '2rem', textAlign: 'center' }}>
+                      <button
+                         type="button"
+                         onClick={handleAdminBookingSubmit}
+                         disabled={isCreatingBooking}
+                         className={`${styles.button} ${styles.buttonPrimary} ${styles.buttonLarge}`}
+                     >
+                         {isCreatingBooking ? 'Creating Booking...'
+                          : `Book Slot for ${[selectedClient.first_name, selectedClient.last_name].filter(Boolean).join(' ') || selectedClient.email}`
+                         }
+                                 </button>
+                 </div>
+              )}
+        </div>
+    );
+
+    // Define Tabs for Admin navigation - Content is required by TabNavigation
     const adminTabs = [
-        { id: 'view', label: 'View Bookings', content: viewBookingsContent },
-        { id: 'add', label: 'Create Booking', content: newAddBookingContent },
+        { id: 'existing', label: 'Existing Bookings', content: existingBookingsView },
+        { id: 'add', label: 'Create Booking', content: addBookingView },
     ];
 
+    // --- Component Render ---
     return (
-        <section>
-             {/* Conditionally render header only for admin */}
-            {role === 'admin' && <h2>Booking Management ({role})</h2>}
-
-             {/* Render Tabs for Admin, directly render View content for Staff */}
-            {role === 'admin' ? (
-                <TabNavigation tabs={adminTabs} />
+        <div className={styles.managementSection}>
+            {editingBooking ? (
+                // --- Edit Booking Form Modal/Overlay ---
+                 <div className={styles.editFormContainer}>
+                     <h3>Edit Booking #{editingBooking.id}</h3>
+                     {localError && <p className={styles.errorText}>Error: {localError}</p>}
+                     <form onSubmit={handleUpdateBookingSubmit}>
+                         {/* Add form fields for editing: Start Time, End Time, Service Type, Status */}
+                         <div className={styles.formField}>
+                             <label htmlFor="editStartTime">Start Time:</label>
+                             <input
+                                 type="datetime-local"
+                                 id="editStartTime"
+                                 value={editFormStartTime}
+                                 onChange={(e) => setEditFormStartTime(e.target.value)}
+                                 required
+                                 className={styles.input}
+                             />
+                         </div>
+                         <div className={styles.formField}>
+                             <label htmlFor="editEndTime">End Time:</label>
+                             <input
+                                 type="datetime-local"
+                                 id="editEndTime"
+                                 value={editFormEndTime}
+                                 onChange={(e) => setEditFormEndTime(e.target.value)}
+                                 required
+                                 className={styles.input}
+                             />
+                         </div>
+                         <div className={styles.formField}>
+                             <label htmlFor="editServiceType">Service Type:</label>
+                             <select
+                                 id="editServiceType"
+                                 value={editFormServiceType}
+                                 onChange={(e) => setEditFormServiceType(e.target.value)}
+                                 required
+                                 className={styles.input}
+                             >
+                                 <option value="">-- Select Service --</option>
+                                 {/* Assuming services prop contains needed types */}
+                                 {/* Example - replace with actual service types if available */}
+                                 <option value="Daycare">Daycare</option>
+                                 <option value="Field Hire">Field Hire</option>
+                             </select>
+                         </div>
+                         <div className={styles.formField}>
+                             <label htmlFor="editStatus">Status:</label>
+                             <input
+                                 type="text"
+                                 id="editStatus"
+                                 value={editFormStatus}
+                                 onChange={(e) => setEditFormStatus(e.target.value)}
+                                 required
+                                 className={styles.input}
+                             />
+                         </div>
+                         <div className={styles.formActions}>
+                            <button type="button" onClick={handleCancelEditBooking} className={`${styles.button} ${styles.buttonSecondary}`} disabled={isSubmitting}>
+                                Cancel
+                            </button>
+                            <button type="submit" className={`${styles.button} ${styles.buttonPrimary}`} disabled={isSubmitting}>
+                                {isSubmitting ? 'Updating...' : 'Save Changes'}
+                            </button>
+                         </div>
+                     </form>
+                 </div>
             ) : (
-                viewBookingsContent // Directly render the view content if not admin
+                 // --- Main View (Tabs for Admin, direct view for Staff) ---
+                 <>
+                    {role === 'admin' ? (
+                        // Admin sees Tabs - TabNavigation handles state and content display internally
+                        <TabNavigation
+                            tabs={adminTabs}
+                        />
+                    ) : (
+                        // Staff only see the existing bookings view (filtered by parent)
+                        existingBookingsView
+                    )}
+                </>
             )}
-
-            {/* Edit Booking Modal (Existing) */}
-            {editingBooking && (
-                 <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.7)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-                    <div style={{ background: '#2a2a2e', padding: '2rem', borderRadius: 8, color: '#fff', width: '90%', maxWidth: '500px' }}>
-                        <h3>Edit Booking ID: {editingBooking.id}</h3>
-                        {localError && <p style={{ color: '#f87171' }}>{localError}</p>}
-                        <div className={styles.editFormContainer} style={{ marginTop: '2rem', padding: '1.5rem', border: '1px solid #555', borderRadius: '8px', background: '#3a3a3e' }}>
-                            <h4>Edit Booking ID: {editingBooking.id}</h4>
-                             <form onSubmit={handleUpdateBookingSubmit}>
-                                <div style={{ display: 'flex', gap: '1rem', marginBottom: '1rem' }}>
-                                    <div style={{ flex: 1 }}>
-                                        <label htmlFor="edit_start_time">Start Time:</label>
-                                        <input type="datetime-local" id="edit_start_time" value={editFormStartTime} onChange={(e) => setEditFormStartTime(e.target.value)} required className="input" />
-                                    </div>
-                                    <div style={{ flex: 1 }}>
-                                        <label htmlFor="edit_end_time">End Time:</label>
-                                        <input type="datetime-local" id="edit_end_time" value={editFormEndTime} onChange={(e) => setEditFormEndTime(e.target.value)} required className="input" />
-                                    </div>
-                                </div>
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label htmlFor="edit_service_type">Service Type:</label>
-                                    <input type="text" id="edit_service_type" value={editFormServiceType} onChange={(e) => setEditFormServiceType(e.target.value)} className="input" />
-                                </div>
-                                <div style={{ marginBottom: '1rem' }}>
-                                    <label htmlFor="edit_status">Status:</label>
-                                    <input type="text" id="edit_status" value={editFormStatus} onChange={(e) => setEditFormStatus(e.target.value)} className="input" />
-                                </div>
-                                <div style={{ marginTop: '1rem', display: 'flex', justifyContent: 'flex-end' }}>
-                                    <button type="button" onClick={handleCancelEditBooking} className="button secondary" style={{ marginRight: '1rem' }} disabled={isSubmitting}>Cancel</button>
-                                    <button type="submit" className="button primary" disabled={isSubmitting}>{isSubmitting ? 'Saving...' : 'Save Changes'}</button>
-                            </div>
-                        </form>
-                        </div>
-                    </div>
-                </div>
-            )}
-        </section>
+        </div>
     );
 }

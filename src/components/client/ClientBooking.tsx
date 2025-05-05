@@ -7,6 +7,33 @@ import Modal from '@/components/shared/Modal'; // Import Modal component
 import { formatISO, isSameDay, startOfWeek, endOfWeek, getDay as dateFnsGetDay, addDays } from 'date-fns'; // Import date-fns helpers and format, and startOfWeek, endOfWeek, getDay, addDays
 import { Service } from '@/types';
 
+// --- Time/Date Formatting Helpers (Simplified) ---
+
+// REMOVED Unused Helpers
+// Formatter for time slots - Extract HH:mm
+// const formatTime = (isoString: string): string => {
+// 	if (!isoString || !isoString.includes('T')) return 'N/A';
+// 	try {
+// 		const timePart = isoString.split('T')[1];
+// 		return timePart.substring(0, 5); // Get HH:mm
+// 	} catch (e) {
+// 		console.error("Error extracting time:", isoString, e);
+// 		return 'Invalid Time';
+// 	}
+// };
+
+// Simple date formatter for display - Extract YYYY-MM-DD
+// const formatDate = (isoString: string): string => {
+// 	if (!isoString || !isoString.includes('T')) return 'Invalid Date';
+// 	try {
+// 		return isoString.split('T')[0];
+// 	} catch {
+// 		return 'Invalid Date';
+// 	}
+// };
+
+// --- End Helpers ---
+
 // Updated to match actual API response structure from console log
 type CalculatedSlot = {
 	// These fields might still be useful if requires_field_selection is true,
@@ -131,28 +158,31 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 	// Define helper here to be accessible throughout the component
 	const getServiceName = (id: number) => services.find((s) => s.id === id)?.name || `Service ID ${id}`;
 
-	// Basic formatter functions (replace with library or more robust logic if needed)
+	// Basic formatter functions
+	// Revert formatDateRange to use London time for display consistency with calendar visual
 	const formatDateRange = (startStr: string, endStr: string): string => {
 		try {
 			const start = new Date(startStr);
 			const end = new Date(endStr);
 			// Use Europe/London timezone for display
-			const options: Intl.DateTimeFormatOptions = {
+			const optionsDate: Intl.DateTimeFormatOptions = {
 				timeZone: 'Europe/London',
-				weekday: 'short',
-				month: 'short',
-				day: 'numeric',
-				hour: 'numeric',
-				minute: '2-digit',
-				hour12: true,
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
 			};
-			const endOptions: Intl.DateTimeFormatOptions = {
+            const optionsTime: Intl.DateTimeFormatOptions = {
 				timeZone: 'Europe/London',
-				hour: 'numeric',
+				hour: '2-digit',
 				minute: '2-digit',
-				hour12: true,
+				hour12: false, // Use 24-hour format HH:mm
 			};
-			return `${start.toLocaleString([], options)} - ${end.toLocaleString([], endOptions)}`;
+            // Format like: YYYY-MM-DD HH:mm - HH:mm
+            const startDateStr = start.toLocaleDateString('en-CA', optionsDate); // en-CA gives YYYY-MM-DD
+            const startTimeStr = start.toLocaleTimeString('en-GB', optionsTime); // en-GB gives HH:mm
+            const endTimeStr = end.toLocaleTimeString('en-GB', optionsTime); // en-GB gives HH:mm
+
+			return `${startDateStr} ${startTimeStr} - ${endTimeStr}`;
 		} catch (e) {
 			console.error('Date formatting error:', e);
 			return 'Invalid Date Range';
@@ -275,7 +305,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 			}
 
 			const slotsData: CalculatedSlot[] = await response.json();
-			console.log('[fetchCalendarAvailability] Raw slots data from API:', slotsData);
+			console.log('[fetchCalendarAvailability] Raw slots data received from API:', JSON.stringify(slotsData, null, 2));
 
 			// Map slots to CalendarEvent objects
 			const slotEvents: CalendarEvent[] = slotsData
@@ -508,10 +538,14 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 			alert('All selected slots booked successfully!'); // Keep original alert for now
 			setSelectedSlots(new Set()); // Clear selection on success
 			setSelectedBookingDate(null); // Clear selected date
-			setRawCalculatedSlots([]); // Clear results
-			setAggregatedSlots([]); // Clear aggregated results
-			fetchClientBookings(); // Refresh the list of client's bookings
-			// Optionally refetch calendar availability if needed
+			await fetchClientBookings(); // Refresh the list of client's bookings (await it)
+			// Refetch calendar availability to update capacities/display
+			if (selectedServiceId) { // Ensure we have a service selected before refetching
+                await fetchCalendarAvailability(selectedServiceId, calendarViewDate);
+            } else {
+                setCalendarDisplayEvents([]); // Clear if no service ID (shouldn't happen here but safe)
+                setAggregatedSlots([]); // Also clear aggregated if no service
+            }
 		} else {
 			// Provide more detailed error feedback
 			const failedSlots = bookingResults.filter((r) => !r.success);

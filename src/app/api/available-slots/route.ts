@@ -46,6 +46,29 @@ export async function GET(request: Request) {
 		return NextResponse.json({ error: 'Not authenticated' }, { status: 401 });
 	}
 
+	// --- Get user role directly ---
+	let userRole = 'client'; // Default to client
+	try {
+		const { data: staffRecord, error: staffError } = await supabaseAdmin
+			.from('staff')
+			.select('role')
+			.eq('user_id', user.id)
+			.maybeSingle(); // Use maybeSingle as user might not be staff
+
+		if (staffError) {
+			console.error('Error fetching staff role:', staffError);
+			// Optionally handle error, but proceed with default role for now
+		}
+
+		if (staffRecord?.role) {
+			userRole = staffRecord.role;
+		}
+	} catch (e) {
+		console.error('Exception fetching staff role:', e);
+		// Proceed with default role
+	}
+	// --- END Get user role ---
+
 	let clientDefaultStaffId: number | null = null;
 	try {
 		const { data: clientData, error: clientError } = await supabaseAdmin
@@ -120,8 +143,8 @@ export async function GET(request: Request) {
 	try {
 		// Define the expected structure of a slot returned by the RPC
 		type CalculatedSlot = {
-			slot_start_time: string; // ISO String from TIMESTAMPTZ
-			slot_end_time: string; // ISO String from TIMESTAMPTZ
+			slot_start_time: string; // Expecting naive timestamp string (e.g., '2025-05-06T10:00:00')
+			slot_end_time: string;   // Expecting naive timestamp string
 			slot_remaining_capacity: number | null; // Allow null for infinite/staff-based
 			rule_uses_staff_capacity: boolean;
 			associated_field_ids: number[]; // Added
@@ -155,7 +178,7 @@ export async function GET(request: Request) {
 		// Now TypeScript knows slots is definitely CalculatedSlot[] here
 		const fetchedSlots: CalculatedSlot[] = slots;
 
-		// 5. Process slots: Filter out today's slots, format capacity, and calculate price
+		// 5. Process slots: Filter out today's slots (conditionally), format capacity, and calculate price
 		const todayUTC = new Date().toISOString().split('T')[0];
 		const processedSlots = fetchedSlots
 			.map((slot) => {
@@ -236,10 +259,16 @@ export async function GET(request: Request) {
 				};
 			})
 			.filter((slot) => {
+				// --- MODIFIED: Only filter past/today for non-admins ---
+				if (userRole === 'admin') {
+					return true; // Admins can see all slots, including past/today
+				}
+				// Existing logic for non-admins
 				const slotDate = slot.start_time.split('T')[0];
 				const isAfterToday = slotDate > todayUTC;
-				console.log(`Filtering slot ${slot.start_time}: SlotDate=${slotDate}, TodayUTC=${todayUTC}, IsAfterToday=${isAfterToday}`);
+				console.log(`Filtering slot ${slot.start_time}: SlotDate=${slotDate}, TodayUTC=${todayUTC}, IsAfterToday=${isAfterToday}, UserRole=${userRole}`);
 				return isAfterToday;
+				// --- END MODIFICATION ---
 			});
 
 		// 6. Return the processed slots

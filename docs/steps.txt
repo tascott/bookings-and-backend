@@ -88,16 +88,15 @@ The tabbed interface is built as a reusable component (`TabNavigation`) that can
 Current TODOS:
 
 - discount feature for additional pets but set to 0% for nows - per client basis
-- calendar view for bookings (client)
 - addresses/map view/multi-map view (staff/admin)
-- calendar view for admin
-- assign staff, populates their dashboard for the day/week
 - add email template editing UI
 - remove all inline CSS for a design system (different file for button, nav, colors, etc)
 - Implement Email Preference Checks: We added email_allow_promotional and email_allow_informational flags to the profiles table, but we haven't added logic anywhere to check these flags before sending emails that would fall into those categories. (Currently, all emails sent are arguably transactional - booking, password, welcome - so this might not be immediately necessary, but it's a remaining piece).
 
 // Improvement Todos
 - refactor code, reduce codebase, update docs
+- split large files
+- repomix
 - error handling, tests
 - caching throughout specially for api calls
 - Think about how we'll use the same code for "field hire" clients. Fork it, or everyone in same DB/code just with a flag?

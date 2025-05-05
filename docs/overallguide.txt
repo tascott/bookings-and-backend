@@ -276,5 +276,19 @@ Project Summary for AI Assistant (booking-and-accounts)
   - Provide handler functions to `onSelectSlot` and `onSelectEvent` for desired interactions.
 - **Initial Implementation:** Integrated into `src/components/staff/StaffDashboard.tsx` under the "My Schedule" tab.
 
+**Date/Time Display Strategy (Simplified)**
+- **Goal:** Display dates and times consistently as represented in the backend ISO strings (e.g., `YYYY-MM-DDTHH:mm:ssZ`), reflecting the intended local time of the business operation, without applying timezone conversions based on the viewing user's browser timezone.
+- **Method:** Treat ISO strings primarily as text for display.
+- **Helper Functions (Example in `BookingManagement.tsx`, `StaffDashboard.tsx`):
+    - `formatDate(isoString)`: Extracts and returns the `YYYY-MM-DD` part.
+    - `formatTime(isoString)`: Extracts and returns the `HH:mm` part.
+    - `formatDateTimeForDisplay(isoString)`: Returns `YYYY-MM-DD HH:mm`.
+- **Usage:**
+    - Use these helpers in UI components (tables, modals, etc.) to display dates/times.
+    - For `react-big-calendar` event titles, use `formatTime`.
+    - For `react-big-calendar` event `start`/`end` props, continue using standard JavaScript `Date` objects (`new Date(isoString)`) to allow the library to handle positioning.
+- **Inputs (`datetime-local`):** Use a specific helper (`formatDateTimeLocal`) that accounts for browser input expectations, but ensure data is converted back to ISO on submission.
+- **Trade-off:** Visual positioning of events in calendar week/day views might mismatch hour labels if the user's system timezone differs significantly from the business's operational timezone. However, the textual display of times will be consistent and match the source data.
+
 **See emailguide.txt for email specific info**
 
