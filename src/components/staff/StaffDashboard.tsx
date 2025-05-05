@@ -152,8 +152,7 @@ export default function StaffDashboard({
         throw new Error(errorData.error || `Failed to fetch assigned clients: ${res.statusText}`);
       }
       const data: { clients: StaffAssignedClient[], total: number } = await res.json();
-      // Log the received data structure - REMOVED
-      // console.log('Fetched assigned clients data:', JSON.stringify(data, null, 2));
+
       setMyClients(data.clients || []);
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to load assigned clients';
@@ -222,7 +221,6 @@ export default function StaffDashboard({
       );
 
       setCalendarEvents(mappedEvents);
-      console.log(`Fetched and grouped ${bookingsData.length} bookings into ${mappedEvents.length} calendar slots.`);
 
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to load schedule data';
@@ -298,13 +296,12 @@ export default function StaffDashboard({
   }, []);
 
   // === NEW Calendar Interaction Handlers ===
-  const handleCalendarDayClick = (slotInfo: { start: Date; end: Date; }) => {
-    console.log('Calendar day clicked:', slotInfo.start);
-  };
+  // const handleCalendarDayClick = (slotInfo: { start: Date; end: Date; }) => {
+
+  // };
 
   // Calendar event click - UPDATED RESOURCE CHECK
   const handleCalendarEventClick = (event: CalendarEvent) => {
-    console.log('Calendar slot event clicked:', event);
     // Type check the resource using the SlotResource interface
     const resource = event.resource as SlotResource; // Assert type after checking
     if (resource && typeof resource === 'object' && Array.isArray(resource.bookings) && typeof resource.timeKey === 'string') {

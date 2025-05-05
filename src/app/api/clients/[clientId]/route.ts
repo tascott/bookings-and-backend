@@ -154,9 +154,6 @@ export async function PUT(
       throw new Error('No valid fields provided for update')
     }
 
-    console.log("Client update data:", clientUpdateData);
-    console.log("Profile update data:", profileUpdateData);
-
   } catch (e) {
     const errorMessage = e instanceof Error ? e.message : 'Invalid request body'
     return NextResponse.json({ error: errorMessage }, { status: 400 })

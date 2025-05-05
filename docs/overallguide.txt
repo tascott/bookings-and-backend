@@ -128,7 +128,8 @@ Project Summary for AI Assistant (booking-and-accounts)
   - `/api/clients/[clientId]/pets` specifically used by admin/staff to fetch a client's pets.
 - **/api/bookings**, **/api/client-booking**, **/api/my-bookings**, **/api/bookings/[bookingId]/status**:
   - Bookings CRUD, client booking flow, viewing client bookings, updating payment status.
-  - `POST /api/client-booking`: Handles client-initiated bookings. Performs capacity checks based on the matched `service_availability` rule:
+  - `POST /api/client-booking`: Handles client-initiated bookings. Now accepts an array payload `{ bookings: [...] }` to handle multiple slot bookings in one request.
+      - Performs capacity checks for each requested booking based on the matched `service_availability` rule:
       - Finds the active rule matching service/date/time.
       - If `use_staff_vehicle_capacity` is TRUE:
           - Checks client's `default_staff_id` is set, available (`staff_availability`), and has a default vehicle.
@@ -142,6 +143,9 @@ Project Summary for AI Assistant (booking-and-accounts)
           - Determines `field_id` based on client selection (if `requires_field_selection`) or assigns the first available.
           - Sets `assigned_staff_id` and `vehicle_id` to `null`.
       - Compares requested pets against remaining capacity.
+      - Returns `201 Created` if all bookings succeed.
+      - Returns `207 Multi-Status` if some succeed and some fail, detailing outcomes in `successfulBookings` and `failedBookings` arrays.
+      - Sends a single confirmation email (`BookingConfirmationClient`/`Admin`) for a single successful booking or a summary email (`BookingSummaryClient`/`Admin`) for multiple successful bookings.
   - **/api/admin-booking**:
     - **POST:** Handles admin/staff-initiated bookings. Bypasses some standard checks.
     - **Pet Verification:** Checks that selected pets belong to the selected client but *does not* currently check if pets are marked as `is_active` or `is_confirmed`. This allows admins to book for any pet owned by the client.
@@ -212,13 +216,15 @@ Project Summary for AI Assistant (booking-and-accounts)
   - Uses the `businessType` prop to conditionally render UI elements (e.g., hides 'My Pets' navigation if `businessType` is 'Field Hire').
   - Contains child components like `ClientBooking`, `PetManagement`, `MyBookings`.
 - **src/components/client/ClientBooking.tsx:** Client booking UI.
-  - Fetches availability using `calculate_available_slots` RPC (which now uses 'Europe/London').
+  - Fetches availability using `calculate_available_slots` RPC.
   - Displays slots in calendar and list format.
   - Uses `isSlotBookedBySelectedPets` to check for existing bookings for selected pets.
   - Disables slots in the list view and provides visual cues (text suffix) if already booked or full.
   - Uses `eventStyleGetter` in CalendarView to visually distinguish already booked slots (greyed out).
   - Slot selection (via calendar or list) uses the original timestamp string as the key for consistency.
   - Booking submission uses `POST /api/client-booking`.
+  - Supports selecting multiple available slots.
+  - Booking submission collects all selected slots and sends a single request to `POST /api/client-booking` using the `{ bookings: [...] }` format.
 - **src/components/client/PetManagement.tsx:** Client pet management UI.
 - **src/components/client/MyBookings.tsx:** Client booking history/upcoming bookings.
 - **src/components/staff/StaffDashboard.tsx:** Container for staff features. Fetches and manages state for bookings, services etc., needed for its child components.
@@ -290,5 +296,24 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **Inputs (`datetime-local`):** Use a specific helper (`formatDateTimeLocal`) that accounts for browser input expectations, but ensure data is converted back to ISO on submission.
 - **Trade-off:** Visual positioning of events in calendar week/day views might mismatch hour labels if the user's system timezone differs significantly from the business's operational timezone. However, the textual display of times will be consistent and match the source data.
 
+**Date/Time Handling for Bookings (Important!)**
+
+The booking system, including the client booking API (`src/app/api/client-booking/route.tsx`), the availability calculation function (`calculate_available_slots`), and relevant database tables (`bookings`, `service_availability`, `staff_availability`), is designed to operate consistently using **naive timestamps** (also known as wall-clock time or `TIMESTAMP WITHOUT TIME ZONE` in PostgreSQL).
+
+This approach simplifies the backend logic by avoiding timezone conversions during availability checks and booking creation. However, it requires strict consistency:
+
+1.  **Frontend Input:** The frontend MUST send date/time information as naive ISO-like strings, without any timezone offset (e.g., `YYYY-MM-DDTHH:MM:SS`). Do NOT use 'Z' or '+/-HH:MM' offsets for these booking times.
+2.  **Database Schema:**
+    *   The `bookings` table columns (`start_time`, `end_time`) MUST be of type `TIMESTAMP WITHOUT TIME ZONE`.
+    *   Availability rule tables (`service_availability`, `staff_availability`) should store times as `TIME WITHOUT TIME ZONE` and dates as `DATE` for reliable comparison against the naive input components.
+3.  **Backend Logic:** All backend comparisons and calculations related to checking rules or overlaps are performed using these naive date/time values and their components (date part, time part, day of week).
+
+The goal is to treat a time like "10:00 AM on Tuesday" at the business location consistently throughout the backend, without ambiguity introduced by timezones or Daylight Saving Time during the core booking checks.
+
 **See emailguide.txt for email specific info**
+
+**Email Templates:**
+- `BookingConfirmationClient.tsx` / `BookingConfirmationAdmin.tsx`: Sent for single booking confirmations.
+- `BookingSummaryClient.tsx` / `BookingSummaryAdmin.tsx`: Sent when a client books multiple slots in a single request, summarizing successes and (for admin) failures.
+- (Add other existing templates like PasswordReset, Welcome, etc., if needed)
 

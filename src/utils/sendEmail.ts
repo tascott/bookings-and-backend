@@ -40,7 +40,7 @@ export const sendEmail = async (params: SendEmailParams): Promise<CreateEmailRes
     const sender = from || defaultFrom;
 
     try {
-        console.log(`Sending email: To=${to}, From=${sender}, Subject=${subject}`);
+
         const response = await resend.emails.send({
             from: sender,
             to: to,
@@ -57,8 +57,6 @@ export const sendEmail = async (params: SendEmailParams): Promise<CreateEmailRes
         if (!response.data) {
             throw new Error('Resend API returned success but no data object.');
         }
-
-        console.log('Email sent successfully via Resend:', response.data);
         return response.data;
 
     } catch (err) {

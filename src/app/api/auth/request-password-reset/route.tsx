@@ -34,8 +34,6 @@ export async function POST(request: Request) {
   const callbackPath = '/api/auth/callback'; // New callback path
   const redirectTo = `${siteUrl}${callbackPath}`;
 
-  console.log(`Requesting password reset for ${email}, using callback redirect: ${redirectTo}`);
-
   // --- Use generateLink via Admin client to get the link server-side ---
   // Note: Ensure the user email exists before calling this or handle potential errors.
   const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
@@ -60,8 +58,6 @@ export async function POST(request: Request) {
     // Still return generic message
     return NextResponse.json({ message: 'If an account exists for this email, a password reset link has been sent.' });
   }
-
-  console.log(`Generated password reset link: ${resetLink}`); // Log link for debugging (consider removing in prod)
 
   // --- Send Custom Email via Resend ---
   try {
@@ -98,8 +94,6 @@ export async function POST(request: Request) {
       subject: "Password Reset Request for Bonnie's Dog Daycare", // Ensure quotes are consistent
       html: emailHtml,
     });
-
-    console.log(`Custom password reset email instruction sent to ${email} via Resend.`);
 
   } catch (emailError) {
     console.error('Error sending custom password reset email:', emailError);

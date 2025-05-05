@@ -114,6 +114,24 @@ const getInitialCalendarDate = (): Date => {
 	return today;
 };
 
+// --- Types Definition (moved here or import from shared types) ---
+
+// Input structure for a single booking (matching API)
+interface BookingInput {
+    service_id: number;
+    start_time: string;
+    end_time: string;
+    pet_ids: number[];
+}
+
+// Type for the API response when booking
+interface BookingApiResponse {
+    message: string;
+    successfulBookings?: { id: number; serviceName: string; start_time: string; end_time: string }[];
+    failedBookings?: { input: BookingInput; error: string }[];
+    error?: string; // Optional top-level error
+}
+
 export default function ClientBooking({ services }: ClientBookingProps) {
 	const [error, setError] = useState<string | null>(null); // Local error state for this component
 
@@ -184,7 +202,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 
 			return `${startDateStr} ${startTimeStr} - ${endTimeStr}`;
 		} catch (e) {
-			console.error('Date formatting error:', e);
 			return 'Invalid Date Range';
 		}
 	};
@@ -219,29 +236,22 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 				const isSelected = selectedPetIds.includes(bookedPet.id);
 				return isSelected;
 			});
-			if (overlaps) {
-				console.log(`Slot ${slotStartTime} is already booked by selected pet(s).`);
-			}
 			return overlaps;
 		});
 	};
 
 	const fetchClientBookings = async () => {
 		setIsLoadingBookings(true);
-		// Don't clear error here, let fetchCalculatedSlots handle slot errors
 		try {
 			const response = await fetch('/api/my-bookings');
 			if (!response.ok) {
-				console.error('Failed to fetch client bookings', response.status);
-				// Don't throw, just set empty array and maybe log
 				setClientBookings([]);
 				return;
 			}
 			const data: ClientBookingDetails[] = await response.json();
 			setClientBookings(data);
 		} catch (e) {
-			console.error('Error fetching client bookings:', e);
-			setClientBookings([]); // Set empty on error
+			setClientBookings([]);
 		} finally {
 			setIsLoadingBookings(false);
 		}
@@ -289,8 +299,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		const startDateStr = formatISO(viewStart, { representation: 'date' });
 		const endDateStr = formatISO(viewEnd, { representation: 'date' });
 
-		console.log(`Fetching calendar availability for service ${serviceId} from ${startDateStr} to ${endDateStr} (Week View)`);
-
 		try {
 			const response = await fetch(`/api/available-slots?service_id=${serviceId}&start_date=${startDateStr}&end_date=${endDateStr}`);
 			if (!response.ok) {
@@ -299,13 +307,11 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 					const errorData = await response.json();
 					errorMsg = errorData.error || errorMsg;
 				} catch (jsonError: unknown) {
-					console.warn('Failed to parse calendar availability error response as JSON:', jsonError);
 				}
 				throw new Error(errorMsg);
 			}
 
 			const slotsData: CalculatedSlot[] = await response.json();
-			console.log('[fetchCalendarAvailability] Raw slots data received from API:', JSON.stringify(slotsData, null, 2));
 
 			// Map slots to CalendarEvent objects
 			const slotEvents: CalendarEvent[] = slotsData
@@ -344,16 +350,13 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 				zero_capacity_reason: slot.zero_capacity_reason ?? null,
 				other_staff_potentially_available: slot.other_staff_potentially_available ?? false,
 			}));
-			console.log('[fetchCalendarAvailability] Aggregated slots for lookup:', aggregatedData);
 			setAggregatedSlots(aggregatedData);
 
 			setCalendarDisplayEvents(slotEvents);
-			console.log(`Created ${slotEvents.length} availability slots for the calendar week.`);
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Failed to load calendar availability';
-			console.error(message, e);
-			setError(message); // Set component error state
-			setCalendarDisplayEvents([]); // Clear markers on error
+			setError(message);
+			setCalendarDisplayEvents([]);
 		} finally {
 			setIsLoadingCalendarDisplay(false);
 		}
@@ -382,7 +385,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 
 	// Handler for Slot Selection Toggle (Only for bookable slots)
 	const handleSlotSelectionToggle = (slotKey: string) => {
-		console.log('[handleSlotSelectionToggle] Toggling key:', slotKey);
 		setSelectedSlots((prevSelected) => {
 			const newSelected = new Set(prevSelected);
 			if (newSelected.has(slotKey)) {
@@ -440,129 +442,121 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 	const handleBookSelectedSlots = async () => {
 		setError(null); // Clear previous errors
 		// Validate essential selections
-		if (!selectedBookingDate || selectedSlots.size === 0 || selectedPetIds.length === 0 || !selectedServiceId) {
-			alert('Please select a date, a service, at least one pet, and at least one time slot.');
+		if (selectedSlots.size === 0 || selectedPetIds.length === 0 || !selectedServiceId) {
+			alert('Please select a service, at least one pet, and at least one time slot.');
 			return;
 		}
 
-		console.log('Booking for date:', selectedBookingDate.toLocaleDateString());
-		console.log('Booking selected slots (startTimes):', selectedSlots);
-		console.log('Booking for pets:', selectedPetIds);
+        // 1. Construct the bookings array from selectedSlots
+        const bookingsPayload: BookingInput[] = []; // Use specific type
+        let foundAllSlotDetails = true;
 
-		setIsLoadingBookings(true); // Use the dedicated booking loading state
+        for (const slotKey of selectedSlots) {
+            const startTime = slotKey;
+            const slotDetails = aggregatedSlots.find((s) => s.startTime === startTime);
 
-		let bookingSuccess = true;
-		const bookingResults = [];
-
-		// Iterate through each selected slot (identified by startTime string)
-		for (const slotKey of selectedSlots) {
-			const startTime = slotKey;
-			// Find the corresponding aggregated slot details from state
-			const slotDetails = aggregatedSlots.find((s) => s.startTime === startTime);
-
-			if (!slotDetails) {
-				console.error(`Could not find details for selected slot key: ${slotKey}`);
-				bookingResults.push({ slot: slotKey, success: false, error: 'Slot details not found internally.' });
-				bookingSuccess = false;
-				continue; // Skip to next slot
-			}
-
-			// Construct the payload for the API
-			const payload = {
-				service_id: parseInt(selectedServiceId, 10),
-				start_time: slotDetails.startTime, // Use the found start time
-				end_time: slotDetails.endTime, // Use the found end time
-				pet_ids: selectedPetIds,
-				// Note: The API should handle field assignment based on service/time/capacity
-				// date: selectedBookingDate.toISOString().split('T')[0] // Pass date if API needs it explicitly
-			};
-
-			console.log('Sending booking payload:', payload);
-
-			try {
-				const response = await fetch('/api/client-booking', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify(payload),
-				});
-
-				if (!response.ok) {
-					let errorData = { error: `Booking failed (HTTP ${response.status})` };
-					try {
-						errorData = await response.json();
-					} catch (jsonError) {
-						// Log the error if parsing JSON fails
-						console.warn('Could not parse booking error response as JSON:', jsonError);
-					}
-					throw new Error(errorData.error || `Booking failed (HTTP ${response.status})`);
-				}
-				const result = await response.json();
-				bookingResults.push({ slot: slotKey, success: true, data: result });
-			} catch (e) {
-				const message = e instanceof Error ? e.message : 'Unknown booking error occurred.';
-				console.error(`Error booking slot ${slotKey}:`, e);
-				bookingResults.push({ slot: slotKey, success: false, error: message });
-				bookingSuccess = false;
-				// Decide if we should stop on first error or try all slots
-				// break; // Uncomment to stop on first error
-			}
-		} // End loop through selectedSlots
-
-		setIsLoadingBookings(false);
-
-		if (bookingSuccess) {
-			// --- Send Test Email ---
-			// const emailPayload = {
-			// 	to: process.env.NEXT_PUBLIC_RESEND_EMAIL || 'admin@bonnies.dog', // Send TO admin for testing
-			// 	subject: 'TEST Booking Confirmation',
-			// 	html: `<p>This is a test email to confirm a booking was made. Details:</p><p>Date: ${selectedBookingDate?.toLocaleDateString()}</p><p>Slots: ${Array.from(selectedSlots).join(', ')}</p><p>Pets: ${selectedPetIds.join(', ')}</p>`
-			// };
-
-			// try {
-			// 	console.log('Attempting to send test booking confirmation email...', emailPayload);
-			// 	const emailRes = await fetch('/api/send-email', {
-			// 		method: 'POST',
-			// 		headers: { 'Content-Type': 'application/json' },
-			// 		body: JSON.stringify(emailPayload)
-			// 	});
-			// 	if (!emailRes.ok) {
-			// 		 console.error('Test email send failed:', await emailRes.text());
-			// 	} else {
-			// 		 console.log('Test email sent successfully:', await emailRes.json());
-			// 	}
-			// } catch (emailError) {
-			// 	console.error('Error calling /api/send-email:', emailError);
-			// }
-			// --- End Test Email ---
-
-			alert('All selected slots booked successfully!'); // Keep original alert for now
-			setSelectedSlots(new Set()); // Clear selection on success
-			setSelectedBookingDate(null); // Clear selected date
-			await fetchClientBookings(); // Refresh the list of client's bookings (await it)
-			// Refetch calendar availability to update capacities/display
-			if (selectedServiceId) { // Ensure we have a service selected before refetching
-                await fetchCalendarAvailability(selectedServiceId, calendarViewDate);
-            } else {
-                setCalendarDisplayEvents([]); // Clear if no service ID (shouldn't happen here but safe)
-                setAggregatedSlots([]); // Also clear aggregated if no service
+            if (!slotDetails) {
+                setError(`Internal error: Could not find details for slot ${startTime}. Please refresh and try again.`);
+                foundAllSlotDetails = false;
+                break; // Stop processing further slots
             }
-		} else {
-			// Provide more detailed error feedback
-			const failedSlots = bookingResults.filter((r) => !r.success);
-			setError(
-				`Failed to book ${failedSlots.length} slot(s). Errors: ${failedSlots
-					.map((f) => `Slot starting ${new Date(f.slot ?? '').toLocaleTimeString()}: ${f.error}`)
-					.join('; ')}`
-			);
-			// Consider only clearing *failed* slots from selection?
-		}
+
+            bookingsPayload.push({
+                service_id: parseInt(selectedServiceId, 10),
+                start_time: slotDetails.startTime,
+                end_time: slotDetails.endTime,
+                pet_ids: selectedPetIds,
+            });
+        }
+
+        // Exit if we couldn't find details for any selected slot
+        if (!foundAllSlotDetails) {
+            return;
+        }
+
+        // Ensure payload is not empty after processing
+        if (bookingsPayload.length === 0) {
+            setError('No valid slots selected or found for booking.');
+            return;
+        }
+
+		setIsLoadingBookings(true); // Start loading indicator
+
+        // 2. Send a single API request
+		try {
+			const response = await fetch('/api/client-booking', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+                // Send the payload structured as { bookings: [...] }
+				body: JSON.stringify({ bookings: bookingsPayload }),
+			});
+
+            // 3. Handle the consolidated response with specific types
+            const result: BookingApiResponse = await response.json();
+
+            if (response.ok) { // Status 200-299
+                if (response.status === 201) { // All successful
+                    alert(result.message || 'All selected slots booked successfully!');
+                    setSelectedSlots(new Set()); // Clear selection
+                    setSelectedBookingDate(null); // Clear selected date
+                    await fetchClientBookings(); // Refresh bookings
+                    if (selectedServiceId) { // Refresh calendar
+                        await fetchCalendarAvailability(selectedServiceId, calendarViewDate);
+                    } else {
+                         setCalendarDisplayEvents([]);
+                         setAggregatedSlots([]);
+                    }
+                } else if (response.status === 207) { // Partial success
+                    // Extract failed slots info for a more informative message
+                    const failedDetails = result.failedBookings?.map((f) =>
+                        `Slot starting ${new Date(f.input?.start_time ?? '').toLocaleTimeString()}: ${f.error}`
+                    ).join('\n') || 'Details unavailable.';
+                    alert(`Partial success: ${result.message}\n\nFailures:\n${failedDetails}`);
+                    // Optionally, only remove successful slots from selection
+                    const successfulStartTimes = new Set(result.successfulBookings?.map((b) => b.start_time) || []);
+                    setSelectedSlots(prev => new Set(Array.from(prev).filter(key => !successfulStartTimes.has(key))));
+                    // Refresh data as some things changed
+                    await fetchClientBookings();
+                    if (selectedServiceId) {
+                        await fetchCalendarAvailability(selectedServiceId, calendarViewDate);
+                    }
+                } else {
+                    // Handle other unexpected success codes if necessary
+                    alert(`Booking completed with status ${response.status}. Message: ${result.message || 'No message provided.'}`);
+                    // Clear selection and refresh data as a safe default
+                    setSelectedSlots(new Set());
+                    setSelectedBookingDate(null);
+                    await fetchClientBookings();
+                     if (selectedServiceId) {
+                        await fetchCalendarAvailability(selectedServiceId, calendarViewDate);
+                    }
+                }
+            } else { // Handle error responses (4xx, 5xx)
+                // Use the error message from the parsed JSON if available
+                 const errorMessage = result.error || result.message || `Booking failed (HTTP ${response.status})`;
+                 // If specific failed bookings are listed (e.g., status 400 from API)
+                 if (result.failedBookings && result.failedBookings.length > 0) {
+                     const failedDetails = result.failedBookings.map((f) =>
+                        `Slot starting ${new Date(f.input?.start_time ?? '').toLocaleTimeString()}: ${f.error}`
+                     ).join('\n');
+                     setError(`Failed to book slots:\n${failedDetails}`);
+                 } else {
+                     setError(errorMessage);
+                 }
+                 // Optionally, decide whether to clear selection on failure
+            }
+		} catch (e) {
+			const message = e instanceof Error ? e.message : 'An unknown error occurred while booking.';
+			console.error('Error booking selected slots:', e);
+            setError(message);
+		} finally {
+            setIsLoadingBookings(false); // Stop loading indicator
+        }
 	};
 
 	// === Calendar Interaction Handlers ===
 	const handleCalendarNavigate = (newDate: Date) => {
-		console.log('Calendar navigating to:', newDate);
 		setCalendarViewDate(newDate); // Update the view date state
-		// Fetching is handled by the useEffect watching calendarViewDate
 	};
 
 	// === Helper function for calendar day styling ===
@@ -655,18 +649,14 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		const resource = event.resource as { type?: string; rawStartTime?: string };
 		if (resource?.type === 'availability-slot' && resource.rawStartTime) {
 			const slotKey = resource.rawStartTime;
-			console.log('[handleEventClick] Event clicked, using slotKey:', slotKey);
 
-			// Find the aggregated slot details
 			const aggSlot = aggregatedSlots.find((s) => s.startTime === slotKey);
 			if (!aggSlot) {
-				console.error('Could not find aggregated slot details for key:', slotKey);
 				return;
 			}
 
 			// Check if booked by user first
 			if (isSlotBookedBySelectedPets(slotKey)) {
-				console.log('Clicked slot is already booked by selected pets.');
 				return; // Do nothing if already booked by this user
 			}
 
@@ -678,7 +668,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 				// It's a normally bookable slot, toggle selection and set date
 				handleSlotSelectionToggle(slotKey);
 			}
-			// Do nothing more if capacity is 0 and it's not an enquiry slot (e.g., staff_full reason)
 		}
 	};
 	// ----------------------------------
@@ -774,19 +763,6 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 									const isDisabled = isBookedBySelection || ((isFull || insufficientCapacity) && !isEnquiryOnly);
 									// --- End Refined Checks ---
 
-									// Debug Log inside map
-									if (slot.startTime.includes('2025-05-05')) {
-										// Example: Log specifically for Monday slot
-										console.log('[Render Check - Monday Slot]', {
-											slotData: slot, // Log the whole slot object from state
-											isFull,
-											isBookedBySelection,
-											otherStaffFlag: slot.other_staff_potentially_available,
-											isEnquiryOnly, // Check the calculated boolean
-											isDisabled,
-										});
-									}
-
 									let slotTextSuffix = isSelected ? ' (Selected)' : '';
 									const listItemStyle = {
 										padding: '10px',
@@ -876,13 +852,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 					<p>Selected Slots:</p>
 					<ul className={styles.listCompact}>
 						{Array.from(selectedSlots).map((slotKey) => {
-							console.log('[Booking Summary] Looking up slotKey:', slotKey);
-							console.log(
-								'[Booking Summary] Available aggregatedSlots keys:',
-								aggregatedSlots.map((s) => s.startTime)
-							);
 							const slot = aggregatedSlots.find((s) => s.startTime === slotKey);
-							console.log('[Booking Summary] Found slot:', slot);
 							return (
 								<li key={slotKey}>
 									{

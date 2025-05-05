@@ -86,7 +86,6 @@ const CalendarView: React.FC<CalendarViewProps> = ({
 				onSelectSlot({ ...slotInfo, end: slotInfo.start });
 			} else {
 				// Optionally handle range selection differently or ignore
-				// console.log("Date range selected, not firing single day click.");
 			}
 		}
 	};

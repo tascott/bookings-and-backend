@@ -117,7 +117,6 @@ export async function GET(request: Request) {
 			.maybeSingle();
 		if (serviceError) throw serviceError;
 		serviceDefaultPrice = serviceData?.default_price ?? null;
-		console.log(`Service ${serviceId} default price: ${serviceDefaultPrice}`); // Log default price
 
 		// Fetch potentially relevant active availability rules for the service
 		const { data: rulesData, error: rulesError } = await supabaseAdmin
@@ -132,7 +131,6 @@ export async function GET(request: Request) {
 
 		if (rulesError) throw rulesError;
 		availabilityRules = rulesData || [];
-		console.log(`Fetched ${availabilityRules.length} active rules for service ${serviceId}`); // Log fetched rules count
 	} catch (dbError) {
 		console.error('Database error fetching service/availability rules:', dbError);
 		const message = dbError instanceof Error ? dbError.message : 'Failed to load pricing rules';
@@ -192,9 +190,6 @@ export async function GET(request: Request) {
 				// Find best matching rule (specific date takes precedence over recurring)
 				let bestMatchRule = null;
 				for (const rule of availabilityRules) {
-					console.log(
-						`  Rule ${rule.id}: Start=${rule.start_time}, End=${rule.end_time}, Date=${rule.specific_date}, Days=${rule.days_of_week}, Price=${rule.override_price}, UsesStaffCap=${rule.use_staff_vehicle_capacity}`
-					);
 					const ruleStartTimeHHMM = rule.start_time.substring(0, 5);
 					const ruleEndTimeHHMM = rule.end_time.substring(0, 5);
 					// Check time overlap using truncated times
@@ -203,23 +198,17 @@ export async function GET(request: Request) {
 					if (timeMatches) {
 						// Check specific date match
 						const specificDateMatches = rule.specific_date === slotDateStr;
-						console.log(`    Specific date comparison (${rule.specific_date} === ${slotDateStr}): ${specificDateMatches}`);
 						if (specificDateMatches) {
 							bestMatchRule = rule; // Exact date match is best
-							console.log(`    -> Best Match Found (Specific Date): Rule ${rule.id}`);
 							break; // Stop searching
 						}
 						// Check recurring day match (only if rule is not specific date)
 						const isRecurring = !rule.specific_date;
 						const dayMatches = isRecurring && rule.days_of_week?.includes(slotDayOfWeek);
-						console.log(
-							`    Recurring day comparison (IsRecurring=${isRecurring}, Day=${slotDayOfWeek} in [${rule.days_of_week}]): ${dayMatches}`
-						);
 						if (dayMatches) {
 							// Only update if no specific match was found earlier
 							if (!bestMatchRule || !bestMatchRule.specific_date) {
 								bestMatchRule = rule; // Recurring match
-								console.log(`    -> Match Found (Recurring Day): Rule ${rule.id}`);
 							}
 						}
 					} else {
@@ -229,7 +218,6 @@ export async function GET(request: Request) {
 
 				if (bestMatchRule && bestMatchRule.override_price !== null) {
 					slotPrice = bestMatchRule.override_price;
-					console.log(`Slot ${slot.slot_start_time}: Using override price ${slotPrice} from rule ${bestMatchRule.id}`);
 				} else {
 					console.log(`Slot ${slot.slot_start_time}: Using default price ${slotPrice}`);
 				}
@@ -266,7 +254,6 @@ export async function GET(request: Request) {
 				// Existing logic for non-admins
 				const slotDate = slot.start_time.split('T')[0];
 				const isAfterToday = slotDate > todayUTC;
-				console.log(`Filtering slot ${slot.start_time}: SlotDate=${slotDate}, TodayUTC=${todayUTC}, IsAfterToday=${isAfterToday}, UserRole=${userRole}`);
 				return isAfterToday;
 				// --- END MODIFICATION ---
 			});

@@ -195,7 +195,6 @@ export default function StaffAvailabilityManagement() {
 
 	// --- Edit Rule Handler ---
 	const handleEditRule = (rule: StaffAvailabilityRule) => {
-		console.log('Opening edit modal for rule:', rule);
 		setError(null); // Clear any previous errors
 		setEditingRule(rule);
 		setIsEditModalOpen(true);
@@ -230,8 +229,6 @@ export default function StaffAvailabilityManagement() {
 
 			// On success, remove the rule from the local state
 			setAvailabilityRules((prevRules) => prevRules.filter((rule) => rule.id !== ruleId));
-
-			console.log(`Successfully deleted rule ID: ${ruleId}`);
 		} catch (err) {
 			const msg = err instanceof Error ? err.message : 'Unknown error deleting rule';
 			console.error('Delete Rule Error:', err);
@@ -271,7 +268,6 @@ export default function StaffAvailabilityManagement() {
 			return;
 		}
 
-		console.log(`Attempting to update rule ID: ${editingRule.id} with data:`, updatedRuleData);
 		setError(null); // Clear previous main errors
 		// Consider adding a specific loading state if needed, e.g., setIsLoadingUpdate(true)
 
@@ -319,8 +315,6 @@ export default function StaffAvailabilityManagement() {
 						return a.start_time.localeCompare(b.start_time);
 					})
 			);
-
-			console.log(`Successfully updated rule ID: ${editingRule.id}`);
 			// Close the modal and clear the editing state
 			setIsEditModalOpen(false);
 			setEditingRule(null);
@@ -595,7 +589,6 @@ function EditAvailabilityRuleModal({ rule, onClose, onSave }: EditModalProps) {
 		};
 
 		try {
-			console.log('[EditModal.handleSubmit] Sending update payload:', updatedData);
 			await onSave(updatedData);
 			// If onSave doesn't throw, assume success (parent handles closing)
 		} catch (err) {

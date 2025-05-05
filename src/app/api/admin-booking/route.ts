@@ -129,23 +129,15 @@ export async function POST(request: Request) {
                 (!rule.specific_date && rule.days_of_week && rule.days_of_week.includes(requestedDayOfWeekLondon))
             );
             if (!dateOrDayMatch) {
-                 console.log(`Admin Booking Rule ${rule.id} Skipped: Date/Day mismatch (Rule Date: ${rule.specific_date}, Rule Days: ${rule.days_of_week}, Req London Date: ${requestedDateLondon}, Req London Day: ${requestedDayOfWeekLondon})`);
                  return false;
             }
-             // --- END MODIFICATION ---
-
-             // --- MODIFICATION: Compare using London time ---
-            // Check time match: requested slot should be within the rule's time
             // Assuming rule times are stored as HH:MM or HH:MM:SS
              const ruleStartTime = rule.start_time.length === 5 ? rule.start_time + ':00' : rule.start_time;
              const ruleEndTime = rule.end_time.length === 5 ? rule.end_time + ':00' : rule.end_time;
              const timeMatch = requestedTimeStartLondon >= ruleStartTime && requestedTimeEndLondon <= ruleEndTime;
             if (!timeMatch) {
-                 console.log(`Admin Booking Rule ${rule.id} Skipped: Time mismatch (Rule Start: ${ruleStartTime}, Rule End: ${ruleEndTime}, Req London Start: ${requestedTimeStartLondon}, Req London End: ${requestedTimeEndLondon})`);
                 return false;
             }
-             // --- END MODIFICATION ---
-             console.log(`Admin Booking Rule ${rule.id} Matched.`);
             return true;
         });
 
@@ -181,7 +173,6 @@ export async function POST(request: Request) {
                     // Optional: Check if staff is actually *available* via staff_availability
                     // For admin booking, we might skip this check to allow overrides, or just log a warning.
                     // Let's skip the availability check for now to allow override.
-                    console.log(`Admin Booking: Assigning staff user ${assigned_staff_user_id} and vehicle ${assigned_vehicle_id} based on client default.`);
                 }
             }
         }

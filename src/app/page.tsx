@@ -261,7 +261,6 @@ export default function Home() {
   // Effect 2: Fetch role after user state is confirmed
   useEffect(() => {
     if (user && !role && !isLoadingRole) { // Fetch role only if we have a user but no role yet, and not already loading
-      console.log(`User ${user.id} logged in, fetching role...`);
       fetchUserRole(user.id).then(fetchedRole => {
         console.log(`Role fetched for user ${user.id}: ${fetchedRole}`);
         setRole(fetchedRole);

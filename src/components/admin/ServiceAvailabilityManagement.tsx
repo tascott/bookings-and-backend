@@ -211,7 +211,6 @@ export default function ServiceAvailabilityManagement({
 			if (specificDateValue && !dateRegex.test(specificDateValue)) throw new Error('Invalid specific_date format (YYYY-MM-DD)');
 
 			setIsSaving(true);
-			console.log('[handleSaveEdit] Sending update payload:', updateData);
 			await handleUpdateServiceAvailability(editingRule.id, updateData);
 			closeEditModal();
 		} catch (e) {

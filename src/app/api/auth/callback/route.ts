@@ -38,7 +38,6 @@ export async function GET(request: NextRequest) {
   // redirect there explicitly.
   // We might need a more robust way to determine the target if this callback handles more flows.
   if (requestUrl.pathname.includes('callback')) { // Simple check
-     console.log("Redirecting from auth callback to /reset-password");
      // Ensure we preserve the hash fragment if it exists, as the client page needs it!
      const redirectUrl = new URL('/reset-password', requestUrl.origin);
      redirectUrl.hash = requestUrl.hash; // Preserve the hash!

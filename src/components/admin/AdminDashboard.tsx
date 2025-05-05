@@ -476,7 +476,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 				}
 			}
 		}
-		console.log('Collected daysOfWeek (ISO 1-7):', daysOfWeekISO);
 
 		const overridePriceStr = formData.get('availabilityOverridePrice') as string;
 		let override_price: number | null = null;
@@ -524,9 +523,8 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 			return;
 		}
 
-		// API Call remains the same
+		// API Call
 		try {
-			console.log('[handleAddServiceAvailability] Sending payload:', payload); // Log payload before sending
 			const response = await fetch('/api/service-availability', {
 				method: 'POST',
 				headers: { 'Content-Type': 'application/json' },
@@ -537,7 +535,6 @@ export default function AdminDashboard({ user }: AdminDashboardProps) {
 				throw new Error(errorData.error || 'Failed to add service availability rule');
 			}
 			const newAvailabilityRule: ServiceAvailability = await response.json();
-			console.log('[handleAddServiceAvailability] Received new rule from API:', newAvailabilityRule); // Log response object
 			setServiceAvailability((prev) => [...prev, newAvailabilityRule].sort((a, b) => a.id - b.id));
 			addServiceAvailabilityFormRef.current?.reset();
 			// Set success message instead of error
