@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { GeocoderAutocomplete } from '@geoapify/geocoder-autocomplete';
+import '@geoapify/geocoder-autocomplete/styles/round-borders-dark.css'; // Use round-borders-dark theme
 
 // Define types
 type Pet = {
@@ -25,6 +27,15 @@ type Client = {
   default_staff_id?: number | null;
   default_staff_name?: string | null;
   pets: Pet[];
+  // Add Address Fields (nullable)
+  address_line_1?: string | null;
+  address_line_2?: string | null;
+  town_or_city?: string | null;
+  county?: string | null;
+  postcode?: string | null;
+  country?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 // Type for staff list items fetched from API
@@ -63,6 +74,19 @@ function ClientEditModal({
   const [phone, setPhone] = useState(client.phone || '');
   const [error, setError] = useState<string | null>(null);
 
+  // Add address state variables
+  const [addressLine1, setAddressLine1] = useState(client.address_line_1 || '');
+  const [addressLine2, setAddressLine2] = useState(client.address_line_2 || '');
+  const [townOrCity, setTownOrCity] = useState(client.town_or_city || '');
+  const [county, setCounty] = useState(client.county || '');
+  const [postcode, setPostcode] = useState(client.postcode || '');
+  const [country, setCountry] = useState(client.country || '');
+  const [latitude, setLatitude] = useState<number | null>(client.latitude || null);
+  const [longitude, setLongitude] = useState<number | null>(client.longitude || null);
+
+  // Ref for the autocomplete container
+  const autocompleteContainerRef = useRef<HTMLDivElement>(null);
+
   // Tab state
   const [activeTab, setActiveTab] = useState<'info' | 'pets'>('info');
 
@@ -80,6 +104,64 @@ function ClientEditModal({
 
   const [selectedStaffId, setSelectedStaffId] = useState<number | string>(client.default_staff_id ?? '');
 
+  // Initialize Geoapify Autocomplete
+  useEffect(() => {
+    // Ensure API key is available
+    const apiKey = process.env.NEXT_PUBLIC_GEOAPIFY_KEY;
+    if (!apiKey) {
+      console.error("[Admin Modal] Geoapify API key not found. Please set NEXT_PUBLIC_GEOAPIFY_KEY environment variable.");
+      setError("Address lookup configuration error.");
+      return;
+    }
+
+    let autocompleteInstance: GeocoderAutocomplete | null = null;
+
+    if (autocompleteContainerRef.current) {
+      // Clear previous instance content manually if cleanup method is unknown
+      autocompleteContainerRef.current.innerHTML = '';
+
+      autocompleteInstance = new GeocoderAutocomplete(
+        autocompleteContainerRef.current,
+        apiKey,
+        {
+          lang: 'en',
+          filter: { countrycode: ['gb'] },
+          placeholder: 'Start typing address...',
+          skipIcons: true,
+        }
+      );
+
+      autocompleteInstance.on('select', (location) => {
+        // Handle selected address
+        console.log('[Admin Modal] Selected address:', location);
+        if (location && location.properties) {
+          const props = location.properties;
+          setAddressLine1(props.address_line1 || '');
+          setAddressLine2(''); // DO NOT auto-populate line 2
+          setTownOrCity(props.city || '');
+          setCounty(props.county || ''); // May not always be present
+          setPostcode(props.postcode || '');
+          setCountry(props.country || '');
+          setLatitude(props.lat || null);
+          setLongitude(props.lon || null);
+        }
+      });
+
+      console.log("[Admin Modal] Geoapify Initialized for client:", client.id);
+    }
+
+    // Cleanup function
+    return () => {
+      if (autocompleteContainerRef.current) {
+         // Attempt manual cleanup again if instance might persist
+         autocompleteContainerRef.current.innerHTML = '';
+         console.log("[Admin Modal] Geoapify Cleaned up for client:", client.id);
+      }
+      // In a real scenario, if autocompleteInstance had a .remove() or .destroy(),
+      // you'd call it here: autocompleteInstance?.remove();
+    };
+  }, [client.id]); // Re-run effect when the client ID changes
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -93,10 +175,19 @@ function ClientEditModal({
         last_name: lastName || null,
         email: email || null,
         phone: phone || null,
-        default_staff_id: staffIdToSave
+        default_staff_id: staffIdToSave,
+        // Include address fields
+        address_line_1: addressLine1 || null,
+        address_line_2: addressLine2 || null,
+        town_or_city: townOrCity || null,
+        county: county || null,
+        postcode: postcode || null,
+        country: country || null,
+        latitude: latitude,
+        longitude: longitude
       });
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      const message = err instanceof Error ? err.message : "Unknown error occurred";
       setError(message);
     }
   };
@@ -124,7 +215,7 @@ function ClientEditModal({
       setNewPetBreed('');
       setNewPetSize('');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      const message = err instanceof Error ? err.message : "Unknown error occurred";
       setError(message);
     } finally {
       setIsAddingPet(false);
@@ -150,7 +241,7 @@ function ClientEditModal({
       // Reset editing state
       setEditingPet(null);
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown error occurred';
+      const message = err instanceof Error ? err.message : "Unknown error occurred";
       setError(message);
     }
   };
@@ -185,11 +276,19 @@ function ClientEditModal({
         padding: '20px',
         width: '90%',
         maxWidth: '600px',
-        maxHeight: '80vh',
+        maxHeight: '85vh',
         overflow: 'auto',
         color: 'black'
       }}>
-        <h3>Manage Client</h3>
+        {/* Global style override for suggestions dropdown z-index */}
+        <style>
+          {`
+            .geoapify-autocomplete-items {
+              z-index: 1050 !important; /* Try a high value, higher than typical modal z-indexes */
+            }
+          `}
+        </style>
+        <h3 style={{ color: '#333' }}>Manage Client</h3>
         {error && <p style={{ color: 'red' }}>{error}</p>}
 
         {/* Tabs */}
@@ -235,7 +334,7 @@ function ClientEditModal({
         {activeTab === 'info' && (
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: '15px' }}>
-              <label htmlFor="clientFirstName" style={{ display: 'block', marginBottom: '5px' }}>First Name:</label>
+              <label htmlFor="clientFirstName" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>First Name:</label>
               <input
                 id="clientFirstName"
                 type="text"
@@ -245,7 +344,7 @@ function ClientEditModal({
               />
             </div>
             <div style={{ marginBottom: '15px' }}>
-              <label htmlFor="clientLastName" style={{ display: 'block', marginBottom: '5px' }}>Last Name:</label>
+              <label htmlFor="clientLastName" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Last Name:</label>
               <input
                 id="clientLastName"
                 type="text"
@@ -255,7 +354,7 @@ function ClientEditModal({
               />
             </div>
             <div style={{ marginBottom: '15px' }}>
-              <label htmlFor="clientEmail" style={{ display: 'block', marginBottom: '5px' }}>Email:</label>
+              <label htmlFor="clientEmail" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Email:</label>
               <input
                 id="clientEmail"
                 type="email"
@@ -265,7 +364,7 @@ function ClientEditModal({
               />
             </div>
             <div style={{ marginBottom: '15px' }}>
-              <label htmlFor="clientPhone" style={{ display: 'block', marginBottom: '5px' }}>Phone:</label>
+              <label htmlFor="clientPhone" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Phone:</label>
               <input
                 id="clientPhone"
                 type="tel"
@@ -274,8 +373,92 @@ function ClientEditModal({
                 style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
               />
             </div>
+
+            {/* Address Autocomplete Section */}
+            <div style={{ marginBottom: '15px', borderTop: '1px solid #eee', paddingTop: '15px' }}>
+              <label htmlFor="addressAutocomplete" style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold', color: '#333' }}>Find Address:</label>
+              {/* Add position: relative to help dropdown positioning */}
+              <div id="addressAutocomplete" ref={autocompleteContainerRef} style={{ marginBottom: '10px', width: '100%', position: 'relative' }}>
+                {/* The library will inject the input here */}
+              </div>
+              <p style={{fontSize: '0.8em', color: '#666', margin: '0 0 10px 0'}}>Start typing the address above to find and populate the fields below.</p>
+            </div>
+
+            {/* Manual Address Fields */}
             <div style={{ marginBottom: '15px' }}>
-              <label htmlFor="defaultStaff" style={{ display: 'block', marginBottom: '5px' }}>Default Staff Member:</label>
+              <label htmlFor="addressLine1" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Address Line 1:</label>
+              <input
+                id="addressLine1"
+                type="text"
+                value={addressLine1}
+                onChange={(e) => setAddressLine1(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+            </div>
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="addressLine2" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Address Line 2:</label>
+              <input
+                id="addressLine2"
+                type="text"
+                value={addressLine2}
+                onChange={(e) => setAddressLine2(e.target.value)}
+                style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+            </div>
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+                <div style={{ flex: 1 }}>
+                    <label htmlFor="townOrCity" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Town/City:</label>
+                    <input
+                        id="townOrCity"
+                        type="text"
+                        value={townOrCity}
+                        onChange={(e) => setTownOrCity(e.target.value)}
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                    />
+                </div>
+                <div style={{ flex: 1 }}>
+                    <label htmlFor="county" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>County:</label>
+                    <input
+                        id="county"
+                        type="text"
+                        value={county}
+                        onChange={(e) => setCounty(e.target.value)}
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                    />
+                </div>
+            </div>
+            <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+                <div style={{ flex: 1 }}>
+                    <label htmlFor="postcode" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Postcode:</label>
+                    <input
+                        id="postcode"
+                        type="text"
+                        value={postcode}
+                        onChange={(e) => setPostcode(e.target.value)}
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+                    />
+                </div>
+                <div style={{ flex: 1 }}>
+                    <label htmlFor="country" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Country:</label>
+                    <input
+                        id="country"
+                        type="text"
+                        value={country}
+                        onChange={(e) => setCountry(e.target.value)}
+                        style={{ width: '100%', padding: '8px', borderRadius: '4px', border: '1px solid #ddd', backgroundColor: '#f0f0f0' }}
+                        readOnly // Country is typically set by autocomplete
+                    />
+                </div>
+            </div>
+             {/* Display Lat/Lon for verification (optional) */}
+             {latitude && longitude && (
+                 <p style={{ fontSize: '0.8em', color: '#666', marginTop: '-5px', marginBottom: '15px' }}>
+                     Coordinates: {latitude.toFixed(6)}, {longitude.toFixed(6)}
+                 </p>
+             )}
+
+            <div style={{ marginBottom: '15px' }}>
+              <label htmlFor="defaultStaff" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Default Staff Member:</label>
               <select
                 id="defaultStaff"
                 value={selectedStaffId}
@@ -329,10 +512,10 @@ function ClientEditModal({
           <div>
             {/* Add New Pet Form */}
             <div style={{ marginBottom: '20px', padding: '15px', border: '1px solid #ddd', borderRadius: '4px' }}>
-              <h4 style={{ marginTop: 0 }}>Add New Pet</h4>
+              <h4 style={{ marginTop: 0, color: '#333' }}>Add New Pet</h4>
               <form onSubmit={handleAddPet}>
                 <div style={{ marginBottom: '10px' }}>
-                  <label htmlFor="newPetName" style={{ display: 'block', marginBottom: '5px' }}>Name:</label>
+                  <label htmlFor="newPetName" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Name:</label>
                   <input
                     id="newPetName"
                     type="text"
@@ -343,7 +526,7 @@ function ClientEditModal({
                   />
                 </div>
                 <div style={{ marginBottom: '10px' }}>
-                  <label htmlFor="newPetBreed" style={{ display: 'block', marginBottom: '5px' }}>Breed (Optional):</label>
+                  <label htmlFor="newPetBreed" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Breed (Optional):</label>
                   <input
                     id="newPetBreed"
                     type="text"
@@ -353,7 +536,7 @@ function ClientEditModal({
                   />
                 </div>
                 <div style={{ marginBottom: '10px' }}>
-                  <label htmlFor="newPetSize" style={{ display: 'block', marginBottom: '5px' }}>Size (Optional):</label>
+                  <label htmlFor="newPetSize" style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Size (Optional):</label>
                   <input
                     id="newPetSize"
                     type="text"
@@ -381,7 +564,7 @@ function ClientEditModal({
             </div>
 
             {/* Pet List */}
-            <h4>Client's Pets</h4>
+            <h4 style={{ color: '#333' }}>Client&apos;s Pets</h4>
             {client.pets.length === 0 ? (
               <p>This client has no pets.</p>
             ) : (
@@ -398,7 +581,7 @@ function ClientEditModal({
                       // Edit Pet Form
                       <form onSubmit={handleUpdatePet}>
                         <div style={{ marginBottom: '10px' }}>
-                          <label htmlFor={`editPetName-${pet.id}`} style={{ display: 'block', marginBottom: '5px' }}>Name:</label>
+                          <label htmlFor={`editPetName-${pet.id}`} style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Name:</label>
                           <input
                             id={`editPetName-${pet.id}`}
                             type="text"
@@ -409,7 +592,7 @@ function ClientEditModal({
                           />
                         </div>
                         <div style={{ marginBottom: '10px' }}>
-                          <label htmlFor={`editPetBreed-${pet.id}`} style={{ display: 'block', marginBottom: '5px' }}>Breed:</label>
+                          <label htmlFor={`editPetBreed-${pet.id}`} style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Breed:</label>
                           <input
                             id={`editPetBreed-${pet.id}`}
                             type="text"
@@ -419,7 +602,7 @@ function ClientEditModal({
                           />
                         </div>
                         <div style={{ marginBottom: '10px' }}>
-                          <label htmlFor={`editPetSize-${pet.id}`} style={{ display: 'block', marginBottom: '5px' }}>Size:</label>
+                          <label htmlFor={`editPetSize-${pet.id}`} style={{ display: 'block', marginBottom: '5px', color: '#333' }}>Size:</label>
                           <input
                             id={`editPetSize-${pet.id}`}
                             type="text"
@@ -465,7 +648,7 @@ function ClientEditModal({
                       <div>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <div>
-                            <h5 style={{ margin: '0 0 5px 0' }}>{pet.name}</h5>
+                            <h5 style={{ margin: '0 0 5px 0', color: '#333' }}>{pet.name}</h5>
                             <div>
                               {pet.breed && <span style={{ marginRight: '10px' }}><strong>Breed:</strong> {pet.breed}</span>}
                               {pet.size && <span><strong>Size:</strong> {pet.size}</span>}
@@ -864,7 +1047,7 @@ export default function ClientManagement() {
                   onClick={() => toggleClientExpand(client.id)}
                   style={{ cursor: 'pointer', flex: 1 }}
                 >
-                  <h3 style={{ margin: '0 0 0.5rem 0' }}>
+                  <h3 style={{ margin: '0 0 0.5rem 0', color: '#333' }}>
                     {
                       client.first_name || client.last_name ?
                         `${client.first_name || ''} ${client.last_name || ''}`.trim() :

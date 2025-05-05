@@ -50,7 +50,19 @@ export async function GET(request: Request) {
           user_id,
           email,
           default_staff_id,
-          profiles ( first_name, last_name, phone ),
+          profiles (
+            first_name,
+            last_name,
+            phone,
+            address_line_1,
+            address_line_2,
+            town_or_city,
+            county,
+            postcode,
+            country,
+            latitude,
+            longitude
+           ),
           pets ( id, name, breed, size, is_confirmed )
         `, { count: 'exact' }) // Keep count if needed for UI
         .eq('default_staff_id', staffId)
@@ -72,6 +84,14 @@ export async function GET(request: Request) {
           first_name: clientProfile?.first_name ?? null,
           last_name: clientProfile?.last_name ?? null,
           phone: clientProfile?.phone ?? null,
+          address_line_1: clientProfile?.address_line_1 ?? null,
+          address_line_2: clientProfile?.address_line_2 ?? null,
+          town_or_city: clientProfile?.town_or_city ?? null,
+          county: clientProfile?.county ?? null,
+          postcode: clientProfile?.postcode ?? null,
+          country: clientProfile?.country ?? null,
+          latitude: clientProfile?.latitude ?? null,
+          longitude: clientProfile?.longitude ?? null,
           pets: c.pets || [],
           // default_staff_name is omitted as it's implicitly the current staff user
         };
@@ -101,7 +121,19 @@ export async function GET(request: Request) {
           user_id,
           email,
           default_staff_id,
-          profiles ( first_name, last_name, phone ),
+          profiles (
+            first_name,
+            last_name,
+            phone,
+            address_line_1,
+            address_line_2,
+            town_or_city,
+            county,
+            postcode,
+            country,
+            latitude,
+            longitude
+          ),
           pets ( id, name, breed, size, is_confirmed ),
           staff ( profiles ( first_name, last_name ) )
         `, { count: 'exact' })
@@ -152,6 +184,14 @@ export async function GET(request: Request) {
           first_name: clientProfile?.first_name ?? null,
           last_name: clientProfile?.last_name ?? null,
           phone: clientProfile?.phone ?? null,
+          address_line_1: clientProfile?.address_line_1 ?? null,
+          address_line_2: clientProfile?.address_line_2 ?? null,
+          town_or_city: clientProfile?.town_or_city ?? null,
+          county: clientProfile?.county ?? null,
+          postcode: clientProfile?.postcode ?? null,
+          country: clientProfile?.country ?? null,
+          latitude: clientProfile?.latitude ?? null,
+          longitude: clientProfile?.longitude ?? null,
           pets: c.pets || [],
           default_staff_name: defaultStaffName || null
         };

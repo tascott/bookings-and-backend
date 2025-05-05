@@ -99,12 +99,26 @@ export interface Profile {
 	email_allow_informational?: boolean | null;
 }
 
-// Client type
+// Combined Client type including profile data and pets
 export type Client = {
 	id: number;
-	user_id: string;
-	email: string;
-	pets?: Pet[];
+	user_id: string | null; // From profiles table
+	email: string | null; // From clients table
+	first_name: string | null; // From profiles table
+	last_name: string | null; // From profiles table
+	phone: string | null; // From profiles table
+	default_staff_id: number | null; // From clients table
+	default_staff_name: string | null; // Joined from staff/profiles
+	pets: Pet[]; // Array of Pet objects
+	// Add new address fields (nullable)
+	address_line_1: string | null;
+	address_line_2: string | null;
+	town_or_city: string | null;
+	county: string | null;
+	postcode: string | null;
+	country: string | null;
+	latitude: number | null;
+	longitude: number | null;
 };
 
 // Staff type

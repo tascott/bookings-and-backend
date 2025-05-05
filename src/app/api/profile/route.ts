@@ -10,10 +10,23 @@ export async function GET() {
 
   const { data: profile, error } = await supabaseAdmin
     .from('profiles')
-    .select('user_id, first_name, last_name, phone, email_allow_promotional, email_allow_informational')
+    .select('*')
     .eq('user_id', user.id)
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 404 });
+
+  if (error) {
+      if (error.code === 'PGRST116') {
+         console.warn(`Profile not found for user ${user.id}`);
+         return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+      }
+      console.error("Get profile error:", error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (!profile) {
+     return NextResponse.json({ error: 'Profile not found' }, { status: 404 });
+  }
+
   return NextResponse.json(profile);
 }
 
@@ -34,7 +47,15 @@ export async function PUT(request: Request) {
 	'last_name',
 	'phone',
 	'email_allow_promotional',
-	'email_allow_informational'
+	'email_allow_informational',
+    'address_line_1',
+    'address_line_2',
+    'town_or_city',
+    'county',
+    'postcode',
+    'country',
+    'latitude',
+    'longitude'
   ];
   const updateFields = Object.fromEntries(
     Object.entries(updateData).filter(([key]) => allowedFields.includes(key))
@@ -46,8 +67,12 @@ export async function PUT(request: Request) {
     .from('profiles')
     .update(updateFields)
     .eq('user_id', user.id)
-    .select()
+    .select('user_id, first_name, last_name, phone, email_allow_promotional, email_allow_informational, address_line_1, address_line_2, town_or_city, county, postcode, country, latitude, longitude')
     .single();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+     console.error("Profile update error:", error);
+     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  console.log("API returning updated profile:", updated);
   return NextResponse.json(updated);
 }

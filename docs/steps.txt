@@ -90,14 +90,16 @@ Current TODOS:
 - addresses/map view/multi-map view (staff/admin)
 - add email template editing UI
 - remove all inline CSS for a design system (different file for button, nav, colors, etc)
-- Implement Email Preference Checks: We added email_allow_promotional and email_allow_informational flags to the profiles table, but we haven't added logic anywhere to check these flags before sending emails that would fall into those categories. (Currently, all emails sent are arguably transactional - booking, password, welcome - so this might not be immediately necessary, but it's a remaining piece).
+- Implement Email Preference Checks: We added email_allow_promotional and email_allow_informational flags to the profiles table, but we haven't added logic
 
-// Improvement Todos
+
+
+// Codebase Improvement Todos
 - refactor code, reduce codebase, update docs
 - split large files
 - repomix
 - error handling, tests
-- caching throughout specially for api calls
+- caching throughout specially for api calls, combine them? we fetch multiple things every time Next reloads or we even look at the page.
 - Think about how we'll use the same code for "field hire" clients. Fork it, or everyone in same DB/code just with a flag?
 
 // Payment specific
