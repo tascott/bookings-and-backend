@@ -1,8 +1,9 @@
 'use client';
 
-import React, { useState, useCallback, FormEvent, useMemo } from 'react';
+import React, { useState, useCallback, FormEvent, useMemo, Fragment, useEffect } from 'react';
 import styles from "@/app/page.module.css"; // Adjust path as needed
 import TabNavigation from '@/components/TabNavigation'; // Import TabNavigation
+import { getDay } from 'date-fns'; // Import getDay
 // import { format } from 'date-fns'; // REMOVED unused format import
 // Import necessary types
 import { Booking, Pet, Service } from '@/types'; // Removed unused Site, Field imports
@@ -65,6 +66,19 @@ const formatDate = (isoString: string): string => {
     }
 };
 
+// Format date for display (e.g., "Wednesday, 14 May 2025")
+const formatFullDate = (isoString: string): string => {
+    try {
+        const date = new Date(isoString.split('T')[0] + 'T00:00:00Z'); // Parse date part as UTC
+        if (isNaN(date.getTime())) return 'Invalid Date';
+        return date.toLocaleDateString('en-GB', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', timeZone: 'UTC'
+        });
+    } catch {
+        return 'Invalid Date';
+    }
+};
+
 // Formatter for time slots - Extract HH:mm
 const formatTime = (isoString: string): string => {
     if (!isoString || !isoString.includes('T')) return 'N/A';
@@ -87,6 +101,18 @@ const formatTime = (isoString: string): string => {
 // For now, assume grouping is just by time HH:mm-HH:mm within the displayed list
 const getTimeSlotKey = (booking: Booking): string => {
     return `${formatTime(booking.start_time)} - ${formatTime(booking.end_time)}`;
+};
+
+// Helper to check if a date string (YYYY-MM-DD) is a weekend
+const isWeekend = (dateString: string): boolean => {
+    try {
+        const date = new Date(dateString + 'T00:00:00Z'); // Parse as UTC
+        if (isNaN(date.getTime())) return false;
+        const day = getDay(date); // Use date-fns getDay (Sun=0, Sat=6)
+        return day === 0 || day === 6;
+    } catch {
+        return false;
+    }
 };
 
 export default function BookingManagement({
@@ -130,31 +156,70 @@ export default function BookingManagement({
     const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set()); // Key = startTime string
     const [addBookingError, setAddBookingError] = useState<string | null>(null);
     const [isCreatingBooking, setIsCreatingBooking] = useState(false);
-    // --- END NEW State ---
 
-    // --- Group Bookings for Display ---
-    const groupedBookings = useMemo(() => {
-        const groups = new Map<string, Booking[]>();
-        bookings // Use the bookings prop directly
-            // Sort primarily by date, then by time slot key
-            .sort((a, b) => {
-                const dateA = new Date(a.start_time).getTime();
-                const dateB = new Date(b.start_time).getTime();
-                if (dateA !== dateB) {
-                    return dateA - dateB;
+    // State to track collapsed date sections
+    const [collapsedDates, setCollapsedDates] = useState<Set<string>>(new Set());
+
+    // --- Group Bookings by Date (Desc) then Time Slot (Asc) ---
+    const groupedBookingsByDate = useMemo(() => {
+        // Group by Date String (YYYY-MM-DD)
+        const groupsByDate = new Map<string, Booking[]>();
+        bookings.forEach(booking => {
+            const dateKey = formatDate(booking.start_time); // YYYY-MM-DD
+            if (!groupsByDate.has(dateKey)) {
+                groupsByDate.set(dateKey, []);
+            }
+            groupsByDate.get(dateKey)?.push(booking);
+        });
+        // Sort dates descending
+        const sortedDates = Array.from(groupsByDate.keys()).sort((a, b) => b.localeCompare(a));
+        // Within each date, group by time slot and sort time slots
+        const finalGroupedData = new Map<string, Map<string, Booking[]>>();
+        sortedDates.forEach(dateKey => {
+            const bookingsOnDate = groupsByDate.get(dateKey) || [];
+            const groupsByTimeSlot = new Map<string, Booking[]>();
+            bookingsOnDate.forEach(booking => {
+                const timeSlotKey = getTimeSlotKey(booking);
+                if (!groupsByTimeSlot.has(timeSlotKey)) {
+                    groupsByTimeSlot.set(timeSlotKey, []);
                 }
-                // If dates are same, sort by time slot key (lexicographically)
-                return getTimeSlotKey(a).localeCompare(getTimeSlotKey(b));
-            })
-            .forEach(booking => {
-                const key = getTimeSlotKey(booking);
-                if (!groups.has(key)) {
-                    groups.set(key, []);
-                }
-                groups.get(key)?.push(booking);
+                groupsByTimeSlot.get(timeSlotKey)?.push(booking);
             });
-        return groups;
-    }, [bookings]); // Recalculate only when bookings prop changes
+            // Sort time slots chronologically within the date
+            const sortedTimeSlots = Array.from(groupsByTimeSlot.keys()).sort();
+            const sortedTimeSlotMap = new Map<string, Booking[]>();
+            sortedTimeSlots.forEach(tsKey => {
+                sortedTimeSlotMap.set(tsKey, groupsByTimeSlot.get(tsKey) || []);
+            });
+            finalGroupedData.set(dateKey, sortedTimeSlotMap);
+        });
+        return finalGroupedData;
+    }, [bookings]);
+
+    // Effect to set initial collapsed state (AFTER groupedBookingsByDate is defined)
+    useEffect(() => {
+        if (groupedBookingsByDate.size > 0) {
+            // Initialize with all dates collapsed
+            setCollapsedDates(new Set(groupedBookingsByDate.keys()));
+        }
+        // Reset if bookings become empty (optional)
+        else {
+            setCollapsedDates(new Set());
+        }
+    }, [groupedBookingsByDate]); // Run when the grouped data changes
+
+    // Toggle collapsed state for a date
+    const toggleDateCollapse = useCallback((dateKey: string) => {
+        setCollapsedDates(prev => {
+            const newSet = new Set(prev);
+            if (newSet.has(dateKey)) {
+                newSet.delete(dateKey);
+            } else {
+                newSet.add(dateKey);
+            }
+            return newSet;
+        });
+    }, []);
 
     // --- Edit Booking Handlers ---
     const handleEditBookingClick = useCallback((booking: Booking) => {
@@ -457,14 +522,13 @@ export default function BookingManagement({
             {localError && <p className={styles.errorText}>Error: {localError}</p>}
             {isLoadingBookings ? (
                 <p>Loading bookings...</p>
-            ) : groupedBookings.size === 0 ? (
-                <p>No bookings found{role === 'staff' ? ' for today' : ''}.</p> // Clarify for staff view
+            ) : groupedBookingsByDate.size === 0 ? (
+                <p>No bookings found{role === 'staff' ? ' for today' : ''}.</p>
             ) : (
                 <table className={styles.table}>
                     <thead>
                         <tr>
-                            {/* Add Date column if role is admin, as multiple dates might show */}
-                            {role === 'admin' && <th>Date</th>}
+                            {/* Keep header always visible */}
                             <th>Client</th>
                             <th>Pet(s)</th>
                             <th>Service</th>
@@ -475,68 +539,63 @@ export default function BookingManagement({
                             <th>Actions</th>
                         </tr>
                     </thead>
+                    {/* Use a single tbody to avoid whitespace/hydration issues */}
                     <tbody>
-                        {/* Iterate through grouped bookings */}
-                        {Array.from(groupedBookings.entries()).map(([timeSlot, bookingsInGroup]) => (
-                            <React.Fragment key={timeSlot}>
-                                {/* Separator row shows only the Time Slot */}
-                                <tr className={styles.timeSlotSeparator}>
-                                     {/* Adjust colspan dynamically */}
-                                    <td colSpan={role === 'admin' ? 9 : 8}>
-                                        <strong>{timeSlot}</strong>
-                                    </td>
-                                </tr>
-                                {bookingsInGroup.map(booking => (
-                                    <tr key={booking.id}>
-                                        {/* Conditionally show Date column for admin */}
-                                        {role === 'admin' && <td>{formatDate(booking.start_time)}</td>}
-                                        <td>{booking.client_name || 'N/A'}</td>
-                                        <td>{booking.pet_names?.join(', ') || 'N/A'}</td>
-                                        <td>{booking.service_type || 'N/A'}</td>
-                                        <td>{timeSlot}</td>
-                                        <td>{booking.status || 'N/A'}</td>
-                                        <td>
-                                            <input
-                                                type="checkbox"
-                                                checked={!!booking.is_paid}
-                                                onChange={() => handleToggleBookingPaidStatus(booking.id, !!booking.is_paid)}
-                                                disabled={isSubmitting}
-                                            />
-                                        </td>
-                                        {role === 'admin' && <td>{booking.assignment_notes || '-'}</td>}
-                                        <td>
-                                            {role === 'admin' ? (
-                                                <>
-                                                    <button
-                                                        onClick={() => handleEditBookingClick(booking)}
-                                                        className={`${styles.button} ${styles.buttonSmall} ${styles.buttonSecondary}`}
-                                                        disabled={isSubmitting}
-                                                    >
-                                                        Edit
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDeleteBooking(booking.id)}
-                                                        className={`${styles.button} ${styles.buttonSmall} ${styles.buttonDanger}`}
-                                                        disabled={isSubmitting}
-                                                    >
-                                                        Delete
-                                                    </button>
-                                                </>
-                                            ) : (
-                                                // Staff view: Placeholder button (was alert, now just text or disabled)
-                                                 <button
-                                                    className={`${styles.button} ${styles.buttonSmall} ${styles.buttonSecondary}`}
-                                                    onClick={() => alert(`Details for booking ${booking.id}`)} // Keep alert for now
-                                                    disabled={isSubmitting} // Keep disabled state consistent
-                                                 >
-                                                     Details
-                                                 </button>
-                                            )}
+                        {Array.from(groupedBookingsByDate.entries()).map(([dateKey, bookingsByTimeSlot]) => {
+                            const isCollapsed = collapsedDates.has(dateKey);
+                            const rowClass = isWeekend(dateKey) ? styles.weekendRow : styles.weekdayRow;
+                            const headerRowClass = `${styles.dateSeparatorRow} ${rowClass}`;
+
+                            return (
+                                <Fragment key={dateKey}>
+                                    {/* Date Header Row */}
+                                    <tr className={headerRowClass} onClick={() => toggleDateCollapse(dateKey)} style={{ cursor: 'pointer' }}>
+                                        <td colSpan={role === 'admin' ? 8 : 7}>
+                                            <span style={{ marginRight: '0.5rem' }}>{isCollapsed ? '▶' : '▼'}</span>
+                                            <strong>{formatFullDate(dateKey)}</strong>
                                         </td>
                                     </tr>
-                                ))}
-                            </React.Fragment>
-                        ))}
+
+                                    {/* Conditionally Rendered Booking Rows for this Date */}
+                                    {!isCollapsed && Array.from(bookingsByTimeSlot.entries()).map(([timeSlot, bookingsInGroup]) => (
+                                        <Fragment key={`${dateKey}-${timeSlot}`}>
+                                            {/* Optional: Time Slot Separator Row - Might add extra whitespace, consider styling first/last booking row instead */}
+                                             <tr className={styles.timeSlotSeparatorInner}>
+                                                 <td colSpan={role === 'admin' ? 8 : 7}><strong>{timeSlot}</strong></td>
+                                             </tr>
+                                            {bookingsInGroup.map(booking => (
+                                                <tr key={booking.id}>
+                                                    <td>{booking.client_name || 'N/A'}</td>
+                                                    <td>{booking.pet_names?.join(', ') || 'N/A'}</td>
+                                                    <td>{booking.service_type || 'N/A'}</td>
+                                                    <td>{timeSlot}</td>
+                                                    <td>{booking.status || 'N/A'}</td>
+                                                    <td>
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={!!booking.is_paid}
+                                                            onChange={() => handleToggleBookingPaidStatus(booking.id, !!booking.is_paid)}
+                                                            disabled={isSubmitting}
+                                                        />
+                                                    </td>
+                                                    {role === 'admin' && <td>{booking.assignment_notes || '-'}</td>}
+                                                    <td>
+                                                        {role === 'admin' ? (
+                                                            <>
+                                                                <button onClick={() => handleEditBookingClick(booking)} className={`${styles.button} ${styles.buttonSmall} ${styles.buttonSecondary}`} disabled={isSubmitting}>Edit</button>
+                                                                <button onClick={() => handleDeleteBooking(booking.id)} className={`${styles.button} ${styles.buttonSmall} ${styles.buttonDanger}`} disabled={isSubmitting}>Delete</button>
+                                                            </>
+                                                        ) : (
+                                                            <button className={`${styles.button} ${styles.buttonSmall} ${styles.buttonSecondary}`} onClick={() => alert(`Details for booking ${booking.id}`)} disabled={isSubmitting}>Details</button>
+                                                        )}
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </Fragment>
+                                    ))}
+                                </Fragment>
+                            );
+                        })}
                     </tbody>
                 </table>
             )}
@@ -681,7 +740,7 @@ export default function BookingManagement({
                                      className={`${styles.slotCard} ${isSelected ? styles.slotCardSelected : ''} ${!isAvailableClient ? styles.slotCardUnavailable : ''}`}
                                      onClick={() => handleSlotSelectionToggleForAdmin(slotKey)}
                                  >
-                                     <p><strong>Time:</strong> {formatDate(slot.start_time)} {formatTime(slot.start_time)} - {formatTime(slot.end_time)}</p>
+                                     <p><strong>Time:</strong> {formatDateTimeLocal(slot.start_time)} {formatTime(slot.start_time)} - {formatTime(slot.end_time)}</p>
                                      <p><strong>Client Status:</strong>
                                          {isAvailableClient ? <span style={{ color: 'lightgreen' }}> Available ({slot.capacity_display ?? slot.remaining_capacity ?? 'Unlimited'})</span>
                                          : isFull ? <span style={{ color: 'orange' }}> Fully Booked</span>
@@ -715,10 +774,11 @@ export default function BookingManagement({
         </div>
     );
 
-    // Define Tabs for Admin navigation - Content is required by TabNavigation
-    const adminTabs = [
-        { id: 'existing', label: 'Existing Bookings', content: existingBookingsView },
-        { id: 'add', label: 'Create Booking', content: addBookingView },
+    // Determine which tabs to show with content
+    const tabs = [
+        { id: 'existing', label: 'View Bookings', content: existingBookingsView }, // Add content
+        // Only show "Add Booking" tab for admins
+        ...(role === 'admin' ? [{ id: 'add', label: 'Add New Booking', content: addBookingView }] : []) // Add content
     ];
 
     // --- Component Render ---
@@ -795,9 +855,7 @@ export default function BookingManagement({
                  <>
                     {role === 'admin' ? (
                         // Admin sees Tabs - TabNavigation handles state and content display internally
-                        <TabNavigation
-                            tabs={adminTabs}
-                        />
+                        <TabNavigation tabs={tabs} defaultTabId="existing" />
                     ) : (
                         // Staff only see the existing bookings view (filtered by parent)
                         existingBookingsView

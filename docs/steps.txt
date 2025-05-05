@@ -87,7 +87,6 @@ The tabbed interface is built as a reusable component (`TabNavigation`) that can
 
 Current TODOS:
 
-- discount feature for additional pets but set to 0% for nows - per client basis
 - addresses/map view/multi-map view (staff/admin)
 - add email template editing UI
 - remove all inline CSS for a design system (different file for button, nav, colors, etc)
@@ -105,3 +104,7 @@ Current TODOS:
 - stripe integration (supabase) linked to bookings via the `payments` table.
 - booking refunds (maybe hold cash until day of booking?)
 - referral system
+
+
+Future:
+- discount feature for additional pets but set to 0% for nows - per client basis
