@@ -219,6 +219,7 @@ export interface AvailableSlot {
 	uses_staff_capacity?: boolean;
 	field_ids?: number[];
 	capacity_display?: string;      // Optional display string like "3/5 pets"
+	other_staff_potentially_available?: boolean; // Added based on ClientBooking.tsx comment "New field from RPC"
 }
 
 // Payload for creating a new booking

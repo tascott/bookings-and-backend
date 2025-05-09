@@ -65,11 +65,11 @@ type AggregatedSlot = {
 	serviceName: string; // Need service name for display
 	startTime: string; // ISO string
 	endTime: string; // ISO string
-	totalRemainingCapacity: number;
+	totalRemainingCapacity: number | null; // ENSURE THIS IS number | null
 	price_per_pet: number; // Use the lowest price found for this time block?
 	uses_staff_capacity: boolean; // Indicates if capacity is staff-based
 	zero_capacity_reason: string | null; // 'staff_full', 'no_staff', 'base_full', or null
-	other_staff_potentially_available?: boolean; // New field
+	other_staff_potentially_available?: boolean; // New field from RPC, matches AvailableSlot
 	// Keep track of contributing fields/slots if needed for booking later?
 	// contributingSlots: CalculatedSlot[];
 	field_ids?: number[]; // Added field_ids based on CalculatedSlot
@@ -144,7 +144,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 	const [rawCalculatedSlots, setRawCalculatedSlots] = useState<CalculatedSlot[]>([]);
 	// State for the aggregated slots for display (for the selected date)
 	const [aggregatedSlots, setAggregatedSlots] = useState<AggregatedSlot[]>([]);
-	const [isLoadingCalculatedSlots] = useState(false);
+	const [isLoadingCalculatedSlots, setIsLoadingCalculatedSlots] = useState(false);
 
 	// State for pets
 	const [pets, setPets] = useState<SharedPet[]>([]);
@@ -155,7 +155,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 	const [selectedSlots, setSelectedSlots] = useState<Set<string>>(new Set()); // Use Set for easy add/remove
 
 	const [myBookings, setMyBookings] = useState<Booking[]>([]); // State for bookings
-	const [loadingMyBookings, setLoadingMyBookings] = useState(false); // Re-added state and setter
+	const [, setLoadingMyBookings] = useState(false); // loadingMyBookings removed, setter kept
 
 	// State for Calendar Events (visual markers)
 	const [calendarDisplayEvents, setCalendarDisplayEvents] = useState<CalendarEvent[]>([]); // Add setter back
@@ -163,6 +163,9 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 
 	// State for current calendar view range - use helper function for initial state
 	const [calendarViewDate, setCalendarViewDate] = useState<Date>(getInitialCalendarDate());
+
+	// NEW: State for booking success message
+	const [bookingSuccessMessage, setBookingSuccessMessage] = useState<string | null>(null);
 
 	// --- State for Enquiry Modal ---
 	const [isEnquiryModalOpen, setIsEnquiryModalOpen] = useState(false);
@@ -246,6 +249,16 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		loadMyBookings();
 	}, [loadMyBookings]); // useEffect now depends on the memoized loadMyBookings
 
+	// Effect to clear success message after a few seconds
+	useEffect(() => {
+		if (bookingSuccessMessage) {
+			const timer = setTimeout(() => {
+				setBookingSuccessMessage(null);
+			}, 5000); // Clear after 5 seconds
+			return () => clearTimeout(timer);
+		}
+	}, [bookingSuccessMessage]);
+
 	// Fetch pets on mount
 	const fetchPets = async () => {
 		setIsLoadingPets(true);
@@ -285,10 +298,23 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		try {
 			const slotsData: AvailableSlot[] = await fetchAvailableSlots({ serviceId, startDate: startDateStr, endDate: endDateStr });
 
-			// Map slots to CalendarEvent objects
+			// Create a set of start times for the user's existing bookings for quick lookup
+			// Normalizing to ISO string for reliable comparison
+			const userBookedStartTimes = new Set(
+				myBookings.map(b => new Date(b.start_time).toISOString())
+			);
+
+			// Map slots to CalendarEvent objects, excluding those already booked by the user
 			const slotEvents: CalendarEvent[] = slotsData
-				// Keep slots with 0 capacity if other staff might be available
-				.filter((slot) => (slot.remaining_capacity > 0 || slot.other_staff_potentially_available === true) && slot.start_time)
+				.filter(slot => {
+					// Exclude if this slot's start time is in the user's existing bookings
+					const isAlreadyBookedByUser = userBookedStartTimes.has(new Date(slot.start_time).toISOString());
+					if (isAlreadyBookedByUser) {
+						return false; // Do not create a green/yellow event for this
+					}
+					// Keep slots with >0 capacity or if other staff might be available (for enquiry)
+					return (slot.remaining_capacity > 0 || slot.other_staff_potentially_available === true) && slot.start_time;
+				})
 				.map((slot) => {
 					const start = new Date(slot.start_time);
 					const isPotentiallyEnquire = slot.remaining_capacity === 0 && slot.other_staff_potentially_available === true;
@@ -318,7 +344,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 				serviceName: getServiceName(parseInt(serviceId, 10)),
 				startTime: slot.start_time, // Use the exact string from API
 				endTime: slot.end_time,
-				totalRemainingCapacity: slot.remaining_capacity,
+				totalRemainingCapacity: slot.remaining_capacity, // This is now number | null, matching AggregatedSlot type
 				price_per_pet: slot.price_per_pet ?? 0,
 				uses_staff_capacity: slot.uses_staff_capacity ?? false,
 				zero_capacity_reason: slot.zero_capacity_reason ?? null,
@@ -327,7 +353,17 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 			}));
 			setAggregatedSlots(aggregatedData);
 
-			setCalendarDisplayEvents(slotEvents);
+			// Combine available slots with user's existing bookings for calendar display
+			const existingBookingEvents: CalendarEvent[] = myBookings.map(booking => ({
+				id: `booking-${booking.id}`,
+				title: `Booked: ${typeof booking.service_id === 'number' ? getServiceName(booking.service_id) : 'Service Info Unavailable'}`, // Robust title
+				start: new Date(booking.start_time),
+				end: new Date(booking.end_time),
+				allDay: false,
+				resource: { type: 'existing-booking', bookingId: booking.id }
+			}));
+
+			setCalendarDisplayEvents([...slotEvents, ...existingBookingEvents]);
 		} catch (e) {
 			const message = e instanceof Error ? e.message : 'Failed to load calendar availability';
 			setError(message);
@@ -335,7 +371,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		} finally {
 			setIsLoadingCalendarDisplay(false);
 		}
-	}, [getServiceName, setIsLoadingCalendarDisplay, setError]); // Add missing stable dependencies
+	}, [getServiceName, setIsLoadingCalendarDisplay, setError, myBookings]); // Add myBookings to dependencies
 
 	// Trigger fetchCalendarAvailability when service or view date changes
 	useEffect(() => {
@@ -377,6 +413,19 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 			setSelectedBookingDate(slotDate);
 		}
 	};
+
+	// New helper to check if a slot is generally booked by the user (any of their pets)
+	const isSlotBookedByUser = useCallback((slotStartTime: string): boolean => {
+		if (myBookings.length === 0) {
+			return false;
+		}
+		const slotStartTimestamp = new Date(slotStartTime).getTime();
+		return myBookings.some((booking) => {
+			const bookingStartTimestamp = new Date(booking.start_time).getTime();
+			// Consider also checking booking.service_id if relevant for your logic
+			return bookingStartTimestamp === slotStartTimestamp;
+		});
+	}, [myBookings]);
 
 	// Calculate Total Price
 	const calculateTotalPrice = () => {
@@ -453,6 +502,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		try {
 			await createClientBooking(bookingPayloads); // Removed unused 'result' assignment
 			// setSuccessMessage(result.message); // Removed
+			setBookingSuccessMessage('Booking successful! Your booking has been confirmed.'); // Set success message
 			setSelectedSlots(new Set()); // Clear selection on success
 			// Refresh bookings list
 			await loadMyBookings(); // Now correctly calls the accessible function
@@ -471,6 +521,8 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 	// === Calendar Interaction Handlers ===
 	const handleCalendarNavigate = (newDate: Date) => {
 		setCalendarViewDate(newDate); // Update the view date state
+		setSelectedSlots(new Set()); // Clear previous selections
+		setSelectedBookingDate(null); // Clear the displayed selected date
 	};
 
 	// === Helper function for calendar day styling ===
@@ -497,7 +549,23 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 	// Add custom event styling
 	const eventStyleGetter = useCallback(
 		(event: CalendarEvent) => {
-			const resource = event.resource as { type?: string; capacity?: number; rawStartTime?: string };
+			const resource = event.resource as { type?: string; capacity?: number; rawStartTime?: string; bookingId?: number };
+
+			if (resource?.type === 'existing-booking') {
+				// Style for client's existing bookings
+				return {
+					style: {
+						backgroundColor: 'rgba(255, 0, 0, 0.7)', // Red for booked
+						borderRadius: '4px',
+						border: '1px solid #cc0000',
+						color: 'white',
+						padding: '2px 5px',
+						fontSize: '0.9em',
+						cursor: 'not-allowed',
+					},
+				};
+			}
+
 			if (resource?.type === 'availability-slot' && resource.rawStartTime) {
 				const slotKey = resource.rawStartTime;
 				const isBooked = isSlotBookedBySelectedPets(slotKey);
@@ -560,17 +628,24 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 
 	// --- Update onSelectEvent logic ---
 	const handleEventClick = (event: CalendarEvent) => {
-		const resource = event.resource as { type?: string; rawStartTime?: string };
-		if (resource?.type === 'availability-slot' && resource.rawStartTime) {
-			const slotKey = resource.rawStartTime;
+		const resource = event.resource as { type?: string; rawStartTime?: string; bookingId?: number }; // Ensure bookingId is in type
 
-			const aggSlot = aggregatedSlots.find((s) => s.startTime === slotKey);
+		// If it's an existing booking, do nothing on click
+		if (resource?.type === 'existing-booking') {
+			return;
+		}
+
+		if (resource?.type === 'availability-slot' && resource.rawStartTime) {
+			const rawStartTimeKey = resource.rawStartTime; // This is just the ISO string
+
+			const aggSlot = aggregatedSlots.find((s) => s.startTime === rawStartTimeKey);
 			if (!aggSlot) {
+				console.warn("Aggregated slot not found for calendar event click:", rawStartTimeKey);
 				return;
 			}
 
 			// Check if booked by user first
-			if (isSlotBookedBySelectedPets(slotKey)) {
+			if (isSlotBookedBySelectedPets(rawStartTimeKey)) { // isSlotBookedBySelectedPets uses raw start time
 				return; // Do nothing if already booked by this user
 			}
 
@@ -579,12 +654,70 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 			if (isEnquiry) {
 				handleEnquiryClick(aggSlot); // Trigger enquiry modal
 			} else if (aggSlot.totalRemainingCapacity > 0) {
-				// It's a normally bookable slot, toggle selection and set date
-				handleSlotSelectionToggle(slotKey);
+				// It's a normally bookable slot, toggle selection using the composite key
+				const compositeSlotKey = `${formatISO(new Date(aggSlot.startTime))}-${aggSlot.serviceId}`;
+				handleSlotSelectionToggle(compositeSlotKey);
 			}
 		}
 	};
 	// ----------------------------------
+
+	// --- Slot Aggregation Logic ---
+	// This function needs to be defined or imported if it's complex.
+	// For now, assuming a simplified version or it's correctly implemented elsewhere.
+	const aggregateSlotsByTimeAndService = (
+		slots: AvailableSlot[],
+		serviceId: number,
+		serviceName: string
+	): AggregatedSlot[] => {
+		const groupedByTime = new Map<string, AvailableSlot[]>();
+
+		slots.forEach((slot) => {
+			const key = `${slot.start_time}_${slot.end_time}`; // Group by start and end time
+			if (!groupedByTime.has(key)) {
+				groupedByTime.set(key, []);
+			}
+			groupedByTime.get(key)!.push(slot);
+		});
+
+		return Array.from(groupedByTime.entries()).map(([timeKey, group]) => {
+			// Calculate total capacity: if any slot in group has null, total is null (unlimited). Otherwise, sum.
+			let calculatedTotalCapacity: number | null = 0;
+			let someCapacityIsNull = false;
+			for (const slot of group) {
+				if (slot.remaining_capacity === null) {
+					someCapacityIsNull = true;
+					break;
+				}
+				calculatedTotalCapacity += slot.remaining_capacity;
+			}
+			if (someCapacityIsNull) {
+				calculatedTotalCapacity = null;
+			}
+
+			// If all slots had 0 capacity, and some were null (treated as 0 above for summing numbers),
+			// but the intent of null is 'unlimited', this needs refinement.
+			// For now: sum numbers; if any was null, result is null.
+
+			const representativeSlot = group[0]; // All slots in a group share start/end time
+
+			// Determine if any slot in the group has other_staff_potentially_available
+			const anyOtherStaffAvailable = group.some(s => s.other_staff_potentially_available === true);
+
+			return {
+				serviceId: serviceId,
+				serviceName: serviceName,
+				startTime: representativeSlot.start_time,
+				endTime: representativeSlot.end_time,
+				totalRemainingCapacity: calculatedTotalCapacity,
+				price_per_pet: representativeSlot.price_per_pet ?? 0, // Use first slot's price or default
+				uses_staff_capacity: representativeSlot.uses_staff_capacity ?? false,
+				zero_capacity_reason: representativeSlot.zero_capacity_reason ?? null,
+				other_staff_potentially_available: anyOtherStaffAvailable,
+				field_ids: representativeSlot.field_ids,
+			};
+		});
+	};
 
 	return (
 		<div className={styles.container}>
@@ -659,23 +792,27 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 						Available Slots for Week of {formatISO(startOfWeek(calendarViewDate, { weekStartsOn: 1 }), { representation: 'date' })}:
 					</label>
 					{error && <p className={styles.error}>{error}</p>}
+					{bookingSuccessMessage && <p className={styles.successMessage}>{bookingSuccessMessage}</p>}
 					{aggregatedSlots.length > 0 ? (
 						<ul className={styles.list}>
 							{aggregatedSlots
 								.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()) // Sort slots chronologically
 								.map((slot) => {
-									const slotKey = `${slot.startTime}`;
+									// Use composite key for selection to match booking logic
+									const slotKey = `${formatISO(new Date(slot.startTime))}-${slot.serviceId}`;
 									const isSelected = selectedSlots.has(slotKey);
 									const petCount = selectedPetIds.length;
-									// --- Refined Disable/Enquire Checks ---
+
+									// --- Updated Disable/Enquire/Booked Checks ---
+									const isGenerallyBookedByUser = isSlotBookedByUser(slot.startTime);
+									const isBookedByCurrentSelection = isSlotBookedBySelectedPets(slot.startTime); // Checks for currently selected pets
 									const isFull = slot.totalRemainingCapacity === 0;
-									const insufficientCapacity = slot.totalRemainingCapacity < petCount;
-									const isBookedBySelection = isSlotBookedBySelectedPets(slot.startTime);
-									// New: Check if it's enquiry only
-									const isEnquiryOnly = isFull && slot.other_staff_potentially_available === true && !isBookedBySelection;
-									// Slot is truly disabled if booked, or full/insufficient capacity *and* not an enquiry case
-									const isDisabled = isBookedBySelection || ((isFull || insufficientCapacity) && !isEnquiryOnly);
-									// --- End Refined Checks ---
+									const insufficientCapacity = slot.totalRemainingCapacity !== null && slot.totalRemainingCapacity < petCount;
+									const isEnquiryOnly = isFull && slot.other_staff_potentially_available === true && !isGenerallyBookedByUser && !isBookedByCurrentSelection;
+
+									// Slot is truly disabled if generally booked by user, or booked by current selection, or (full/insufficient capacity AND not an enquiry case)
+									const isDisabled = isGenerallyBookedByUser || isBookedByCurrentSelection || ((isFull || insufficientCapacity) && !isEnquiryOnly);
+									// --- End Updated Checks ---
 
 									let slotTextSuffix = isSelected ? ' (Selected)' : '';
 									const listItemStyle = {
@@ -687,16 +824,21 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 										opacity: 1,
 									};
 
-									if (isEnquiryOnly) {
+									if (isGenerallyBookedByUser) {
+										listItemStyle.backgroundColor = '#D32F2F'; // More distinct red for booked
+										listItemStyle.cursor = 'not-allowed';
+										listItemStyle.opacity = 0.7;
+										slotTextSuffix = ' (Booked)';
+									} else if (isEnquiryOnly) {
 										listItemStyle.backgroundColor = '#4a4a2a'; // Enquiry color (e.g., muted yellow/orange)
 										listItemStyle.cursor = 'pointer';
 										slotTextSuffix = ' (Enquire)';
-									} else if (isDisabled) {
+									} else if (isDisabled) { // This now covers isBookedByCurrentSelection or capacity issues
 										listItemStyle.opacity = 0.6;
 										listItemStyle.backgroundColor = '#333';
 										listItemStyle.cursor = 'not-allowed';
-										if (isBookedBySelection) {
-											slotTextSuffix = ' (Already Booked)';
+										if (isBookedByCurrentSelection) {
+											slotTextSuffix = ' (Booked for Selected Pets)';
 										} else {
 											slotTextSuffix = isFull ? ' (Full)' : ' (Insufficient Capacity)';
 										}
@@ -710,14 +852,18 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 											key={slotKey}
 											style={listItemStyle}
 											onClick={() => {
+												if (isGenerallyBookedByUser) { // Prevent action if generally booked
+													return;
+												}
 												if (isEnquiryOnly) {
 													handleEnquiryClick(slot);
-												} else if (!isDisabled) {
+												} else if (!isDisabled) { // isDisabled will be true if booked by current selection or capacity issues
+													// When clicking on the list item, use the same composite key
 													handleSlotSelectionToggle(slotKey);
 												}
 											}}
 										>
-											{formatDateRange(slot.startTime, slot.endTime)} - Capacity: {slot.totalRemainingCapacity}
+											{formatDateRange(slot.startTime, slot.endTime)} - Capacity: {slot.totalRemainingCapacity === null ? 'Unlimited' : slot.totalRemainingCapacity}
 											{slotTextSuffix}
 										</li>
 									);
@@ -766,7 +912,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 					<p>Selected Slots:</p>
 					<ul className={styles.listCompact}>
 						{Array.from(selectedSlots).map((slotKey) => {
-							const slot = aggregatedSlots.find((s) => s.startTime === slotKey);
+							const slot = aggregatedSlots.find((s) => `${formatISO(new Date(s.startTime))}-${s.serviceId}` === slotKey);
 							return (
 								<li key={slotKey}>
 									{

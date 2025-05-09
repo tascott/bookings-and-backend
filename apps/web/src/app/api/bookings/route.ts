@@ -21,7 +21,7 @@ type EnrichedBooking = {
 }
 
 // GET all bookings, enriching with client AND pet names
-export async function GET() {
+export async function GET(request: Request) {
   const supabase = await createServerClient()
   const supabaseAdmin = await createAdminClient()
 
@@ -40,12 +40,23 @@ export async function GET() {
     return NextResponse.json({ error: 'Forbidden: Requires admin or staff role' }, { status: 403 })
   }
 
+  // Read query parameters
+  const { searchParams } = new URL(request.url);
+  const assignedStaffIdFilter = searchParams.get('assigned_staff_id');
+
   try {
-    // 1. Fetch all relevant bookings
-    const { data: bookingsData, error: bookingsError } = await supabaseAdmin
+    // 1. Fetch relevant bookings
+    let bookingsQuery = supabaseAdmin
       .from('bookings')
       .select('*')
       .order('start_time', { ascending: false });
+
+    // Apply filter if assigned_staff_id is provided
+    if (assignedStaffIdFilter) {
+      bookingsQuery = bookingsQuery.eq('assigned_staff_id', assignedStaffIdFilter);
+    }
+
+    const { data: bookingsData, error: bookingsError } = await bookingsQuery;
 
     if (bookingsError) throw bookingsError;
     if (!bookingsData) {
