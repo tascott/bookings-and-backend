@@ -1,0 +1,43 @@
+{
+  "name": "@booking-and-accounts-monorepo/web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev --turbopack",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "@booking-and-accounts-monorepo/api-services": "workspace:*",
+    "@booking-and-accounts-monorepo/shared-types": "workspace:*",
+    "@booking-and-accounts-monorepo/utils": "workspace:*",
+    "next": "15.3.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "@geoapify/geocoder-autocomplete": "^2.1.0",
+    "@react-email/components": "^0.0.38",
+    "@react-email/render": "^1.1.0",
+    "@supabase/auth-helpers-nextjs": "^0.10.0",
+    "@supabase/auth-ui-react": "^0.4.7",
+    "@supabase/auth-ui-shared": "^0.1.8",
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.49.4",
+    "@types/react-big-calendar": "^1.16.1",
+    "date-fns": "^4.1.0",
+    "date-fns-tz": "^3.2.0",
+    "react-big-calendar": "^1.18.0",
+    "react-email": "^4.0.11",
+    "resend": "^4.5.0",
+    "lodash": "^4.17.21"
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@types/lodash": "^4.17.0",
+    "eslint": "^9",
+    "eslint-config-next": "15.3.0",
+    "typescript": "^5"
+  }
+}

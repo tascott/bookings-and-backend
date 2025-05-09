@@ -7,6 +7,17 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **User Roles:** Admin, Staff, Client. Role-based access is enforced throughout the UI and API.
 - **Data Fetching:** Data is primarily fetched within the relevant dashboard component (Admin, Staff, Client) after authentication and role determination, rather than being passed down from the main page.
 
+**Code Sharing and Monorepo Strategy (Implemented):**
+- **Motivation:** To maximize code reuse between the Next.js web application and future native mobile apps (planned with Expo/React Native), and to improve overall code organization and maintainability.
+- **Monorepo Structure:** The project has been migrated to a monorepo structure, likely managed by a tool like PNPM workspaces. This involves a `packages/` directory at the root.
+  - **`packages/web/`:** Contains the Next.js web application (previously the `src/`, `public/` etc. at the root).
+  - **`packages/mobile/`:** Will contain the Expo/React Native mobile application (to be developed).
+  - **Shared Packages:**
+    - **`packages/shared-types/`:** Houses all shared TypeScript type definitions (e.g., `types.ts` for application types, `types_db.ts` for Supabase generated types). This code is consumable via the alias `@booking-and-accounts-monorepo/shared-types`.
+    - **`packages/api-services/`:** Contains a crucial layer of modules that encapsulate client-side `fetch` calls to the backend API routes (e.g., `bookingService.ts`, `petService.ts`). Frontend components import and use these services (e.g., `import { bookingService } from '@booking-and-accounts-monorepo/api-services';`). This promotes consistency, simplifies component logic, and makes API interaction logic highly reusable.
+    - **`packages/utils/`:** Contains shared utility functions, including Supabase client initialization (`supabase/client.ts`, `supabase/server.ts`, `supabase/admin.ts`) and authentication helpers (`authUtils.ts`). This code is consumable via the alias `@booking-and-accounts-monorepo/utils`.
+- **Benefits:** This setup ensures consistency, simplifies dependency management, and makes code reuse between the web and mobile applications more robust and maintainable.
+
 **Key Features:**
 - **Authentication:**
   - Supabase Auth for user sign-up/login.
@@ -14,34 +25,33 @@ Project Summary for AI Assistant (booking-and-accounts)
   - Sign-up/Login UI (`src/components/AuthForm.tsx`) adapts fields for each mode.
   - Welcome message (`src/app/page.tsx`) displays user name (from profiles) instead of email.
 - **Admin/Staff UI:**
-  - **User Management (`src/components/admin/UserManagement.tsx`):**
+  - **User Management (`src/components/admin/UserManagement.tsx` located within `packages/web`):**
     - View all staff/admin users.
-    - Assign roles (client/staff/admin) via API.
+    - Assign roles (client/staff/admin) via API (leveraging `userService` from `@booking-and-accounts-monorepo/api-services`).
     - Promote clients to staff/admin using an autocomplete search (server-side, via `/api/clients`).
     - Assign default vehicles to staff members.
-  - **Client Management (`src/components/admin/ClientManagement.tsx`):**
+  - **Client Management (`src/components/admin/ClientManagement.tsx` located within `packages/web`):**
     - Paginated, searchable list of clients (excludes staff/admin users).
     - Assign a default staff member to each client via a dropdown.
     - Displays default staff member name (or "Unassigned").
-    - Edit client profiles (updates `clients` and `profiles` tables), manage their pets (add/edit/delete/confirm pets).
-  - **Site & Field Management:** Create/view sites and fields.
+    - Edit client profiles, manage their pets (add/edit/delete/confirm pets) - all actions utilize relevant API services from `@booking-and-accounts-monorepo/api-services`.
+  - **Site & Field Management:** Create/view sites and fields (actions via `siteService` from `@booking-and-accounts-monorepo/api-services`).
   - **Service Management:**
     - Create/view services, including setting a mandatory `service_type` ('Field Hire' or 'Daycare').
-    - Manage service availability rules.
-    - Filter existing services by type in the UI.
-  - **Booking Management:** Create/view bookings, link bookings to clients and pets.
+    - Manage service availability rules (actions via `serviceService` from `@booking-and-accounts-monorepo/api-services`).
+  - **Booking Management:** Create/view bookings, link bookings to clients and pets (actions via `bookingService` from `@booking-and-accounts-monorepo/api-services`).
   - **Vehicle Management:**
-    - Admins can view/add/delete vehicles and assign them to staff.
+    - Admins can view/add/delete vehicles and assign them to staff (actions via `vehicleService` from `@booking-and-accounts-monorepo/api-services`).
     - Staff can view their own vehicles.
-  - **Staff Availability Management:** UI needed to manage staff working hours/days off via `staff_availability` table.
+  - **Staff Availability Management:** UI to manage staff working hours/days off via `staff_availability` table (actions via `staffAvailabilityService` from `@booking-and-accounts-monorepo/api-services`).
 - **Client UI:**
-  - **Booking Interface (`src/components/client/ClientBooking.tsx`):**
-    - Select service/date, view available slots (`/api/available-slots`).
-    - Book services (no same-day bookings). Performs capacity/availability checks based on the rules defined in `service_availability` (using `use_staff_vehicle_capacity` flag) and `staff_availability`.
+  - **Booking Interface (`src/components/client/ClientBooking.tsx` located within `packages/web`):**
+    - Select service/date, view available slots (fetches via `availabilityService` from `@booking-and-accounts-monorepo/api-services` calling `/api/available-slots`).
+    - Book services (no same-day bookings). Performs capacity/availability checks. Booking submission via `bookingService` from `@booking-and-accounts-monorepo/api-services`.
   - **Pet Management:**
-    - Add/edit/delete pets, view all pets.
+    - Add/edit/delete pets, view all pets (actions via `petService` from `@booking-and-accounts-monorepo/api-services`).
   - **My Bookings:**
-    - View past/upcoming bookings, see details and linked pets.
+    - View past/upcoming bookings, see details and linked pets (fetches via `bookingService` from `@booking-and-accounts-monorepo/api-services`).
 
 **Database Schema Summary:**
 - **auth.users:** Managed by Supabase Auth. Columns: id (uuid, PK), email, etc.
@@ -100,6 +110,7 @@ Project Summary for AI Assistant (booking-and-accounts)
 - booking_pets.pet_id → pets.id
 
 **API Route Reference:**
+(Note: Frontend components now interact with these APIs primarily through the service modules, e.g., `import { bookingService } from '@booking-and-accounts-monorepo/api-services';`)
 - **/api/users**
   - Purpose: Manage all users (admin, staff, client) and assign roles.
   - Usage: Used for role management and admin-level user queries.
@@ -171,7 +182,7 @@ Project Summary for AI Assistant (booking-and-accounts)
       - `slot_remaining_capacity`: Calculated capacity based on rules/overlaps (NULL if unlimited).
       - `rule_uses_staff_capacity`: Boolean flag.
       - `associated_field_ids`: Array of field IDs for the slot.
-  - RPC Capacity Logic:
+  - RPC Capacity Logic (Detailed):
       - If `rule_uses_staff_capacity`=TRUE:
           - Checks if the passed-in `in_client_default_staff_id` is set, has a default vehicle with `pet_capacity` > 0, and is generally available via `staff_availability` for the slot time.
           - If staff/vehicle checks pass: Calculates the total number of pets already assigned to the *same staff member* in other bookings that *overlap* with the potential `slot_start_time` and `slot_end_time`.
@@ -197,40 +208,42 @@ Project Summary for AI Assistant (booking-and-accounts)
   - `service-availability` endpoints now handle `use_staff_vehicle_capacity` (boolean) instead of `capacity_type` and require `field_ids` (array). No longer uses `base_capacity`.
 
 **Component/File Structure:**
-- **src/app/page.tsx:** Main entry point.
+- **src/app/page.tsx (within `packages/web`):** Main entry point.
   - Handles authentication state.
   - Fetches user profile (`profiles`) and business affiliations (`user_business_affiliations`).
   - Determines user role (`staff`, `client`, or `admin`).
   - Determines the *current* business context. **For now, it prioritizes 'Pet Services' if the user is affiliated.** Passes this context (`businessType`) to the relevant dashboard.
   - Renders the correct dashboard (Admin, Staff, Client) based on role.
-- **src/components/admin/AdminDashboard.tsx:** Container for admin features. Fetches and manages state for users, sites, fields, services, vehicles, bookings, availability etc., needed for its child components (UserManagement, SiteFieldManagement, ServiceManagement...). Contains action handlers.
-- **src/components/admin/UserManagement.tsx:** View staff/admin, assign roles/vehicles.
-- **src/components/admin/ClientManagement.tsx:** List/search clients (clients only), assign default staff, manage client info/pets via modal. Fetches its own client data.
-- **src/components/admin/BookingManagement.tsx:** Create/manage bookings (potentially allows override). Fetches its own data if needed.
-- **src/components/admin/ServiceManagement.tsx:** Manage services. Includes dropdown for `service_type` on add/edit and filtering by type.
-- **src/components/admin/SiteFieldManagement.tsx:** Manage sites/fields.
-- **src/components/admin/ServiceAvailabilityManagement.tsx:** Manage service availability rules. UI updated to use `use_staff_vehicle_capacity` checkbox instead of `capacity_type`; field selection is always present. No longer uses `base_capacity` field.
-- **src/components/client/ClientDashboard.tsx:** Container for client features.
+- **src/components/admin/AdminDashboard.tsx (within `packages/web`):** Container for admin features. Fetches and manages state for users, sites, fields, services, vehicles, bookings, availability etc., needed for its child components (UserManagement, SiteFieldManagement, ServiceManagement...). Contains action handlers. (API calls refactored to use services from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/admin/UserManagement.tsx (within `packages/web`):** View staff/admin, assign roles/vehicles. (Uses `userService` from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/admin/ClientManagement.tsx (within `packages/web`):** List/search clients (clients only), assign default staff, manage client info/pets via modal. Fetches its own client data. (Uses `clientService`, `petService` from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/admin/BookingManagement.tsx (within `packages/web`):** Create/manage bookings. (Uses `bookingService`, `clientService`, `petService`, `availabilityService` from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/admin/ServiceManagement.tsx (within `packages/web`):** Manage services. Includes dropdown for `service_type` on add/edit and filtering by type. (Uses `serviceService` from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/admin/SiteFieldManagement.tsx (within `packages/web`):** Manage sites/fields. (Uses `siteService` from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/admin/ServiceAvailabilityManagement.tsx (within `packages/web`):** Manage service availability rules. UI updated to use `use_staff_vehicle_capacity` checkbox instead of `capacity_type`; field selection is always present. No longer uses `base_capacity` field. (Uses `serviceService` from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/client/ClientDashboard.tsx (within `packages/web`):** Container for client features.
   - Receives `user` and the current `businessType` context as props.
   - Fetches data relevant to the client view (e.g., profile details, services).
   - Uses the `businessType` prop to conditionally render UI elements (e.g., hides 'My Pets' navigation if `businessType` is 'Field Hire').
-  - Contains child components like `ClientBooking`, `PetManagement`, `MyBookings`.
-- **src/components/client/ClientBooking.tsx:** Client booking UI.
-  - Fetches availability using `calculate_available_slots` RPC.
+  - Contains child components like `ClientBooking`, `PetManagement`, `MyBookings`. (These children use relevant API services from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/client/ClientBooking.tsx (within `packages/web`):** Client booking UI.
+  - Fetches availability using `availabilityService` (which calls `calculate_available_slots` RPC via `/api/available-slots`).
   - Displays slots in calendar and list format.
   - Uses `isSlotBookedBySelectedPets` to check for existing bookings for selected pets.
   - Disables slots in the list view and provides visual cues (text suffix) if already booked or full.
   - Uses `eventStyleGetter` in CalendarView to visually distinguish already booked slots (greyed out).
   - Slot selection (via calendar or list) uses the original timestamp string as the key for consistency.
-  - Booking submission uses `POST /api/client-booking`.
+  - Booking submission uses `bookingService` (which calls `POST /api/client-booking`).
   - Supports selecting multiple available slots.
-  - Booking submission collects all selected slots and sends a single request to `POST /api/client-booking` using the `{ bookings: [...] }` format.
-- **src/components/client/PetManagement.tsx:** Client pet management UI.
-- **src/components/client/MyBookings.tsx:** Client booking history/upcoming bookings.
-- **src/components/staff/StaffDashboard.tsx:** Container for staff features. Fetches and manages state for bookings, services etc., needed for its child components.
-  - **My Clients Tab:** Displays a list of clients for whom the logged-in staff member is the `default_staff_id`. Fetches data via `/api/clients?assigned_staff_id=me`. Shows client name, email, phone, and a nested list of their pets.
-- **src/utils/auth-helpers.ts:** Centralized authentication/authorization helpers.
-- **src/utils/supabase/client.ts, server.ts, admin.ts:** Supabase client initializers.
+  - Booking submission collects all selected slots and sends a single request to `bookingService` using the `{ bookings: [...] }` format.
+- **src/components/client/PetManagement.tsx (within `packages/web`):** Client pet management UI. (Uses `petService` from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/client/MyBookings.tsx (within `packages/web`):** Client booking history/upcoming bookings. (Uses `bookingService` from `@booking-and-accounts-monorepo/api-services`)
+- **src/components/staff/StaffDashboard.tsx (within `packages/web`):** Container for staff features. Fetches and manages state for bookings, services etc., needed for its child components. (API calls refactored to use services from `@booking-and-accounts-monorepo/api-services`)
+  - **My Clients Tab:** Displays a list of clients for whom the logged-in staff member is the `default_staff_id`. Fetches data via `clientService` (calling `/api/clients?assigned_staff_id=me`). Shows client name, email, phone, and a nested list of their pets.
+- **packages/utils/authUtils.ts:** Centralized authentication/authorization helpers. Consumed via `@booking-and-accounts-monorepo/utils`.
+- **packages/utils/supabase/client.ts, server.ts, admin.ts:** Supabase client initializers. Consumed via `@booking-and-accounts-monorepo/utils`.
+- **packages/shared-types/types.ts, types_db.ts:** Shared TypeScript definitions. Consumed via `@booking-and-accounts-monorepo/shared-types`.
+- **packages/api-services/*:** Modules for client-side API interactions. Consumed via `@booking-and-accounts-monorepo/api-services`.
 
 **SQL/Data Insertion Best Practices:**
 - User signs up via `AuthForm`.
@@ -248,72 +261,64 @@ Project Summary for AI Assistant (booking-and-accounts)
 - **Multi-Frontend Architecture:** The system is designed for multiple frontends (e.g., `pet-services.app`, `field-hire.app`) sharing a single Supabase backend.
 - **User Affiliation:** Use the `user_business_affiliations` table to check which business areas a user has access to.
 - **Business Context:** Each frontend application is responsible for establishing its "business context" (e.g., 'Pet Services' or 'Field Hire'). UI elements and logic should be filtered based on both the user's affiliations and the current context.
-- **Shared Resources:** The shared database allows resources like `fields` to be booked by users from different business contexts, with availability correctly tracked.
-- Use `/api/clients` for client-only lists/search in UI.
-- Use `/api/users` for role management and mixed user lists.
-- Check schema and this document before writing SQL or API code.
-- Check `service_availability` rules for the `use_staff_vehicle_capacity` flag to understand how capacity and overlap checks are performed for a given service/time.
+- **Shared Code & Monorepo:** Leverage the monorepo structure and its shared packages (`@booking-and-accounts-monorepo/shared-types`, `@booking-and-accounts-monorepo/api-services`, `@booking-and-accounts-monorepo/utils`) for types, Supabase client setup, utility functions, and API service abstractions to ensure consistency and prepare for mobile app development.
 
-**Data Consistency & Schema Verification:**
-- It's crucial to ensure TypeScript types (`src/types.ts`), API logic, and the actual PostgreSQL database schema remain synchronized.
-- Discrepancies can lead to runtime errors (e.g., querying non-existent columns like `pets.is_active` was encountered).
-- **Always verify column names and existence directly in the Supabase dashboard (Table Editor or SQL Editor) or via migration files** before relying on them in code or types.
-- Update types and documentation promptly after schema changes.
+**React Native / Expo Migration Plan (High-Level):**
+This section outlines how to leverage the existing Next.js codebase, especially the monorepo's shared packages, to build a mobile app using Expo.
 
-**Calendar Component (`src/components/shared/CalendarView.tsx`)**
-- **Purpose:** Provides a reusable calendar interface for displaying date-based data like bookings, availability, or schedules.
-- **Technology:** Built using `react-big-calendar` and `date-fns`.
-- **Features:**
-  - Supports Monthly, Weekly, and Daily views (Week view used in ClientBooking).
-  - Includes built-in navigation.
-  - Accepts an array of events (`CalendarEvent[]`) to display data points.
-  - Configured to show time range 6am-6pm.
-  - Requires mapping data to the `CalendarEvent` interface (`{ id, title, start: Date, end: Date, resource?: unknown }`).
-  - `resource` object used to store `rawStartTime` for consistent key handling.
-  - Callback props for user interaction:
-    - `onSelectSlot` (currently unused in ClientBooking).
-    - `onSelectEvent` (used in ClientBooking to select slots).
-    - `eventStyleGetter` (used in ClientBooking to style available vs. already booked slots).
-- **Usage:**
-  - Import `CalendarView` and the `CalendarEvent` type.
-  - Fetch the relevant data (e.g., bookings for a staff member).
-  - Map the fetched data to an array of `CalendarEvent` objects.
-  - Pass the event array to the `events` prop.
-  - Provide handler functions to `onSelectSlot` and `onSelectEvent` for desired interactions.
-- **Initial Implementation:** Integrated into `src/components/staff/StaffDashboard.tsx` under the "My Schedule" tab.
+**I. Philosophy: What to Reuse, What to Rebuild**
+- **Reuse (Primarily from Monorepo Shared Packages):**
+    - **Business Logic:** Pure JavaScript/TypeScript functions from `packages/utils/` (imported via `@booking-and-accounts-monorepo/utils`).
+    - **API Service Calls:** The logic for making requests via `packages/api-services/` (imported via `@booking-and-accounts-monorepo/api-services`). The backend API routes remain the same.
+    - **Type Definitions:** All types from `packages/shared-types/` (imported via `@booking-and-accounts-monorepo/shared-types`).
+    - **Supabase Client Integration:** The core Supabase client setup principles from `packages/utils/supabase/` (imported via `@booking-and-accounts-monorepo/utils`), adapted for a mobile environment (e.g., using Expo SecureStore for token storage).
+    - **State Management (if applicable):** If using a state management library decoupled from React components, some logic might be reusable.
+- **Rebuild/Adapt (Mobile-Specific):**
+    - **UI Components:** Next.js/React web components will be rebuilt using React Native components (`<View>`, `<Image>`, `<TextInput>`, etc.).
+    - **Styling:** CSS styles will be translated to React Native's StyleSheet API.
+    - **Navigation:** Web routing will be replaced with a mobile navigation solution (e.g., `react-navigation`).
+    - **Authentication Flow (UI):** The `AuthForm.tsx` UI will be rebuilt, but the underlying logic (calling Supabase Auth via `authService` or similar) can be reused.
+    - **Platform-Specific Interactions & Native Features:** New code using Expo APIs for camera, GPS, notifications.
 
-**Date/Time Display Strategy (Simplified)**
-- **Goal:** Display dates and times consistently as represented in the backend ISO strings (e.g., `YYYY-MM-DDTHH:mm:ssZ`), reflecting the intended local time of the business operation, without applying timezone conversions based on the viewing user's browser timezone.
-- **Method:** Treat ISO strings primarily as text for display.
-- **Helper Functions (Example in `BookingManagement.tsx`, `StaffDashboard.tsx`):
-    - `formatDate(isoString)`: Extracts and returns the `YYYY-MM-DD` part.
-    - `formatTime(isoString)`: Extracts and returns the `HH:mm` part.
-    - `formatDateTimeForDisplay(isoString)`: Returns `YYYY-MM-DD HH:mm`.
-- **Usage:**
-    - Use these helpers in UI components (tables, modals, etc.) to display dates/times.
-    - For `react-big-calendar` event titles, use `formatTime`.
-    - For `react-big-calendar` event `start`/`end` props, continue using standard JavaScript `Date` objects (`new Date(isoString)`) to allow the library to handle positioning.
-- **Inputs (`datetime-local`):** Use a specific helper (`formatDateTimeLocal`) that accounts for browser input expectations, but ensure data is converted back to ISO on submission.
-- **Trade-off:** Visual positioning of events in calendar week/day views might mismatch hour labels if the user's system timezone differs significantly from the business's operational timezone. However, the textual display of times will be consistent and match the source data.
+**II. Project Setup & Initial Structure (Expo App)**
+1.  **Install Expo CLI & Create Project.**
+2.  **Directory Structure Suggestion (within the mobile app):** Similar to web, e.g., `src/components/`, `src/screens/`, `src/navigation/`, `src/services/` (for any mobile-specific service wrappers if needed, though ideally most API logic is shared), `src/hooks/`, `src/utils/` (for mobile-specific utils).
 
-**Date/Time Handling for Bookings (Important!)**
+**III. Migrating Core Logic & Services (Leveraging Monorepo Packages)**
+1.  **Type Definitions:** Directly import from `@booking-and-accounts-monorepo/shared-types`.
+2.  **Supabase Integration:**
+    - Install `@supabase/supabase-js` and `expo-secure-store`.
+    - Create a Supabase client instance in the mobile app (e.g., `packages/mobile/src/services/supabaseClient.ts`). This can leverage utilities from `@booking-and-accounts-monorepo/utils` but will use `ExpoSecureStoreAdapter` for session persistence.
+3.  **Utility Functions:** Import directly from `@booking-and-accounts-monorepo/utils`.
+4.  **API Interaction:** Import and use service functions directly from `@booking-and-accounts-monorepo/api-services`. The existing backend endpoints (`/api/...`) are called by these shared services.
 
-The booking system, including the client booking API (`src/app/api/client-booking/route.tsx`), the availability calculation function (`calculate_available_slots`), and relevant database tables (`bookings`, `service_availability`, `staff_availability`), is designed to operate consistently using **naive timestamps** (also known as wall-clock time or `TIMESTAMP WITHOUT TIME ZONE` in PostgreSQL).
+**IV. Building UI & Navigation (Mobile-Specific)**
+- Rebuild UI components using React Native equivalents.
+- Implement mobile navigation using `react-navigation`.
 
-This approach simplifies the backend logic by avoiding timezone conversions during availability checks and booking creation. However, it requires strict consistency:
+**V. Implementing Native Features (Using Expo Modules)**
+- Use `expo-image-picker`, `expo-location`, `expo-notifications` as needed.
 
-1.  **Frontend Input:** The frontend MUST send date/time information as naive ISO-like strings, without any timezone offset (e.g., `YYYY-MM-DDTHH:MM:SS`). Do NOT use 'Z' or '+/-HH:MM' offsets for these booking times.
-2.  **Database Schema:**
-    *   The `bookings` table columns (`start_time`, `end_time`) MUST be of type `TIMESTAMP WITHOUT TIME ZONE`.
-    *   Availability rule tables (`service_availability`, `staff_availability`) should store times as `TIME WITHOUT TIME ZONE` and dates as `DATE` for reliable comparison against the naive input components.
-3.  **Backend Logic:** All backend comparisons and calculations related to checking rules or overlaps are performed using these naive date/time values and their components (date part, time part, day of week).
+**VI. Code Sharing Strategy (Monorepo Implemented)**
+- The project now utilizes a monorepo structure.
+- **Monorepo Structure:**
+  ```
+  booking-and-accounts/ (monorepo-root)
+  ├── packages/
+  │   ├── shared-types/    # Source for @booking-and-accounts-monorepo/shared-types
+  │   ├── api-services/    # Source for @booking-and-accounts-monorepo/api-services
+  │   ├── utils/           # Source for @booking-and-accounts-monorepo/utils
+  │   ├── web/             # Next.js app
+  │   └── mobile/          # Expo app (to be developed)
+  ├── package.json         # Root package.json for managing workspaces (e.g., with PNPM)
+  └── ...
+  ```
+- Both `web` (`packages/web`) and `mobile` (`packages/mobile`) apps depend on the shared packages (e.g., `@booking-and-accounts-monorepo/shared-types`), ensuring consistency and simplifying updates to shared logic.
 
-The goal is to treat a time like "10:00 AM on Tuesday" at the business location consistently throughout the backend, without ambiguity introduced by timezones or Daylight Saving Time during the core booking checks.
+**VII. AI Editor Context**
+- This guide, especially with the monorepo structure and shared packages, provides strong architectural context for an AI editor.
+- The AI can assist in: refactoring, suggesting React Native component equivalents, scaffolding, and writing API service calls based on the shared patterns.
+- Limitations remain for UI/UX nuance and complex native debugging.
 
-**See emailguide.txt for email specific info**
-
-**Email Templates:**
-- `BookingConfirmationClient.tsx` / `BookingConfirmationAdmin.tsx`: Sent for single booking confirmations.
-- `BookingSummaryClient.tsx` / `BookingSummaryAdmin.tsx`: Sent when a client books multiple slots in a single request, summarizing successes and (for admin) failures.
-- (Add other existing templates like PasswordReset, Welcome, etc., if needed)
+(Original Phase 1, 2, 3, Key Considerations, etc. from the previous guide version can follow here, but ensure paths and strategies are updated to reflect the `shared-code` and API service refactoring throughout those sections if they are retained in full detail.)
 

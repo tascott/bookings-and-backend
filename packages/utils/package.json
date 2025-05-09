@@ -1,0 +1,17 @@
+{
+  "name": "@booking-and-accounts-monorepo/utils",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./index.ts",
+  "types": "./index.ts",
+  "scripts": {
+    "lint": "eslint . --ext .ts,.tsx"
+  },
+  "dependencies": {
+    "@supabase/ssr": "^0.6.1"
+  },
+  "devDependencies": {
+    "eslint": "^9",
+    "typescript": "^5"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "es2022",
+    "allowJs": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "moduleResolution": "bundler",
+    "noEmit": true, // Important: packages will have their own emit settings
+    "lib": ["es2022", "dom", "dom.iterable"],
+    // Base URL and Paths for monorepo-wide imports (adjust org name as needed)
+    "baseUrl": ".",
+    "paths": {
+      "@booking-and-accounts-monorepo/*": ["packages/*"]
+      // You might add other paths, e.g., for apps/web if needed from packages
+    }
+  },
+  "exclude": ["node_modules", ".turbo", "dist"]
+}

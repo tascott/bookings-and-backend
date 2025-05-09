@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": ".",
+    "noEmit": true, // Consumed as raw TS by other packages/apps
+    "baseUrl": "." // For any internal paths within this package
+    // No specific "paths" needed here if it doesn't depend on other packages in /packages
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

@@ -1,0 +1,19 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist", // Or wherever you want compiled output, if any
+    "rootDir": ".",
+    // If this package is just TypeScript and consumed directly by apps/web without its own build step:
+    "noEmit": true, // Set to false if this package needs to be compiled to JS
+    // If it needs to be compiled, you might need:
+    // "declaration": true,
+    // "declarationMap": true,
+    "baseUrl": ".", // For any internal paths within this package
+    "paths": {
+      // Example if it depends on shared-types directly within packages
+      "@booking-and-accounts-monorepo/shared-types/*": ["../shared-types/*"]
+    }
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}
