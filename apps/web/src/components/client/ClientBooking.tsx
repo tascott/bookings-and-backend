@@ -355,8 +355,14 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 
 			// Combine available slots with user's existing bookings for calendar display
 			const existingBookingEvents: CalendarEvent[] = myBookings.map(booking => ({
-				id: `booking-${booking.id}`,
-				title: `Booked: ${typeof booking.service_id === 'number' ? getServiceName(booking.service_id) : 'Service Info Unavailable'}`, // Robust title
+				id: booking.id
+					? `booking-${booking.id}`
+					: `booking-${booking.start_time}-${booking.end_time}`,
+				title: booking.service && booking.service.name // Check for nested service name first
+					? `Booked: ${booking.service.name}`
+					: typeof booking.service_id === 'number'
+						? `Booked: ${getServiceName(booking.service_id)}`
+						: 'Booked', // Fallback to just 'Booked'
 				start: new Date(booking.start_time),
 				end: new Date(booking.end_time),
 				allDay: false,
@@ -434,28 +440,16 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		}
 
 		let total = 0;
-		const selectedService = services.find((s) => s.id === parseInt(selectedServiceId, 10));
-		const requiresFieldSelection = selectedService?.requires_field_selection ?? false;
+		// const selectedService = services.find((s) => s.id === parseInt(selectedServiceId, 10));
+		// const requiresFieldSelection = selectedService?.requires_field_selection ?? false;
 
 		selectedSlots.forEach((slotKey) => {
 			let slotPrice = 0;
-			if (requiresFieldSelection) {
-				// Key is fieldId-startTime
-				// NOTE: This part assumes field-specific booking is implemented differently
-				// and might need adjustment based on how field IDs are stored/retrieved.
-				// For now, let's assume the key directly relates to a raw slot if needed.
-				const startTime = slotKey.includes('-') ? slotKey.split('-')[1] : slotKey; // Assume key might just be startTime now
-				const slot = rawCalculatedSlots.find((s) => {
-					// If key is just startTime and we pick *any* raw slot matching:
-					return s.start_time === startTime;
-				});
-				slotPrice = slot?.price_per_pet ?? 0;
-			} else {
-				// Key is startTime
-				const startTime = slotKey;
-				const slot = aggregatedSlots.find((s) => s.startTime === startTime);
-				slotPrice = slot?.price_per_pet ?? 0;
-			}
+			// Always find the slot in aggregatedSlots as selectedSlots keys are derived from them
+			const slot = aggregatedSlots.find(
+				(s) => `${formatISO(new Date(s.startTime))}-${s.serviceId}` === slotKey
+			);
+			slotPrice = slot?.price_per_pet ?? 0;
 			total += slotPrice;
 		});
 
