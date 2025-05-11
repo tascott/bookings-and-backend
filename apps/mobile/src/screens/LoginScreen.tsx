@@ -25,10 +25,11 @@ const LoginScreen: React.FC<Props> = ({ navigation }) => {
     if (error) {
       Alert.alert('Login Error', error.message);
     } else {
-      // Navigation to the main app (e.g., Home or Dashboard) will be handled here
-      // For now, let's just clear fields or show a success message
-      Alert.alert('Success', 'Logged in!');
-      // navigation.replace('Home'); // Or a specific dashboard
+      // Successful login will trigger onAuthStateChange in App.tsx,
+      // which will update the session and navigate to the appropriate screen.
+      // No explicit navigation needed here.
+      // setEmail(''); // Optionally clear fields
+      // setPassword('');
     }
     setLoading(false);
   };

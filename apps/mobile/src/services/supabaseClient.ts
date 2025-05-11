@@ -6,6 +6,13 @@ import { createClient } from '@supabase/supabase-js';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
 
+if (!supabaseUrl || !supabaseAnonKey) {
+  console.error("ERROR: Supabase URL or Anon Key is missing from environment variables.");
+  console.error("Ensure .env file is set up correctly in apps/mobile/ with EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.");
+  // Consider throwing an error or providing a fallback/mock client for development if this occurs
+  // to prevent the app from crashing silently or with obscure errors later.
+}
+
 const ExpoSecureStoreAdapter = {
   getItem: (key: string) => {
     return SecureStore.getItemAsync(key);

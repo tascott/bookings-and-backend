@@ -26,7 +26,9 @@ const SignUpScreen: React.FC<Props> = ({ navigation }) => {
       Alert.alert('Sign Up Error', error.message);
     } else {
       Alert.alert('Success', 'Signed up! Please check your email for verification.');
-      // navigation.replace('Login'); // Or directly to Home/Dashboard if auto-verified
+      // No explicit navigation here. User should verify email and then log in.
+      // setEmail(''); // Optionally clear fields
+      // setPassword('');
     }
     setLoading(false);
   };
