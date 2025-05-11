@@ -16,7 +16,7 @@ Our project uses a monorepo (managed with pnpm workspaces, Nx, or Turborepo) to 
 *   **API Service client functions:** Imported from `@booking-and-accounts-monorepo/api-services` (source: `packages/api-services`).
 *   **Supabase client setup:** The core Supabase client is set up in `@booking-and-accounts-monorepo/utils` and adapted for mobile use within the mobile app itself (e.g., using Expo SecureStore, as detailed in "Guide 2").
 
-The mobile app (`packages/mobile`) will consume these shared packages as dependencies. This ensures consistency and simplifies updates to shared logic.
+The mobile app (\`apps/mobile\`) will consume these shared packages as dependencies. This ensures consistency and simplifies updates to shared logic.
 Port the Supabase client initialization logic to the mobile app, adapting it for the mobile environment as necessary (see Guide 2, Section III).
 Phase 2: Client and Staff Dashboard - UI and Core Features (3-4 Weeks)
 Dashboard Shells:
@@ -126,38 +126,43 @@ This guide outlines how to leverage your existing Next.js codebase (`booking-and
 
 **II. Project Setup & Initial Structure (for the Expo App within the Monorepo)**
 
-This section outlines how to create and structure your new Expo mobile application within the `packages/` directory of your existing monorepo.
+This section outlines how to create and structure your new Expo mobile application within the \`apps/\` directory of your existing monorepo.
 
-1.  **Navigate to the `packages` Directory:**
-    Open your terminal and navigate to the `packages` directory within your monorepo root:
-    ```bash
-    cd path/to/your/monorepo-root/packages
-    ```
+1.  **Navigate to the \`apps\` Directory:**
+    Open your terminal and navigate to the \`apps\` directory within your monorepo root:
+    \`\`\`bash
+    cd path/to/your/monorepo-root/apps
+    \`\`\`
 
 2.  **Create the Mobile App Directory (if it doesn't exist):
-    ```bash
+    \`\`\`bash
     mkdir mobile
     cd mobile
-    ```
-    (You can name it `mobile-app`, `expo-app`, or simply `mobile` as shown in the monorepo structure.)
+    \`\`\`
+    (You can name it \`mobile-app\`, \`expo-app\`, or simply \`mobile\` as shown in the monorepo structure.)
 
 3.  **Install Expo CLI (if not already installed globally):
-    ```bash
+    \`\`\`bash
     npm install -g expo-cli
-    ```
+    # Or, preferably, use npx for the modern Expo CLI:
+    # npx create-expo-app . --template blank-typescript
+    \`\`\`
 
 4.  **Initialize the New Expo Project:**
-    Inside the `packages/mobile` (or your chosen name) directory, run:
-    ```bash
-    expo init .
-    ```
-    *   The `.` tells Expo to initialize the project in the current directory.
+    Inside the \`apps/mobile\` (or your chosen name) directory, run:
+    \`\`\`bash
+    # For modern Expo CLI (recommended):
+    npx create-expo-app . --template blank-typescript
+    # For legacy expo-cli (if needed, ensure it's installed and compatible):
+    # expo init .
+    \`\`\`
+    *   The \`.\` tells Expo to initialize the project in the current directory.
     *   Choose a template when prompted, preferably one with TypeScript if your monorepo uses it (e.g., "blank (TypeScript)").
-    *   Follow the prompts from `expo init`.
+    *   Follow the prompts.
 
-5.  **Proposed Directory Structure for `packages/mobile`:**
-    ```
-    packages/mobile/
+5.  **Proposed Directory Structure for \`apps/mobile\`:**
+    \`\`\`
+    apps/mobile/
     ├── assets/              # Static assets like images, fonts
     ├── src/
     │   ├── components/      # Reusable UI components (mobile-specific)
@@ -169,16 +174,17 @@ This section outlines how to create and structure your new Expo mobile applicati
     │   └── types/           # Mobile-specific types (prefer shared types where possible)
     ├── .expo/               # Expo-generated directory (add to .gitignore at root)
     ├── .gitignore           # Specific ignores for the mobile app (e.g., .expo/, node_modules/ if not handled by root)
-    ├── App.tsx              # Main entry point for the Expo app
+    ├── App.tsx              # Main entry point for the Expo app (likely in src/ after setup)
+    ├── index.ts             # Entry point registered with Expo
     ├── babel.config.js      # Babel configuration for the Expo app
     ├── tsconfig.json        # TypeScript configuration for the Expo app
     └── package.json         # Expo app's own package.json
-    ```
+    \`\`\`
 
 6.  **Add Dependencies to Shared Monorepo Packages:**
-    In `packages/mobile/package.json`, add your shared monorepo packages as dependencies. The version should typically be `"workspace:*"` if using pnpm/yarn/npm workspaces to link them locally.
-    Example `dependencies` section in `packages/mobile/package.json`:
-    ```json
+    In \`apps/mobile/package.json\`, add your shared monorepo packages as dependencies. The version should typically be \`"workspace:*"\` if using pnpm/yarn/npm workspaces to link them locally.
+    Example \`dependencies\` section in \`apps/mobile/package.json\`:
+    \`\`\`json
     "dependencies": {
       "expo": "~50.0.0", // Or your current Expo SDK version
       "react": "18.2.0",
@@ -190,20 +196,20 @@ This section outlines how to create and structure your new Expo mobile applicati
       "expo-secure-store": "~12.8.1" // For secure token storage
       // ... other necessary Expo/React Native libraries
     },
-    ```
+    \`\`\`
 
 7.  **Install Dependencies:**
-    Navigate to the **root** of your monorepo and run your package manager's install command (e.g., `pnpm install`, `yarn install`, or `npm install`). This will install dependencies for the new mobile app and link the workspace packages.
+    Navigate to the **root** of your monorepo and run your package manager's install command (e.g., \`pnpm install\`, \`yarn install\`, or \`npm install\`). This will install dependencies for the new mobile app and link the workspace packages.
 
 8.  **Configure TypeScript Paths (if needed):**
-    Ensure the `tsconfig.json` within `packages/mobile` is set up correctly. If you use path aliases for your shared packages in the root `tsconfig.base.json`, you might need to ensure they resolve correctly or that the mobile app's `tsconfig.json` extends the base configuration appropriately.
+    Ensure the \`tsconfig.json\` within \`apps/mobile\` is set up correctly. If you use path aliases for your shared packages in the root \`tsconfig.base.json\`, you might need to ensure they resolve correctly or that the mobile app's \`tsconfig.json\` extends the base configuration appropriately.
 
 9.  **Start the Development Server:**
-    Navigate back into `packages/mobile` and start the Expo development server:
-    ```bash
-    cd packages/mobile
-    expo start
-    ```
+    Navigate back into \`apps/mobile\` and start the Expo development server:
+    \`\`\`bash
+    cd apps/mobile # Or path/to/your/monorepo-root/apps/mobile
+    expo start # Or npx expo start
+    \`\`\`
     You can then run your app on a simulator/emulator or on your physical device using the Expo Go app.
 
 **III. Migrating Core Logic & Services (Leveraging Monorepo Shared Packages)**
@@ -211,9 +217,9 @@ This section outlines how to create and structure your new Expo mobile applicati
 1.  **Type Definitions:**
     *   Import directly: `import { MyType } from '@booking-and-accounts-monorepo/shared-types';`
 2.  **Supabase Integration:**
-    *   Install the Supabase client: `npm install @supabase/supabase-js` (or `pnpm add @supabase/supabase-js` in the mobile package)
-    *   Install a secure storage mechanism for tokens: `expo install expo-secure-store`
-    *   Create `packages/mobile/src/services/supabaseClient.ts` (or similar):
+    *   Install the Supabase client: \`pnpm add @supabase/supabase-js\` (run from monorepo root, targeting the mobile app workspace if necessary, or add to \`apps/mobile/package.json\` and run \`pnpm install\` from root)
+    *   Install a secure storage mechanism for tokens: \`npx expo install expo-secure-store\` (run from within \`apps/mobile\`)
+    *   Create \`apps/mobile/src/services/supabaseClient.ts\` (or similar):
         ```typescript
         import 'react-native-url-polyfill/auto'; // Handles URL polyfill for React Native
         import * as SecureStore from 'expo-secure-store';
@@ -238,14 +244,14 @@ This section outlines how to create and structure your new Expo mobile applicati
           },
         });
         ```
-    *   **Environment Variables:** Ensure `EXPO_PUBLIC_` prefixed environment variables are set up for the mobile app.
+    *   **Environment Variables:** Ensure \`EXPO_PUBLIC_\` prefixed environment variables are set up for the mobile app.
 3.  **Utility Functions:**
-    *   Import directly from `@booking-and-accounts-monorepo/utils` for shared utilities.
-    *   Mobile-specific utilities can reside in `packages/mobile/src/utils/`.
+    *   Import directly from \`@booking-and-accounts-monorepo/utils\` for shared utilities.
+    *   Mobile-specific utilities can reside in \`apps/mobile/src/utils/\`.
 4.  **API Interaction (Reusing Backend Endpoints & Shared Services):**
-    *   Your Next.js API routes (`/api/...`) remain the backend.
-    *   Import and use API service functions directly from `@booking-and-accounts-monorepo/api-services`.
-    *   Example: `packages/mobile/src/services/someMobileFeatureApi.ts` (if you need to wrap a shared service or add mobile specific logic)
+    *   Your Next.js API routes (\`/api/...\`) remain the backend.
+    *   Import and use API service functions directly from \`@booking-and-accounts-monorepo/api-services\`.
+    *   Example: \`apps/mobile/src/services/someMobileFeatureApi.ts\` (if you need to wrap a shared service or add mobile specific logic)
         ```typescript
         import { getClientDetails as sharedGetClientDetails } from '@booking-and-accounts-monorepo/api-services';
         import type { Client } from '@booking-and-accounts-monorepo/shared-types';
@@ -381,22 +387,23 @@ This section outlines how to create and structure your new Expo mobile applicati
 
 **VI. Code Sharing Strategy: Monorepo Implementation**
 
-Our project has successfully implemented a monorepo structure to manage code sharing between the Next.js web app (`packages/web`) and the Expo mobile app (`packages/mobile`). This is the established and recommended approach for this project.
+Our project has successfully implemented a monorepo structure to manage code sharing between the Next.js web app (\`apps/web\`) and the Expo mobile app (\`apps/mobile\`). This is the established and recommended approach for this project.
 
 *   **Current Monorepo Structure:**
-    ```
+    \`\`\`
     monorepo-root/ (e.g., booking-and-accounts/)
-    ├── packages/
+    ├── apps/
     │   ├── web/               # Your Next.js app
-    │   ├── mobile/            # Your Expo app
-    │   ├── shared-types/      # Shared TypeScript types (source for @booking-and-accounts-monorepo/shared-types)
-    │   ├── api-services/      # Shared API client functions (source for @booking-and-accounts-monorepo/api-services)
+    │   └── mobile/            # Your Expo app
+    ├── packages/
+    │   ├── shared-types/      # Shared TypeScript types
+    │   ├── api-services/      # Shared API client functions
     │   └── utils/             # Shared utilities, Supabase helpers (source for @booking-and-accounts-monorepo/utils)
-    ├── package.json           # Root package.json for managing workspaces (e.g., with PNPM, Yarn, or NPM workspaces)
-    ├── pnpm-workspace.yaml    # Example for PNPM; similar for Yarn/NPM workspaces
-    ├── tsconfig.base.json     # Base TypeScript config, often for path aliases across packages
-    └── ...
-    ```
+    ├── .gitignore
+    ├── package.json              <-- Root package.json for the monorepo (manages workspaces)
+    ├── pnpm-workspace.yaml       <-- Defines the workspaces for PNPM (if using PNPM)
+    └── README.md
+    \`\`\`
 *   **Benefits:**
     *   Both `web` and `mobile` apps depend on the shared packages (e.g., `@booking-and-accounts-monorepo/shared-types`, `@booking-and-accounts-monorepo/api-services`, `@booking-and-accounts-monorepo/utils`).
     *   This ensures consistency, reduces code duplication, and makes updates to shared logic straightforward through package manager linking (e.g., `pnpm install` at the root).
@@ -471,7 +478,7 @@ Okay, let's break down the value of each of those preparatory steps for migratin
     3.  Consider if your CSS structure needs better component-level organization for clarity (1).
     4.  Use Repomix or similar to provide broad context to the AI (3), *after* steps 2 & 4.
 *   **Strategic Long-Term (consider starting now if feasible):**
-    5.  Plan for and ideally implement a monorepo structure (5).
+    5.  Plan for and ideally implement a monorepo structure (5). If you've placed your mobile app in \`apps/mobile\` and your shared code in \`packages/*\`, you're already well on your way with a standard monorepo setup.
 
 Doing steps 2 and 4 will provide the most immediate and significant value for making the migration smoother and for enabling an AI to assist you effectively. The other steps build upon this foundation.
 
@@ -566,7 +573,7 @@ booking-and-accounts/       <-- Your existing Git repository root
 ├── .git/
 ├── docs/
 ├── packages/                 <-- Monorepo packages root
-│   ├── web/                  <-- Your Next.js app (formerly src/, public/ etc.)
+│   ├── web/                  <-- Your Next.js app
 │   │   ├── src/
 │   │   └── ...
 │   ├── mobile/               <-- NEW: Your Expo project will live here
@@ -575,7 +582,7 @@ booking-and-accounts/       <-- Your existing Git repository root
 │   ├── shared-types/         <-- Shared TypeScript types
 │   │   └── src/ (or similar, containing types.ts, types_db.ts)
 │   │   └── package.json
-│   ├── api-services/         <-- Shared API service functions
+│   ├── api-services/         <-- Shared API client functions
 │   │   └── src/ (containing service files like bookingService.ts)
 │   │   └── package.json
 │   └── utils/                <-- Shared utilities (source for @booking-and-accounts-monorepo/utils)
@@ -590,24 +597,24 @@ booking-and-accounts/       <-- Your existing Git repository root
 **How this works (with PNPM as an example):**
 
 1.  **Install Monorepo Manager (e.g., PNPM):** `npm install -g pnpm`
-2.  **Structure:** The `packages/` directory holds individual packages:
-    *   `packages/web`: Your Next.js application.
-    *   `packages/mobile`: Your Expo application.
-    *   `packages/shared-types`: Contains shared type definitions. Its `package.json` would name it `@booking-and-accounts-monorepo/shared-types`.
-    *   `packages/api-services`: Contains shared API client functions. Its `package.json` would name it `@booking-and-accounts-monorepo/api-services`.
-    *   `packages/utils`: Contains shared utilities. Its `package.json` would name it `@booking-and-accounts-monorepo/utils`.
+2.  **Structure:** The \`apps/\` directory holds applications, and \`packages/\` holds shared libraries:
+    *   \`apps/web\`: Your Next.js application.
+    *   \`apps/mobile\`: Your Expo application.
+    *   \`packages/shared-types\`: Contains shared type definitions. Its \`package.json\` would name it \`@booking-and-accounts-monorepo/shared-types\`.
+    *   \`packages/api-services\`: Contains shared API client functions. Its \`package.json\` would name it \`@booking-and-accounts-monorepo/api-services\`.
+    *   \`packages/utils\`: Contains shared utilities. Its \`package.json\` would name it \`@booking-and-accounts-monorepo/utils\`.
 3.  **Root `package.json` & Workspace Config:**
     *   The root `package.json` defines workspace settings (e.g., for PNPM, Yarn, or NPM).
     *   For PNPM, a `pnpm-workspace.yaml` file in the root lists the package locations (e.g., `packages/*`).
-4.  **Initialize Expo App:** Initialize within `packages/mobile`.
+4.  **Initialize Expo App:** Initialize within \`apps/mobile\`.
 5.  **Link Dependencies:**
-    *   In `packages/web/package.json` and `packages/mobile/package.json`, add dependencies to the shared packages:
-        `"dependencies": { "@booking-and-accounts-monorepo/shared-types": "workspace:*", "@booking-and-accounts-monorepo/api-services": "workspace:*", "@booking-and-accounts-monorepo/utils": "workspace:*" }`
-    *   Run `pnpm install` (or equivalent for your chosen manager) in the root. This links the local packages.
+    *   In \`apps/web/package.json\` and \`apps/mobile/package.json\`, add dependencies to the shared packages:
+        \`"dependencies": { "@booking-and-accounts-monorepo/shared-types": "workspace:*", "@booking-and-accounts-monorepo/api-services": "workspace:*", "@booking-and-accounts-monorepo/utils": "workspace:*" }\`
+    *   Run \`pnpm install\` (or equivalent for your chosen manager) in the root. This links the local packages.
 6.  **Imports:**
-    *   In `packages/web` and `packages/mobile`, import shared code using the package names:
-        `import { MyType } from '@booking-and-accounts-monorepo/shared-types';`
-        `import { bookingService } from '@booking-and-accounts-monorepo/api-services';`
+    *   In \`apps/web\` and \`apps/mobile\`, import shared code using the package names:
+        \`import { MyType } from '@booking-and-accounts-monorepo/shared-types';\`
+        \`import { bookingService } from '@booking-and-accounts-monorepo/api-services';\`
 7.  **Push to GitHub:** The entire monorepo structure is committed.
 
 **How do I give only the Expo code to wherever hosts it? (Deployment)**
@@ -617,10 +624,10 @@ This is a key question and where build processes come in. Hosting platforms for 
 *   **Expo Application Services (EAS) Build:** This is the recommended way to build your Expo app for submission.
     1.  **Install EAS CLI:** `npm install -g eas-cli`
     2.  **Login:** `eas login`
-    3.  **Configure:** `eas build:configure` (this creates an `eas.json` file in your `mobile-app` or `packages/mobile` directory).
-    4.  **Build:** `eas build -p android --profile preview` (or `-p ios`, or `--profile production`).
-        *   EAS Build will typically only look at the code within your Expo project directory (`packages/mobile`).
-        *   It will bundle the necessary JavaScript and assets, including any code imported from your shared packages (e.g., `@booking-and-accounts-monorepo/shared-types`) because they are resolved as dependencies during the build process.
+    3.  **Configure:** \`eas build:configure\` (this creates an \`eas.json\` file in your \`apps/mobile\` directory).
+    4.  **Build:** \`eas build -p android --profile preview\` (or \`-p ios\`, or \`--profile production\`).
+        *   EAS Build will typically only look at the code within your Expo project directory (\`apps/mobile\`).
+        *   It will bundle the necessary JavaScript and assets, including any code imported from your shared packages (e.g., \`@booking-and-accounts-monorepo/shared-types\`) because they are resolved as dependencies during the build process.
         *   It then builds the native binary in the cloud.
     5.  **Submit:** You download the built binary from EAS and upload it to the app stores.
 
