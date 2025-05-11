@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Booking } from '@booking-and-accounts-monorepo/shared-types';
-import { fetchMyBookings } from '@booking-and-accounts-monorepo/api-services';
+import { fetchMyBookingsAPI } from '@booking-and-accounts-monorepo/api-services';
 
 export default function MyBookings() {
     const [bookings, setBookings] = useState<Booking[]>([]);
@@ -14,7 +14,7 @@ export default function MyBookings() {
             setIsLoading(true);
             setError(null);
             try {
-                const data = await fetchMyBookings();
+                const data = await fetchMyBookingsAPI('');
                 setBookings(data);
             } catch (e) {
                 setError(e instanceof Error ? e.message : 'Failed to load bookings');

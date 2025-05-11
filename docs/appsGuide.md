@@ -1,112 +1,106 @@
-The goal is to maximize code reuse and incorporate native features like notifications, camera, and GPS access.
-Given your existing React-based web application, React Native is a strong candidate. It allows you to write most of your app in JavaScript (or TypeScript) and compile to native iOS and Android components, enabling significant code sharing.
-Here's a potential plan:
-Phase 1: Foundation and Core Structure (1-2 Weeks)
-Project Setup:
-Initialize a new React Native project using a suitable CLI (e.g., React Native CLI or Expo CLI). Expo can simplify initial setup and native module management. This will be done within the existing monorepo structure (see "Guide 2" below for details on monorepo setup).
-Integrate the Supabase JavaScript client library (@supabase/supabase-js) into the React Native project for authentication and database interactions.
-Authentication and Role-Based Navigation:
-Replicate the authentication flow from AuthForm.tsx using React Native components. Users should be able to sign up and log in.
-After login, determine the user's role (Admin, Staff, Client) by fetching data from staff and clients tables, similar to src/app/page.tsx.
-Implement basic navigation (e.g., using React Navigation) to direct users to a ClientDashboard or StaffDashboard based on their role. Admin functionality will likely remain web-based for now to expedite mobile app delivery for clients and staff.
-Code Sharing Strategy:
-Our project uses a monorepo (managed with pnpm workspaces, Nx, or Turborepo) to facilitate code sharing between the web and mobile applications. Reusable code is organized into shared packages:
-*   **Utility functions:** Imported from `@booking-and-accounts-monorepo/utils` (source: `packages/utils`).
-*   **Type definitions:** Imported from `@booking-and-accounts-monorepo/shared-types` (source: `packages/shared-types`).
-*   **API Service client functions:** Imported from `@booking-and-accounts-monorepo/api-services` (source: `packages/api-services`).
-*   **Supabase client setup:** The core Supabase client is set up in `@booking-and-accounts-monorepo/utils` and adapted for mobile use within the mobile app itself (e.g., using Expo SecureStore, as detailed in "Guide 2").
+# Expo Mobile App Development Guide (booking-and-accounts)
 
-The mobile app (\`apps/mobile\`) will consume these shared packages as dependencies. This ensures consistency and simplifies updates to shared logic.
-Port the Supabase client initialization logic to the mobile app, adapting it for the mobile environment as necessary (see Guide 2, Section III).
-Phase 2: Client and Staff Dashboard - UI and Core Features (3-4 Weeks)
-Dashboard Shells:
-Create React Native versions of ClientDashboard.tsx and StaffDashboard.tsx.
-Focus on mobile-friendly UI/UX. Many web components won't translate directly and will need to be re-imagined for smaller screens and touch interactions.
-Client Features:
-Booking Interface (ClientBooking.tsx equivalent):
-Develop UI for service/date selection.
-Integrate with the /api/available-slots API to fetch and display slots. Consider a simplified list or calendar view suitable for mobile.
-Implement booking submission logic, calling /api/client-booking.
-Pet Management:
-UI for clients to view, add, edit, and delete their pets.
-Connect to the existing /api/pets and /api/clients/[clientId]/pets endpoints.
-My Bookings:
-UI for clients to view their past and upcoming bookings.
-Connect to /api/my-bookings.
-Staff Features:
-My Clients Tab (Simplified):
-Display a list of clients assigned to the staff member (/api/clients?assigned_staff_id=me).
-Show client name and contact, with an option to view their pets.
-My Schedule (Basic):
-A simplified view of the staff member's upcoming bookings/schedule. This could be a list view initially. The full CalendarView might be complex to port directly.
-Phase 3: Native Feature Integration (2-3 Weeks)
-Camera Access for Staff (Pet Images):
-Requirement: Staff need to upload images of pets.
-Implementation:
-In the staff's pet management interface (or a booking-specific interface), add a button/feature to "Upload Pet Image."
-Use a React Native library like react-native-image-picker or Expo's ImagePicker to allow staff to take a photo or select one from their device's gallery.
-Upload the selected image to your Supabase Storage bucket.
-Update the relevant pet record (e.g., in the pets table, if you add an image_url column) with the URL of the uploaded image. This might require a new API endpoint or modification of an existing one for updating pet details.
-Native Notifications:
-Requirement: Push notifications for important events (e.g., new bookings, reminders).
-Implementation:
-Choose a push notification service. Firebase Cloud Messaging (FCM) for Android and Apple Push Notification service (APNs) for iOS are standard. Expo Push Notifications can simplify this.
-Configure your Supabase backend (e.g., using Supabase Functions triggered by database changes or API calls) to send notifications via FCM/APNs.
-Integrate a React Native library (e.g., @react-native-firebase/messaging or Expo's expo-notifications) to handle receiving and displaying notifications in the app.
-GPS Access:
-Requirement: GPS access. The specific use case isn't detailed, but let's assume it might be for staff to log location for visits or for clients to find site locations.
-Implementation:
-Use a library like react-native-geolocation-service or Expo's Location API.
-Request location permissions from the user.
-Implement the specific GPS-related functionality once the use case is clarified (e.g., showing a map, recording coordinates).
-Phase 4: Testing, Refinement, and Deployment (Ongoing)
-Testing:
-Thoroughly test on both iOS and Android simulators/emulators and physical devices.
-Test user flows, native feature integrations, and offline behavior (if applicable).
-UI/UX Polish:
-Refine the mobile UI/UX based on testing and feedback.
-Ensure a consistent look and feel across platforms where appropriate.
-Performance Optimization:
-Monitor app performance and optimize as needed.
-Deployment:
-Prepare for app store submission (Apple App Store, Google Play Store). This includes creating developer accounts, app listings, screenshots, etc.
-Build release versions of your app and submit them for review.
-Key Considerations:
-API Reusability: Your existing API routes should be largely reusable. Ensure they are secure and efficient for mobile clients.
-Offline Support: If offline capabilities are needed (e.g., viewing cached data), this will require additional design and implementation (e.g., using AsyncStorage or a local database like SQLite).
-UI/UX Adaptation: Directly porting web UIs to mobile often results in a poor user experience. Invest time in designing mobile-first interfaces.
-Native Modules: While React Native and Expo handle many native aspects, you might occasionally need to write custom native modules (Java/Kotlin for Android, Swift/Objective-C for iOS) for highly specific features not covered by existing libraries, though this is less common with Expo.
-Security: Continue to follow security best practices for API calls, data storage, and user authentication on mobile.
-overallguide.txt: This document will remain a valuable resource for understanding data structures and API endpoints.
-This plan provides a structured approach. The timelines are estimates and can vary based on team size, experience, and the complexity of the final feature set. Prioritize features based on user needs to deliver value incrementally.
+**Objective:** Develop an Expo (React Native) mobile app for iOS and Android, reusing code from the existing Next.js web application via a pnpm monorepo structure.
+
+**Current Status & Key Achievements:**
+- Expo project initialized in `apps/mobile`.
+- Core navigation structure with React Navigation (v7.x) is in place (`AppNavigator.tsx`).
+- Authentication (Login, Signup) using Supabase client (with `expo-secure-store`) is functional.
+- Role-based navigation directs users to `StaffDashboardScreen` or `ClientDashboardScreen` (placeholders exist).
+- Staff Dashboard: "My Schedule" tab implemented using `react-native-calendars` (`Agenda` component), fetching data directly from Supabase via shared `api-services`.
+
+**I. Monorepo Code Sharing Strategy:**
+
+The project leverages a pnpm monorepo to share code between `apps/web` (Next.js) and `apps/mobile` (Expo).
+- **`@booking-and-accounts-monorepo/shared-types`:** Consistent TypeScript type definitions.
+- **`@booking-and-accounts-monorepo/utils`:** Shared utility functions. Supabase client setup is adapted in `apps/mobile/src/services/supabaseClient.ts` using `expo-secure-store` for token persistence.
+- **`@booking-and-accounts-monorepo/api-services`:** Crucial for data interaction.
+    - **Web:** Services make `fetch` calls to the Next.js backend API routes.
+    - **Mobile:** Services have been adapted (e.g., `fetchBookingsDirect`, `fetchServices` modified) to accept the mobile Supabase client instance and perform *direct Supabase database calls*. This strategy avoids dependency on a running Next.js server for mobile development/operation.
+
+**II. Core Mobile App Structure (`apps/mobile/src/`)**
+- **`App.tsx`:** Main entry point, manages global auth state and navigation root.
+- **`navigation/`:** React Navigation stacks and tabs (e.g., `AppNavigator.tsx`, `StaffTabNavigator.tsx`).
+- **`screens/`:** Top-level views (e.g., `LoginScreen.tsx`, `SignUpScreen.tsx`, `MyScheduleScreen.tsx`, dashboard placeholders).
+- **`components/`:** Reusable mobile-specific UI components.
+- **`services/`:** Contains `supabaseClient.ts` (mobile-specific Supabase client initialization).
+- **`hooks/`, `utils/`, `types/`:** For mobile-specific logic if not suitable for shared packages.
+- **`assets/`:** Static assets.
+
+**III. Key Implementation Details & Learnings:**
+
+1.  **Supabase Integration & Data Fetching:**
+    - Mobile Supabase client (`apps/mobile/src/services/supabaseClient.ts`) uses `EXPO_PUBLIC_` environment variables and `expo-secure-store`.
+    - Data for screens like "My Schedule" is fetched using functions from the shared `api-services` package (e.g., `bookingService.fetchBookingsDirect(supabaseClient, ...)`), which perform direct database queries.
+
+2.  **Authentication Flow:**
+    - `LoginScreen.tsx` and `SignUpScreen.tsx` use the mobile Supabase client for auth operations.
+    - `App.tsx` handles `onAuthStateChange` to navigate users appropriately.
+    - `determineUserRole` function queries `staff` and `clients` tables for role-based redirection.
+
+3.  **UI & Navigation:**
+    - `react-navigation` (v7.x) for stack and tab navigation.
+    - `react-native-calendars` (`Agenda` component) used for the "My Schedule" tab.
+
+4.  **Bundling & Compatibility Gotchas:**
+    - **Node.js Polyfills:** `@supabase/supabase-js` and other libraries may require Node.js core module polyfills. This was addressed by:
+        - Installing `react-native-url-polyfill`, `react-native-get-random-values`, `events`, `stream-browserify`, `buffer`, etc.
+        - Configuring `metro.config.js` to use `node-libs-react-native` or explicitly providing fallbacks in `extraNodeModules` and `resolver.sourceExts`.
+        ```javascript // Example metro.config.js snippet
+        // const defaultSourceExts = require('metro-config/src/defaults/defaults').sourceExts;
+        // resolver: {
+        //   extraNodeModules: require('node-libs-react-native'),
+        //   sourceExts: process.env.RN_SRC_EXT
+        //     ? [...process.env.RN_SRC_EXT.split(',').concat(defaultSourceExts), 'svg']
+        //     : [...defaultSourceExts, 'svg'],
+        // }
+        ```
+    - **`react-native-calendars` Patch:** The `Agenda` component had a "Maximum update depth exceeded" error. A patch was applied from a GitHub commit to `node_modules/react-native-calendars/src/agenda/reservation-list/index.js`. The patch was created and managed using `pnpm patch` and `pnpm patch-commit`, and is listed in `pnpm.patchedDependencies` in the root `package.json`.
+    - **React Versioning:** Ensured `react` version in `apps/mobile` is strictly compatible with its `react-native` version (e.g., React 19.0.0 for RN 0.79.2) to avoid `react-native-renderer` and "Invalid hook call" errors. The web app can use a different compatible React version (e.g., 19.1.0).
+
+5.  **Environment Variables:** Use `EXPO_PUBLIC_` prefix for client-side access. Configured in `.env` files. If dynamic values are needed at build time, `app.config.js` can be used.
+
+**IV. Mobile App Development Roadmap:**
+
+*   **Phase 1: Foundation & Core Staff Features (Current Focus)**
+    *   [x] Monorepo & Shared Package Integration
+    *   [x] Expo Project Init & Structure
+    *   [x] Authentication & Role-Based Navigation
+    *   [x] Staff Dashboard: "My Schedule" Tab (View bookings with `react-native-calendars`)
+    *   **Next Up:**
+        *   [ ] Staff Dashboard: "My Clients" Tab (List assigned clients, view basic details & pets, using direct Supabase calls via `api-services`).
+        *   [ ] Staff Dashboard: Placeholder tabs for other staff functionalities (e.g., simplified availability view).
+
+*   **Phase 2: Core Client Features**
+    *   [ ] Client Dashboard: Shell and basic navigation.
+    *   [ ] Client Dashboard: "My Bookings" Tab (View their bookings, direct Supabase calls via `api-services`).
+    *   [ ] Client Dashboard: Basic "Book Service" Interface (service/date selection, view availability - adapting `calculate_available_slots` logic for direct Supabase calls via `api-services`).
+    *   [ ] Client Dashboard: "My Pets" Tab (View pets; add/edit if time permits, direct Supabase calls via `api-services`).
+
+*   **Phase 3: Native Feature Integration (Prioritized as needed)**
+    *   [ ] Camera Access for Staff (Pet Images): `expo-image-picker` for taking/selecting photos, upload to Supabase Storage.
+    *   [ ] Push Notifications: `expo-notifications` for booking confirmations, reminders. Requires backend setup (Supabase Functions) to trigger notifications.
+    *   [ ] GPS/Location: `expo-location` if a clear use case emerges (e.g., staff check-ins, site finding).
+
+*   **Phase 4: Testing, Refinement, Deployment (Ongoing)**
+    *   Continuous UI/UX polish for mobile-first experience.
+    *   Performance monitoring and optimization.
+    *   Testing on physical iOS and Android devices.
+    *   EAS Build configuration and submission preparation for app stores.
+
+**V. Key Considerations (Recap):**
+- **UI/UX Adaptation:** Web UIs require re-imagining for mobile. Focus on mobile-first design patterns.
+- **Offline Support:** Not currently planned. If needed, would require AsyncStorage or a local DB.
+- **Security:** Maintain secure practices for Supabase client access and data handling.
+
+**VI. Deployment:**
+- Expo Application Services (EAS) Build is the recommended method for creating production binaries (`.ipa`, `.aab`).
+- EAS CLI will bundle the `apps/mobile` project, including resolved dependencies from shared packages, for cloud builds.
+
+This guide focuses on the mobile application development within the monorepo context. For backend details, database schema, or web application specifics, refer to `overallguide.md` or the codebase directly.
 
 
-Guide 2
 
-You're right to ask for clarity between React Native (often referring to the "bare" React Native CLI workflow) and Expo.
-
-**React Native vs. Expo: The TL;DR**
-
-*   **React Native (Bare Workflow):** Gives you full control. You manage the native iOS and Android projects directly. This is powerful if you need to write custom native code (Java/Kotlin for Android, Swift/Objective-C for iOS) or use React Native libraries with complex native dependencies. It has a steeper learning curve for setup and builds.
-*   **Expo (Managed Workflow):** A framework and platform built *around* React Native. It simplifies many aspects:
-    *   **Easier Setup:** Get started much faster.
-    *   **Managed Native Code:** Expo handles most of the native project configurations for you.
-    *   **Rich Set of APIs:** Expo provides easy-to-use JavaScript APIs for many common native features like camera, GPS, notifications, file system, sensors, etc., without needing to touch native code.
-    *   **Expo Go App:** Test your app instantly on your phone without building native binaries.
-    *   **Over-the-Air (OTA) Updates:** Push JavaScript updates directly to users without going through app store review.
-    *   **Simplified Builds:** Expo's build service (EAS Build) can build your app binaries for you in the cloud.
-    *   You *can* "eject" from Expo to a bare React Native workflow if you hit limitations, but the goal is usually to stay within the managed workflow if possible.
-
-**Recommendation for Your Project:**
-
-Given your requirements (native notifications, camera, GPS) and the goal to "make the apps as quickly as possible," **Expo is the recommended starting point.**
-
-*   It directly provides modules for the native features you need (`expo-notifications`, `expo-image-picker`, `expo-location`).
-*   The development experience will be smoother and faster, especially if your team is primarily experienced with web technologies like React.
-
-**Guide: Migrating/Reusing Your Next.js App Code for an Expo (React Native) Mobile App**
-
-This guide outlines how to leverage your existing Next.js codebase (`booking-and-accounts`) to build a mobile app using Expo, taking advantage of the established monorepo structure.
 
 **I. Philosophy: What to Reuse, What to Rebuild**
 
@@ -124,41 +118,6 @@ This guide outlines how to leverage your existing Next.js codebase (`booking-and
     *   **Platform-Specific Interactions:** Touch gestures, mobile-specific UX patterns.
     *   **Access to Native Features:** This will be new code using Expo APIs.
 
-**II. Project Setup & Initial Structure (for the Expo App within the Monorepo)**
-
-This section outlines how to create and structure your new Expo mobile application within the \`apps/\` directory of your existing monorepo.
-
-1.  **Navigate to the \`apps\` Directory:**
-    Open your terminal and navigate to the \`apps\` directory within your monorepo root:
-    \`\`\`bash
-    cd path/to/your/monorepo-root/apps
-    \`\`\`
-
-2.  **Create the Mobile App Directory (if it doesn't exist):
-    \`\`\`bash
-    mkdir mobile
-    cd mobile
-    \`\`\`
-    (You can name it \`mobile-app\`, \`expo-app\`, or simply \`mobile\` as shown in the monorepo structure.)
-
-3.  **Install Expo CLI (if not already installed globally):
-    \`\`\`bash
-    npm install -g expo-cli
-    # Or, preferably, use npx for the modern Expo CLI:
-    # npx create-expo-app . --template blank-typescript
-    \`\`\`
-
-4.  **Initialize the New Expo Project:**
-    Inside the \`apps/mobile\` (or your chosen name) directory, run:
-    \`\`\`bash
-    # For modern Expo CLI (recommended):
-    npx create-expo-app . --template blank-typescript
-    # For legacy expo-cli (if needed, ensure it's installed and compatible):
-    # expo init .
-    \`\`\`
-    *   The \`.\` tells Expo to initialize the project in the current directory.
-    *   Choose a template when prompted, preferably one with TypeScript if your monorepo uses it (e.g., "blank (TypeScript)").
-    *   Follow the prompts.
 
 5.  **Proposed Directory Structure for \`apps/mobile\`:**
     \`\`\`
@@ -181,36 +140,6 @@ This section outlines how to create and structure your new Expo mobile applicati
     └── package.json         # Expo app's own package.json
     \`\`\`
 
-6.  **Add Dependencies to Shared Monorepo Packages:**
-    In \`apps/mobile/package.json\`, add your shared monorepo packages as dependencies. The version should typically be \`"workspace:*"\` if using pnpm/yarn/npm workspaces to link them locally.
-    Example \`dependencies\` section in \`apps/mobile/package.json\`:
-    \`\`\`json
-    "dependencies": {
-      "expo": "~50.0.0", // Or your current Expo SDK version
-      "react": "18.2.0",
-      "react-native": "0.73.6",
-      "@booking-and-accounts-monorepo/shared-types": "workspace:*",
-      "@booking-and-accounts-monorepo/api-services": "workspace:*",
-      "@booking-and-accounts-monorepo/utils": "workspace:*",
-      "@supabase/supabase-js": "^2.x.x", // Install Supabase client
-      "expo-secure-store": "~12.8.1" // For secure token storage
-      // ... other necessary Expo/React Native libraries
-    },
-    \`\`\`
-
-7.  **Install Dependencies:**
-    Navigate to the **root** of your monorepo and run your package manager's install command (e.g., \`pnpm install\`, \`yarn install\`, or \`npm install\`). This will install dependencies for the new mobile app and link the workspace packages.
-
-8.  **Configure TypeScript Paths (if needed):**
-    Ensure the \`tsconfig.json\` within \`apps/mobile\` is set up correctly. If you use path aliases for your shared packages in the root \`tsconfig.base.json\`, you might need to ensure they resolve correctly or that the mobile app's \`tsconfig.json\` extends the base configuration appropriately.
-
-9.  **Start the Development Server:**
-    Navigate back into \`apps/mobile\` and start the Expo development server:
-    \`\`\`bash
-    cd apps/mobile # Or path/to/your/monorepo-root/apps/mobile
-    expo start # Or npx expo start
-    \`\`\`
-    You can then run your app on a simulator/emulator or on your physical device using the Expo Go app.
 
 **III. Migrating Core Logic & Services (Leveraging Monorepo Shared Packages)**
 
@@ -219,31 +148,7 @@ This section outlines how to create and structure your new Expo mobile applicati
 2.  **Supabase Integration:**
     *   Install the Supabase client: \`pnpm add @supabase/supabase-js\` (run from monorepo root, targeting the mobile app workspace if necessary, or add to \`apps/mobile/package.json\` and run \`pnpm install\` from root)
     *   Install a secure storage mechanism for tokens: \`npx expo install expo-secure-store\` (run from within \`apps/mobile\`)
-    *   Create \`apps/mobile/src/services/supabaseClient.ts\` (or similar):
-        ```typescript
-        import 'react-native-url-polyfill/auto'; // Handles URL polyfill for React Native
-        import * as SecureStore from 'expo-secure-store';
-        import { createClient } from '@supabase/supabase-js';
-        // Potentially import base Supabase URL and Anon Key from a shared config in @booking-and-accounts-monorepo/utils if not using env vars directly in mobile
-
-        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
-        const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-
-        const ExpoSecureStoreAdapter = {
-          getItem: (key: string) => SecureStore.getItemAsync(key),
-          setItem: (key: string, value: string) => SecureStore.setItemAsync(key, value),
-          removeItem: (key: string) => SecureStore.deleteItemAsync(key),
-        };
-
-        export const supabase = createClient(supabaseUrl!, supabaseAnonKey!, {
-          auth: {
-            storage: ExpoSecureStoreAdapter as any,
-            autoRefreshToken: true,
-            persistSession: true,
-            detectSessionInUrl: false,
-          },
-        });
-        ```
+    *   Create \`apps/mobile/src/services/supabaseClient.ts\` (or similar)
     *   **Environment Variables:** Ensure \`EXPO_PUBLIC_\` prefixed environment variables are set up for the mobile app.
 3.  **Utility Functions:**
     *   Import directly from \`@booking-and-accounts-monorepo/utils\` for shared utilities.
@@ -394,11 +299,20 @@ Our project has successfully implemented a monorepo structure to manage code sha
     monorepo-root/ (e.g., booking-and-accounts/)
     ├── apps/
     │   ├── web/               # Your Next.js app
-    │   └── mobile/            # Your Expo app
-    ├── packages/
-    │   ├── shared-types/      # Shared TypeScript types
-    │   ├── api-services/      # Shared API client functions
-    │   └── utils/             # Shared utilities, Supabase helpers (source for @booking-and-accounts-monorepo/utils)
+    │   │   ├── src/
+    │   │   └── ...
+    │   ├── mobile/               <-- NEW: Your Expo project will live here
+    │   │   ├── src/
+    │   │   └── ...
+    │   ├── shared-types/         <-- Shared TypeScript types
+    │   │   └── src/ (or similar, containing types.ts, types_db.ts)
+    │   │   └── package.json
+    │   ├── api-services/         <-- Shared API client functions
+    │   │   └── src/ (containing service files like bookingService.ts)
+    │   │   └── package.json
+    │   └── utils/                <-- Shared utilities (source for @booking-and-accounts-monorepo/utils)
+    │       └── src/ (containing authUtils.ts, supabase client setup)
+    │       └── package.json
     ├── .gitignore
     ├── package.json              <-- Root package.json for the monorepo (manages workspaces)
     ├── pnpm-workspace.yaml       <-- Defines the workspaces for PNPM (if using PNPM)
@@ -423,146 +337,8 @@ Our project has successfully implemented a monorepo structure to manage code sha
         *   **Complex State Management:** Migrating or adapting complex state logic might require more human oversight.
         *   **Iterative Process:** App development is iterative. You'll likely refine and change things as you go, which requires ongoing interaction and direction for the AI.
 
-**Conclusion:**
-
-This guide provides a roadmap. The key is to systematically break down your Next.js app, identify reusable logic, and then rebuild the presentation and native interaction layers using Expo and React Native components. An AI editor can be a powerful assistant in this process, speeding up repetitive tasks and providing boilerplate, but human oversight and expertise in mobile development will still be essential for a high-quality app. Start with small, manageable pieces and iterate. Your `overallguide.txt` remains invaluable for understanding the existing backend logic and data schema.
 
 
-
-Okay, let's break down the value of each of those preparatory steps for migrating your Next.js app to Expo/React Native, especially with the help of an AI editor:
-
-1.  **Removing all inline CSS from templates into component CSS files (button, nav, header etc.) to be converted to React Native:**
-    *   **Value:** Moderate.
-    *   **Explanation:** React Native uses a JavaScript-based styling system (`StyleSheet.create`), not CSS files directly. So, the CSS syntax itself won't be directly reused. However, the *structure and logic* of your styles are important.
-        *   **Pro:** If your styles are organized by component (even if in `<style jsx>` or CSS Modules in Next.js), it makes it much easier for you or an AI to understand the styling *intent* for each component. This makes translating that intent into React Native's `StyleSheet` easier.
-        *   **Con:** If your styles are heavily inline and scattered, it's harder to see the overall styling for a component.
-        *   **Recommendation:** If styles are already reasonably component-scoped (like in CSS Modules or well-organized `<style jsx>`), the benefit of moving them further might be marginal for *this specific* goal. If they are very messy and inline, some organization would help clarify intent.
-
-2.  **Reorganising/moving all the definitely re-usable code into one place:**
-    *   **Value:** Very High.
-    *   **Explanation:** This is probably the most impactful step.
-        *   **Pro:** Identifying and consolidating pure business logic (functions that don't interact with the DOM or Next.js-specific APIs), type definitions (`src/types.ts`), API call structures, and generic utility functions into a dedicated `shared` or `core` directory will make it extremely clear what can be copied or linked into the React Native project. This directly facilitates code reuse and is a prerequisite for an effective monorepo.
-        *   **Recommendation:** Absolutely do this. This will save a lot of time and reduce errors.
-
-3.  **Using Repomix or similar to package the whole app to be analysed:**
-    *   **Value:** Moderate to High (as a supplementary tool for the AI).
-    *   **Explanation:**
-        *   **Pro:** Tools that can package your codebase into a single context file can be very useful for AI assistants with large context windows. It allows the AI to "see" the entire project's structure and interdependencies at once, which can lead to more contextually aware suggestions.
-        *   **Con:** The raw output can be overwhelming and lacks the semantic understanding of *why* things are structured a certain way, or what their *purpose* is. It's not a replacement for good documentation or a clear migration plan.
-        *   **Recommendation:** This can be a useful *input* for the AI *after* you've done steps 2 and 4. The AI can cross-reference the packaged code with your documentation.
-
-4.  **Writing a document that states what every file does (I have the guide, but not sure if it contains info on every file):**
-    *   **Value:** Very High.
-    *   **Explanation:**
-        *   **Pro:** Your `overallguide.txt` is excellent for a high-level overview and key system interactions. However, a more granular document that briefly describes the purpose of each significant file or directory would be incredibly valuable. This helps in:
-            *   Identifying web-specific files that can be ignored.
-            *   Understanding the role of each piece of reusable logic.
-            *   Providing precise context to an AI, leading to more accurate and relevant assistance.
-        *   **Recommendation:** Strongly recommend doing this, focusing on key files and directories that contain business logic, UI components, API interactions, and utilities.
-
-5.  **Using a monorepo (not sure how):**
-    *   **Value:** High (for long-term maintainability and clean code sharing).
-    *   **Explanation:**
-        *   **Pro:** A monorepo (using tools like Nx, Turborepo, or Yarn/NPM/PNPM workspaces) is the ideal setup for managing shared code between your web and mobile applications. You'd have a `packages/core` (or `shared`) directory for the reusable code (identified in step 2), and your Next.js app (`packages/web`) and Expo app (`packages/mobile`) would both depend on this `core` package. This ensures consistency and makes updates to shared logic straightforward.
-        *   **Learning Curve:** If you're "not sure how," there's a learning curve. However, the benefits for a project like yours are substantial.
-        *   **Recommendation:**
-            *   **Option A (Ideal):** If you're willing to invest a bit of time upfront, setting up a monorepo *before* starting the mobile app is the cleanest approach. You can move the shared code (from step 2) into the shared package from the get-go. An AI assistant could even help you with the basic setup commands for a chosen monorepo tool if you specify which one.
-            *   **Option B (Pragmatic):** If setting up a monorepo seems too daunting right now, at least organize your code as if you *will* move to a monorepo (i.e., do step 2 thoroughly). You can transition to a monorepo structure later.
-
-**Summary of Recommendations:**
-
-*   **Essential First Steps:**
-    1.  **Reorganise/move all the definitely re-usable code into one place (2).**
-    2.  **Write a document that states what every key file/directory does (4).**
-*   **Highly Beneficial (can be done with AI help or iteratively):**
-    3.  Consider if your CSS structure needs better component-level organization for clarity (1).
-    4.  Use Repomix or similar to provide broad context to the AI (3), *after* steps 2 & 4.
-*   **Strategic Long-Term (consider starting now if feasible):**
-    5.  Plan for and ideally implement a monorepo structure (5). If you've placed your mobile app in \`apps/mobile\` and your shared code in \`packages/*\`, you're already well on your way with a standard monorepo setup.
-
-Doing steps 2 and 4 will provide the most immediate and significant value for making the migration smoother and for enabling an AI to assist you effectively. The other steps build upon this foundation.
-
-
-
-
-
-
-////
-Okay, let's get practical about structuring this for immediate development and thinking ahead to deployment.
-
-You have a few good options for structuring your repository if you want to start the native apps (using Expo) *now* within your existing `booking-and-accounts` repository. The monorepo approach is generally best, but I'll outline a simpler "polyrepo-in-a-monorepo-folder" style first, as it might be easier to start with, and then discuss the monorepo.
-
-**Option 1: Separate Folders within the Same Repository (Simpler Start)**
-
-This isn't a "true" monorepo with tooling but is a common way to start co-locating related projects.
-
-```
-booking-and-accounts/   <-- Your existing Git repository root
-├── .git/
-├── docs/
-│   └── overallguide.txt
-│   └── emailguide.txt
-│   └── file_descriptions.md  <-- (The new doc you might write)
-├── public/                 <-- Next.js public assets
-├── src/                    <-- Your existing Next.js app (web app)
-│   ├── app/
-│   ├── components/
-│   ├── utils/
-│   ├── types.ts
-│   └── ...etc
-├── mobile-app/             <-- NEW: Your Expo project will live here
-│   ├── .expo/
-│   ├── assets/
-│   ├── src/
-│   │   ├── components/
-│   │   ├── screens/
-│   │   ├── navigation/
-│   │   ├── services/
-│   │   ├── utils/          <-- Potentially copies or symlinks to shared utils
-│   │   └── types/          <-- Potentially copies or symlinks to shared types
-│   ├── App.tsx
-│   ├── package.json        <-- Expo app's own package.json
-│   └── ... (other Expo files)
-├── shared-code/            <-- NEW: For genuinely shared code (manual sync or scripts)
-│   ├── types/              <-- e.g., src/types.ts from Next.js MOVED here
-│   ├── utils/              <-- e.g., non-DOM specific utils from Next.js MOVED here
-│   └── services/           <-- e.g., core Supabase client setup, API function signatures
-├── .gitignore              <-- Root gitignore (add mobile-app/node_modules, etc.)
-├── package.json            <-- Next.js app's package.json
-└── README.md
-```
-
-**How this works:**
-
-1.  **Create Folders:**
-    *   In the root of your `booking-and-accounts` repository, create two new folders:
-        *   `mobile-app`
-        *   `shared-code` (you could name this `core`, `common`, etc.)
-2.  **Initialize Expo App:**
-    *   Navigate into the `mobile-app` directory in your terminal: `cd mobile-app`
-    *   Initialize your Expo project here: `expo init .` (the `.` means initialize in the current directory).
-3.  **Move Shared Code:**
-    *   **Identify and move:**
-        *   Your primary `types.ts` (or `src/types/index.ts` etc.) from `src/` to `shared-code/types/`.
-        *   Any truly generic utility functions (that don't depend on `window`, DOM, or Next.js APIs) from `src/utils/` to `shared-code/utils/`.
-        *   Potentially the core Supabase client setup logic (though it needs slight adaptation for Expo's SecureStore, as discussed previously) could go into `shared-code/services/`.
-    *   **Update Paths in Web App:** Modify your Next.js app (`src/`) to import these shared files from their new location (e.g., `import { MyType } from '../../shared-code/types';`). You might need to adjust your `tsconfig.json` paths in the Next.js app if you use path aliases.
-    *   **Use in Mobile App:** Your Expo app (`mobile-app/src/`) will also import from `../../shared-code/`.
-4.  **`.gitignore`:**
-    *   Ensure your root `.gitignore` is updated to ignore `mobile-app/node_modules/`, `mobile-app/.expo/`, and other build artifacts specific to the mobile app.
-5.  **Push to GitHub:**
-    *   Yes, you commit all of this to your existing GitHub repository. It now contains both your web app and your mobile app code.
-
-**Pros of this approach:**
-
-*   Relatively simple to set up initially.
-*   Everything is in one repository, so history is shared.
-
-**Cons of this approach (and how a monorepo helps):**
-
-*   **Manual Syncing of Shared Code:** You're manually ensuring both apps use the code from `shared-code`. There's no build-system enforcement.
-*   **Dependency Management:** Each app (`web` and `mobile-app`) has its own `node_modules` and `package.json`. If they depend on different versions of the *same* library that's also used in `shared-code`, it can get tricky.
-*   **IDE Confusion:** Some IDEs might get confused with multiple `package.json` files or TypeScript configurations unless set up carefully (e.g., using multi-root workspaces in VS Code).
 
 **Option 2: Using a Monorepo Tool (e.g., with PNPM Workspaces - a simpler monorepo tool)**
 
@@ -630,10 +406,3 @@ This is a key question and where build processes come in. Hosting platforms for 
         *   It will bundle the necessary JavaScript and assets, including any code imported from your shared packages (e.g., \`@booking-and-accounts-monorepo/shared-types\`) because they are resolved as dependencies during the build process.
         *   It then builds the native binary in the cloud.
     5.  **Submit:** You download the built binary from EAS and upload it to the app stores.
-
-**Recommendation:**
-
-*   **Start with Option 1 (Separate Folders)** if you want the absolute quickest way to get the Expo project initialized *today* and are comfortable with manual management of the `shared-code` for a bit.
-*   **Aim for Option 2 (Monorepo with PNPM/Yarn/NPM Workspaces)** as soon as you feel comfortable. It's cleaner for managing dependencies and shared code, and tools like Turborepo or Nx can later be added on top for more advanced build caching and task running if your project grows significantly.
-
-You can definitely start with Option 1 and then migrate to Option 2 without too much pain, especially if you keep the `shared-code` well-defined.

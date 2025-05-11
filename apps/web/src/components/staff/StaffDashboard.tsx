@@ -9,6 +9,7 @@ import Modal from '@/components/shared/Modal';
 import { fetchUserProfile, updateUserProfile } from '@booking-and-accounts-monorepo/api-services';
 import { fetchServices } from '@booking-and-accounts-monorepo/api-services';
 import { fetchMyAssignedClients } from '@booking-and-accounts-monorepo/api-services';
+import { createClient } from '@booking-and-accounts-monorepo/utils';
 
 interface SlotResource {
     bookings: Booking[];
@@ -16,6 +17,7 @@ interface SlotResource {
 }
 
 export default function StaffDashboard() {
+  const supabase = createClient();
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [services, setServices] = useState<Service[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(true);
@@ -53,7 +55,7 @@ export default function StaffDashboard() {
       const bookingsData: Booking[] = await bookingsRes.json();
       setBookings(bookingsData);
 
-      const servicesData = await fetchServices();
+      const servicesData = await fetchServices(supabase);
       setServices(servicesData);
 
     } catch (e) {
@@ -65,7 +67,7 @@ export default function StaffDashboard() {
     } finally {
       setIsLoadingData(false);
     }
-  }, [profile?.id]);
+  }, [profile?.id, supabase]);
 
   const fetchMyClients = useCallback(async () => {
     setIsLoadingMyClients(true);

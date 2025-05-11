@@ -7,7 +7,7 @@ import CalendarView, { CalendarEvent } from '@/components/shared/CalendarView'; 
 import Modal from '@/components/shared/Modal'; // Import Modal component
 import { formatISO, isSameDay, startOfWeek, endOfWeek, getDay as dateFnsGetDay, addDays } from 'date-fns'; // Import date-fns helpers and format, and startOfWeek, endOfWeek, getDay, addDays
 import { Service, Booking, Pet as SharedPet, CreateBookingPayload, AvailableSlot } from '@booking-and-accounts-monorepo/shared-types'; // Use SharedPet alias & added AvailableSlot
-import { fetchMyBookings, createClientBooking, fetchAvailableSlots } from '@booking-and-accounts-monorepo/api-services'; // Added service imports & fetchAvailableSlots
+import { fetchMyBookingsAPI, createClientBookingAPI, fetchAvailableSlots } from '@booking-and-accounts-monorepo/api-services'; // Changed fetchMyBookings to fetchMyBookingsAPI
 import { fetchUserPets } from '@booking-and-accounts-monorepo/api-services'; // Added pet service import
 
 // --- Time/Date Formatting Helpers (Simplified) ---
@@ -234,7 +234,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 	const loadMyBookings = useCallback(async () => {
 		setLoadingMyBookings(true);
 		try {
-			const data = await fetchMyBookings(); // Use service function
+			const data = await fetchMyBookingsAPI(''); // Use service function
 			setMyBookings(data);
 		} catch (e) {
 			console.error("Failed to fetch existing bookings:", e);
@@ -494,7 +494,7 @@ export default function ClientBooking({ services }: ClientBookingProps) {
 		// setSuccessMessage(null); // Removed as per previous refactoring
 
 		try {
-			await createClientBooking(bookingPayloads); // Removed unused 'result' assignment
+			await createClientBookingAPI('', bookingPayloads); // Pass empty string for apiBaseUrl as web app calls its own backend
 			// setSuccessMessage(result.message); // Removed
 			setBookingSuccessMessage('Booking successful! Your booking has been confirmed.'); // Set success message
 			setSelectedSlots(new Set()); // Clear selection on success

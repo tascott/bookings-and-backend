@@ -35,8 +35,7 @@ import {
 	// fetchServiceAvailabilities as fetchServiceAvailability, // Removing unused alias
 	// deleteServiceAvailability as deleteServiceAvailabilityRule // Removing unused alias
 } from '@booking-and-accounts-monorepo/api-services';
-// import { fetchBookings as fetchBookingsApi, updateBookingStatus } from '@booking-and-accounts-monorepo/api-services'; // Corrected path, but fetchBookingsApi is unused
-import { updateBookingStatus } from '@booking-and-accounts-monorepo/api-services';
+import { fetchAdminDashboardData, updateUserRole, updateBookingStatusAPI } from '@booking-and-accounts-monorepo/api-services'; // Corrected to updateBookingStatusAPI
 import {
 	fetchAllUsers as fetchAllUsersApi,
 	assignUserRole as assignUserRoleApi,
@@ -353,21 +352,20 @@ export default function AdminDashboard(/* Removed props */) {
 
 	const handleToggleBookingPaidStatus = useCallback(async (bookingId: number, currentStatus: boolean) => {
 		setError(null);
-		setSuccessMessage(null); // Clear messages
+		setSuccessMessage(null);
 		const newStatus = !currentStatus;
 		try {
-			await updateBookingStatus(bookingId, { is_paid: newStatus });
-			// Assume the API call was successful and update the local state with the intended newStatus
+			await updateBookingStatusAPI('', bookingId, { is_paid: newStatus });
 			setBookings((prevBookings) =>
 				prevBookings.map((b) =>
 					b.id === bookingId ? { ...b, is_paid: newStatus } : b
 				)
 			);
+			setSuccessMessage('Booking status updated.');
 		} catch (e) {
 			setError(e instanceof Error ? e.message : 'Failed to update booking status');
-			setSuccessMessage(null); // Clear success message on error
 		}
-	}, []);
+	}, [setBookings, setError, setSuccessMessage]);
 
 	const handleAddService = useCallback(async (event: React.FormEvent<HTMLFormElement>) => {
 		event.preventDefault();

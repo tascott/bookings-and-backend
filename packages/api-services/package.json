@@ -8,7 +8,8 @@
     "lint": "eslint . --ext .ts,.tsx"
   },
   "dependencies": {
-    "@booking-and-accounts-monorepo/shared-types": "workspace:*"
+    "@booking-and-accounts-monorepo/shared-types": "workspace:*",
+    "@supabase/supabase-js": "^2.49.4"
   },
   "devDependencies": {
     "eslint": "^9",

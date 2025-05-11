@@ -1,115 +1,84 @@
-import { Service, ServiceAvailability, AddServicePayload, UpdateServicePayload, AddServiceAvailabilityPayload, UpdateServiceAvailabilityPayload } from '../types/types';
+import { SupabaseClient } from '@supabase/supabase-js';
+import { Service, ServiceAvailability, AddServicePayload, UpdateServicePayload, AddServiceAvailabilityPayload, UpdateServiceAvailabilityPayload } from '@booking-and-accounts-monorepo/shared-types';
 
 interface FetchServicesOptions {
   active?: boolean;
 }
 
-export async function fetchServices(options?: FetchServicesOptions): Promise<Service[]> {
-  let url = '/api/services';
-  const queryParams = new URLSearchParams();
+export async function fetchServices(supabase: SupabaseClient, options?: FetchServicesOptions): Promise<Service[]> {
+  let query = supabase.from('services').select('*');
 
   if (options?.active !== undefined) {
-    queryParams.append('active', String(options.active));
+    query = query.eq('active', options.active);
   }
 
-  if (queryParams.toString()) {
-    url += `?${queryParams.toString()}`;
+  const { data, error } = await query;
+
+  if (error) {
+    console.error('Error fetching services from Supabase:', error);
+    throw new Error(`Failed to fetch services: ${error.message}`);
   }
 
-  const response = await fetch(url);
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    throw new Error(`Failed to fetch services: ${response.status} ${errorBody}`);
-  }
-
-  return response.json();
+  return data || [];
 }
 
 /**
  * Fetches all service availability rules.
  */
-export async function fetchServiceAvailabilities(): Promise<ServiceAvailability[]> {
-    const response = await fetch('/api/service-availability');
-    if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Failed to fetch service availabilities: ${response.status} ${errorBody}`);
+export async function fetchServiceAvailabilities(supabase: SupabaseClient): Promise<ServiceAvailability[]> {
+    const { data, error } = await supabase.from('service_availability').select('*');
+    if (error) {
+        console.error('Error fetching service availabilities from Supabase:', error);
+        throw new Error(`Failed to fetch service availabilities: ${error.message}`);
     }
-    return response.json();
+    return data || [];
 }
 
 // Add functions for POST, PUT, DELETE /api/services later as needed
-export async function addService(payload: AddServicePayload): Promise<Service> {
-    const response = await fetch('/api/services', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to add service' }));
-        throw new Error(errorBody.error || `Failed to add service (HTTP ${response.status})`);
+export async function addService(supabase: SupabaseClient, payload: AddServicePayload): Promise<Service> {
+    const { data, error } = await supabase.from('services').insert(payload).select().single();
+    if (error) {
+        throw new Error(error.message || `Failed to add service (Supabase error)`);
     }
-    return response.json();
+    return data;
 }
 
-export async function updateService(serviceId: number, payload: UpdateServicePayload): Promise<Service> {
-    const response = await fetch(`/api/services/${serviceId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to update service' }));
-        throw new Error(errorBody.error || `Failed to update service (HTTP ${response.status})`);
+export async function updateService(supabase: SupabaseClient, serviceId: number, payload: UpdateServicePayload): Promise<Service> {
+    const { data, error } = await supabase.from('services').update(payload).eq('id', serviceId).select().single();
+    if (error) {
+        throw new Error(error.message || `Failed to update service (Supabase error)`);
     }
-    return response.json();
+    return data;
 }
 
-export async function deleteService(serviceId: number): Promise<void> {
-    const response = await fetch(`/api/services/${serviceId}`, {
-        method: 'DELETE',
-    });
-    if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to delete service' }));
-        throw new Error(errorBody.error || `Failed to delete service (HTTP ${response.status})`);
+export async function deleteService(supabase: SupabaseClient, serviceId: number): Promise<void> {
+    const { error } = await supabase.from('services').delete().eq('id', serviceId);
+    if (error) {
+        throw new Error(error.message || `Failed to delete service (Supabase error)`);
     }
-    // DELETE usually returns 204 No Content
 }
 
 // --- Service Availability ---
 
-export async function addServiceAvailability(payload: AddServiceAvailabilityPayload): Promise<ServiceAvailability> {
-    const response = await fetch('/api/service-availability', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to add service availability' }));
-        throw new Error(errorBody.error || `Failed to add service availability (HTTP ${response.status})`);
+export async function addServiceAvailability(supabase: SupabaseClient, payload: AddServiceAvailabilityPayload): Promise<ServiceAvailability> {
+    const { data, error } = await supabase.from('service_availability').insert(payload).select().single();
+    if (error) {
+        throw new Error(error.message || `Failed to add service availability (Supabase error)`);
     }
-    return response.json();
+    return data;
 }
 
-export async function updateServiceAvailability(ruleId: number, payload: UpdateServiceAvailabilityPayload): Promise<ServiceAvailability> {
-    const response = await fetch(`/api/service-availability/${ruleId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to update service availability' }));
-        throw new Error(errorBody.error || `Failed to update service availability (HTTP ${response.status})`);
+export async function updateServiceAvailability(supabase: SupabaseClient, ruleId: number, payload: UpdateServiceAvailabilityPayload): Promise<ServiceAvailability> {
+    const { data, error } = await supabase.from('service_availability').update(payload).eq('id', ruleId).select().single();
+     if (error) {
+        throw new Error(error.message || `Failed to update service availability (Supabase error)`);
     }
-    return response.json();
+    return data;
 }
 
-export async function deleteServiceAvailability(ruleId: number): Promise<void> {
-    const response = await fetch(`/api/service-availability/${ruleId}`, {
-        method: 'DELETE',
-    });
-    if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({ error: 'Failed to delete service availability' }));
-        throw new Error(errorBody.error || `Failed to delete service availability (HTTP ${response.status})`);
+export async function deleteServiceAvailability(supabase: SupabaseClient, ruleId: number): Promise<void> {
+    const { error } = await supabase.from('service_availability').delete().eq('id', ruleId);
+    if (error) {
+        throw new Error(error.message || `Failed to delete service availability (Supabase error)`);
     }
 }

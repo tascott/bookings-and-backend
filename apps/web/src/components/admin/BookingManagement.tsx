@@ -17,9 +17,9 @@ import {
 	searchClientsForAdmin,
 	fetchPetsByClientId,
 	fetchAvailableSlots,
-	createAdminBooking,
-	updateBookingDetails,
-	deleteBooking
+	createAdminBookingAPI,
+	updateBookingDetailsAPI,
+	deleteBookingAPI
 } from '@booking-and-accounts-monorepo/api-services';
 
 // Define CalculatedSlot type locally (as it's not in global types)
@@ -276,7 +276,7 @@ export default function BookingManagement({
         }
 
         try {
-            await updateBookingDetails(editingBooking.id, payload); // Use the service
+            await updateBookingDetailsAPI('', editingBooking.id, payload); // Use the service
 
             setEditingBooking(null);
             await refetchBookings();
@@ -300,7 +300,7 @@ export default function BookingManagement({
         setLocalError(null);
 
         try {
-            await deleteBooking(bookingId); // Use the service
+            await deleteBookingAPI('', bookingId); // Use the service
 
             await refetchBookings();
 
@@ -444,7 +444,7 @@ export default function BookingManagement({
             };
 
             try {
-                await createAdminBooking(payload);
+                await createAdminBookingAPI('', payload);
                 createdCount++;
             } catch (e: unknown) {
                 console.error(`Error creating booking for slot ${slot.start_time}:`, e);

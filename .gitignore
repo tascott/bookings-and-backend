@@ -46,3 +46,6 @@ next-env.d.ts
 
 # cursor
 .cursor/mcp.json
+
+# patches
+.patches/tmp-rn-calendars/

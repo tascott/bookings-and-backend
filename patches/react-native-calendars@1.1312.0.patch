@@ -1,0 +1,27 @@
+diff --git a/src/agenda/reservation-list/index.js b/src/agenda/reservation-list/index.js
+index 3917729cfa859a73082677397ee023fc6cec43b5..961af2c5cc8f72a854734127110646eae350a5cc 100644
+--- a/src/agenda/reservation-list/index.js
++++ b/src/agenda/reservation-list/index.js
+@@ -51,12 +51,16 @@ class ReservationList extends Component {
+         this.updateDataSource(this.getReservations(this.props).reservations);
+     }
+     componentDidUpdate(prevProps) {
+-        if (this.props.topDay && prevProps.topDay && prevProps !== this.props) {
+-            if (!sameDate(prevProps.topDay, this.props.topDay)) {
+-                this.setState({ reservations: [] }, () => this.updateReservations(this.props));
+-            }
+-            else {
+-                this.updateReservations(this.props);
++        if (this.props.topDay && prevProps.topDay) {
++            if (this.props.showOnlySelectedDayItems !== prevProps.showOnlySelectedDayItems ||
++                this.props.items !== prevProps.items ||
++                !sameDate(this.props.selectedDay, prevProps.selectedDay)) {
++
++                if (!sameDate(prevProps.topDay, this.props.topDay)) {
++                    this.setState({ reservations: [] }, () => this.updateReservations(this.props));
++                } else {
++                    this.updateReservations(this.props);
++                }
+             }
+         }
+     }

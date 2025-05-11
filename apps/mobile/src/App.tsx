@@ -93,7 +93,8 @@ export default function App() {
       async (_event: AuthChangeEvent, currentSession: Session | null) => {
         setSession(currentSession);
         await determineUserRole(currentSession?.user || null);
-        if (loading) setLoading(false);
+        if (loading && currentSession) setLoading(false);
+        else if (loading && !currentSession) setLoading(false);
       }
     );
 
@@ -113,9 +114,10 @@ export default function App() {
           userRole === 'staff' ? (
             <Stack.Screen
               name="StaffDashboard"
-              component={StaffDashboardScreen}
               options={{ title: 'Staff Dashboard' }}
-            />
+            >
+              {(props) => <StaffDashboardScreen {...props} userId={session.user.id} />}
+            </Stack.Screen>
           ) : userRole === 'client' ? (
             <Stack.Screen
               name="ClientDashboard"
