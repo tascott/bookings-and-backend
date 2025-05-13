@@ -323,22 +323,6 @@ Our project has successfully implemented a monorepo structure to manage code sha
     *   This ensures consistency, reduces code duplication, and makes updates to shared logic straightforward through package manager linking (e.g., `pnpm install` at the root).
     *   Changes in shared packages are immediately available to both applications after a rebuild (if necessary) or by restarting development servers.
 
-**VII. AI Editor Context**
-
-*   **Will this guide be sufficient context for an AI editor?**
-    *   **Partially, yes.** This guide provides a strong architectural overview, identifies what needs to be done, and suggests specific tools and code snippets. An AI editor could use this to:
-        *   Help refactor utility functions.
-        *   Suggest React Native component equivalents for HTML elements.
-        *   Scaffold basic screens and components based on the described structure.
-        *   Assist in writing API service calls.
-    *   **Limitations:**
-        *   **Nuance of UI/UX:** Mobile UI/UX requires careful consideration beyond simple component mapping. An AI might not capture the best mobile-first design without human guidance.
-        *   **Debugging Native Issues:** If you encounter platform-specific bugs or tricky native module integrations, an AI's ability to debug these might be limited.
-        *   **Complex State Management:** Migrating or adapting complex state logic might require more human oversight.
-        *   **Iterative Process:** App development is iterative. You'll likely refine and change things as you go, which requires ongoing interaction and direction for the AI.
-
-
-
 
 **Option 2: Using a Monorepo Tool (e.g., with PNPM Workspaces - a simpler monorepo tool)**
 

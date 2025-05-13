@@ -1,8 +1,11 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import MyScheduleScreen from '../screens/staff/MyScheduleScreen';
 import MyClientsScreen from '../screens/staff/MyClientsScreen';
 import BookingManagementScreen from '../screens/staff/BookingManagementScreen';
+import SessionBookingsScreen from '../screens/staff/SessionBookingsScreen';
+import ClientDetailsScreen from '../screens/staff/ClientDetailsScreen';
 import MyProfileScreen from '../screens/staff/MyProfileScreen';
 
 export type StaffTabParamList = {
@@ -13,6 +16,37 @@ export type StaffTabParamList = {
 };
 
 const Tab = createBottomTabNavigator<StaffTabParamList>();
+const BookingStack = createNativeStackNavigator();
+
+// Define the Stack param list including ClientDetails
+type BookingStackParamList = {
+  BookingManagement: { userId: string };
+  SessionBookings: { userId: string; dateKey: string; session: string };
+  ClientDetails: { clientId: string }; // Add ClientDetails params
+};
+
+function BookingStackNavigator({ userId }: { userId: string }) {
+  return (
+    <BookingStack.Navigator>
+      <BookingStack.Screen
+        name="BookingManagement"
+        component={BookingManagementScreen}
+        initialParams={{ userId }}
+        options={{ title: 'Bookings' }}
+      />
+      <BookingStack.Screen
+        name="SessionBookings"
+        component={SessionBookingsScreen}
+        options={{ title: 'Session Bookings' }}
+      />
+      <BookingStack.Screen // Add ClientDetailsScreen to the stack
+        name="ClientDetails"
+        component={ClientDetailsScreen}
+        options={{ title: 'Client Details' }}
+      />
+    </BookingStack.Navigator>
+  );
+}
 
 interface StaffTabNavigatorProps {
   userId: string;
@@ -35,8 +69,8 @@ const StaffTabNavigator: React.FC<StaffTabNavigatorProps> = ({ userId }) => {
       />
       <Tab.Screen
         name="BookingManagement"
-        component={BookingManagementScreen}
-        initialParams={{ userId: userId }}
+        // @ts-ignore
+        children={() => <BookingStackNavigator userId={userId} />}
         options={{ title: 'Bookings' }}
       />
       <Tab.Screen

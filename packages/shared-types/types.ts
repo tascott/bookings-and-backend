@@ -99,6 +99,8 @@ export type Pet = {
 	name: string;
 	breed?: string | null;
 	size?: string | null;
+	age?: number | null;
+	notes?: string | null;
 	is_active: boolean;
 	is_confirmed?: boolean; // Added confirmation status
 };
