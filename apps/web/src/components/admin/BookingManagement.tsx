@@ -401,11 +401,15 @@ export default function BookingManagement({
         setIsLoadingSlots(true);
         setAddBookingError(null);
         try {
-            const data = await fetchAvailableSlots({
+            const params: Parameters<typeof fetchAvailableSlots>[0] = {
                 serviceId: selectedServiceId,
                 startDate: selectedStartDate,
-                endDate: selectedEndDate
-            });
+                endDate: selectedEndDate,
+            };
+            if (selectedClient) {
+                params.targetClientId = selectedClient.id;
+            }
+            const data = await fetchAvailableSlots(params);
             setAvailableSlots(data);
         } catch (e: unknown) {
             console.error("Fetch available slots error:", e);
@@ -414,7 +418,7 @@ export default function BookingManagement({
             setAvailableSlots([]);
         }
         setIsLoadingSlots(false);
-    }, [selectedServiceId, selectedStartDate, selectedEndDate]);
+    }, [selectedServiceId, selectedStartDate, selectedEndDate, selectedClient]);
 
     useEffect(() => {
         fetchAvailableSlotsForAdminDateRange();

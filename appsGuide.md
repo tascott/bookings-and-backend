@@ -17,6 +17,13 @@ This document outlines key development steps and decisions made during the app b
 5.  **Event Dots:** Re-introduced event indicator dots for all dates with bookings by using the `markedDates` prop, separating the data source for dots from the data source for the filtered list (`items`).
 6.  **UI Refinement (Knob Removal):** Hid the pull-down calendar knob using `hideKnob={true}` and `renderKnob={() => null}` to simplify the UI and bypass a bug with the week strip becoming unresponsive after interacting with the full calendar.
 7.  **UI Refinement (Compactness):** Adjusted theme font sizes (`textDayHeaderFontSize`, `textDayFontSize`) and reduced padding/margins (`styles.emptyDate`, `styles.item`) to make the calendar strip and list area more compact.
+8.  **Booking Display - Group by Session:**
+    *   Implemented session-based grouping for bookings displayed in the `Agenda` component.
+    *   This involved updating data processing in `fetchAndProcessBookings` (using `MyAgendaItemGroupEntry` structure) and modifying `renderItem` logic.
+    *   File affected: `apps/mobile/src/screens/staff/MyScheduleScreen.tsx`.
+9.  **Navigation - Direct to Client Details & Stack Implementation:**
+    *   Refactored navigation from the "My Schedule" tab to go directly to `ClientDetailsScreen` from a schedule item.
+    *   Introduced `ScheduleStackNavigator` in `apps/mobile/src/navigation/StaffTabNavigator.tsx` to manage the "MySchedule" tab's navigation stack (containing `MyScheduleHome`, `ClientDetailsScreen`, `SessionBookingsScreen`), improving navigation logic and resolving back-button issues.
 
 ### Booking Management Screen (`BookingManagementScreen.tsx`)
 
@@ -44,3 +51,9 @@ This document outlines key development steps and decisions made during the app b
     *   Fetches associated pets from the `pets` table.
     *   Displays full client contact information and a list of their pets with details (name, breed, age, notes).
 8.  **Type Update (`Pet`):** Added optional `age` (number) and `notes` (string) fields to the `Pet` type definition in `packages/shared-types/types.ts` to support displaying more pet information.
+
+### Navigation Enhancements (`StaffTabNavigator.tsx`)
+
+1.  **Header Display Fix for Nested Stacks:**
+    *   Resolved an issue where screens within tabs that used nested StackNavigators (i.e., "MySchedule" and "BookingManagement" tabs) displayed duplicate header titles.
+    *   The fix involved setting `headerShown: false` in the `options` for the respective `Tab.Screen` components in `StaffTabNavigator.tsx`. This allows the header of the nested StackNavigator to be the single source of truth for the screen's title, while the `title` option in the `Tab.Screen` continues to provide the label for the bottom tab bar.

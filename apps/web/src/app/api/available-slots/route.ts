@@ -13,6 +13,7 @@ export async function GET(request: Request) {
 	const serviceIdParam = searchParams.get('service_id');
 	const startDateParam = searchParams.get('start_date'); // Expecting YYYY-MM-DD
 	const endDateParam = searchParams.get('end_date'); // Expecting YYYY-MM-DD
+	const targetClientIdParam = searchParams.get('target_client_id'); // Read the new param
 
 	if (!serviceIdParam || !startDateParam || !endDateParam) {
 		return NextResponse.json({ error: 'Missing required query parameters: service_id, start_date, end_date' }, { status: 400 });
@@ -70,27 +71,50 @@ export async function GET(request: Request) {
 	// --- END Get user role ---
 
 	let clientDefaultStaffId: number | null = null;
+	const effectiveUserIdForClientLookup: string | null = user.id; // Default to logged-in user
 	try {
-		const { data: clientData, error: clientError } = await supabaseAdmin
-			.from('clients')
-			.select('default_staff_id')
-			.eq('user_id', user.id)
-			.maybeSingle(); // Use maybeSingle in case the user isn't a client yet
+		// If target_client_id is provided (admin context), we need to find that client's user_id first
+		if (targetClientIdParam) {
+			const targetClientId = parseInt(targetClientIdParam, 10);
+			if (isNaN(targetClientId)) {
+				return NextResponse.json({ error: 'Invalid target_client_id format.' }, { status: 400 });
+			}
+			const { data: targetClientUser, error: targetClientUserError } = await supabaseAdmin
+				.from('clients')
+				.select('user_id, default_staff_id') // Also get default_staff_id directly here
+				.eq('id', targetClientId)
+				.single();
 
-		if (clientError) throw clientError;
-		if (!clientData) {
-			// Handle case where authenticated user is not found in clients table (e.g., admin/staff)
-			// For now, we'll proceed with null staff ID, RPC should handle this appropriately (e.g., return 0 staff capacity)
-			console.warn(`User ${user.id} not found in clients table when fetching available slots.`);
+			if (targetClientUserError) {
+				console.error(`Error fetching user_id for target_client_id ${targetClientId}:`, targetClientUserError);
+				return NextResponse.json({ error: `Failed to find client with ID ${targetClientId}` }, { status: 404 });
+			}
+			if (!targetClientUser || !targetClientUser.user_id) {
+				return NextResponse.json({ error: `Client with ID ${targetClientId} has no associated user_id.` }, { status: 404 });
+			}
+			// effectiveUserIdForClientLookup = targetClientUser.user_id; // Not needed if we get default_staff_id directly
+			clientDefaultStaffId = targetClientUser.default_staff_id; // Use this client's default staff ID
+			console.log(`Admin context: Using default_staff_id (${clientDefaultStaffId}) for target client ID ${targetClientId}`);
 		} else {
-			clientDefaultStaffId = clientData.default_staff_id; // Can be null if not assigned
-			if (!clientDefaultStaffId) {
-				console.log(`Client associated with user ${user.id} has no default_staff_id assigned.`);
-				// Proceed with null - RPC will need to handle this for staff-based capacity rules
+			// Original logic: client fetching for themselves
+			const { data: clientData, error: clientError } = await supabaseAdmin
+				.from('clients')
+				.select('default_staff_id')
+				.eq('user_id', effectiveUserIdForClientLookup) // This will be logged-in user's ID
+				.maybeSingle();
+
+			if (clientError) throw clientError;
+			if (!clientData) {
+				console.warn(`User ${effectiveUserIdForClientLookup} not found in clients table when fetching available slots.`);
+			} else {
+				clientDefaultStaffId = clientData.default_staff_id;
+				if (!clientDefaultStaffId) {
+					console.log(`Client associated with user ${effectiveUserIdForClientLookup} has no default_staff_id assigned.`);
+				}
 			}
 		}
 	} catch (e) {
-		console.error('Error fetching client default staff ID:', e);
+		console.error('Error fetching client default staff ID logic:', e);
 		const message = e instanceof Error ? e.message : 'Failed to retrieve client information';
 		return NextResponse.json({ error: message }, { status: 500 });
 	}

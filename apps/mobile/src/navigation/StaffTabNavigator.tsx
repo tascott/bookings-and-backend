@@ -15,8 +15,15 @@ export type BookingStackParamList = {
   ClientDetails: { clientId: string };
 };
 
+// Define param list for the new Schedule Stack
+export type ScheduleStackParamList = {
+  MyScheduleHome: { userId: string }; // Renaming for clarity within its own stack
+  SessionBookings: { userId: string; dateKey: string; session: string };
+  ClientDetails: { clientId: string }; // Add ClientDetails here
+};
+
 export type StaffTabParamList = {
-  MySchedule: { userId: string };
+  MySchedule: NavigatorScreenParams<ScheduleStackParamList> & { userId: string };
   MyClients: { userId: string };
   BookingManagement: NavigatorScreenParams<BookingStackParamList> & { userId: string };
   MyProfile: { userId: string };
@@ -24,6 +31,32 @@ export type StaffTabParamList = {
 
 const Tab = createBottomTabNavigator<StaffTabParamList>();
 const BookingStack = createNativeStackNavigator<BookingStackParamList>();
+const ScheduleStack = createNativeStackNavigator<ScheduleStackParamList>(); // Create new stack navigator
+
+// New Stack Navigator for the Schedule Tab
+function ScheduleStackNavigator({ userId }: { userId: string }) {
+  return (
+    <ScheduleStack.Navigator initialRouteName="MyScheduleHome">
+      <ScheduleStack.Screen
+        name="MyScheduleHome"
+        component={MyScheduleScreen}
+        initialParams={{ userId }}
+        options={{ title: 'Schedule' }} // Or use headerTitle from MyScheduleScreen if preferred
+      />
+      <ScheduleStack.Screen
+        name="SessionBookings"
+        component={SessionBookingsScreen} // Re-using the same screen component
+        options={{ title: 'Session Details' }} // Title for this screen when in this stack
+      />
+      {/* Add ClientDetailsScreen to the ScheduleStack */}
+      <ScheduleStack.Screen
+        name="ClientDetails"
+        component={ClientDetailsScreen}
+        options={{ title: 'Client Details' }}
+      />
+    </ScheduleStack.Navigator>
+  );
+}
 
 function BookingStackNavigator({ userId }: { userId: string }) {
   return (
@@ -57,9 +90,11 @@ const StaffTabNavigator: React.FC<StaffTabNavigatorProps> = ({ userId }) => {
     <Tab.Navigator>
       <Tab.Screen
         name="MySchedule"
-        component={MyScheduleScreen}
-        initialParams={{ userId: userId }}
-        options={{ title: 'Schedule' }}
+        children={() => <ScheduleStackNavigator userId={userId} />} // Use the new stack navigator
+        options={{
+          title: 'Schedule', // This sets the tab bar label
+          headerShown: false // This will hide the Tab navigator's header for this tab
+        }}
       />
       <Tab.Screen
         name="MyClients"
@@ -70,7 +105,10 @@ const StaffTabNavigator: React.FC<StaffTabNavigatorProps> = ({ userId }) => {
       <Tab.Screen
         name="BookingManagement"
         children={() => <BookingStackNavigator userId={userId} />}
-        options={{ title: 'Bookings' }}
+        options={{
+          title: 'Bookings', // This sets the tab bar label
+          headerShown: false // This will hide the Tab navigator's header for this tab
+        }}
       />
       <Tab.Screen
         name="MyProfile"

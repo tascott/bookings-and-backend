@@ -17,19 +17,24 @@ interface FetchAvailableSlotsParams {
     serviceId: string;
     startDate: string; // ISO date string YYYY-MM-DD
     endDate: string;   // ISO date string YYYY-MM-DD
+    targetClientId?: number; // Added for admin context
 }
 
 /**
  * Fetches available slots for a given service and date range.
  */
 export async function fetchAvailableSlots(
-    { serviceId, startDate, endDate }: FetchAvailableSlotsParams
+    { serviceId, startDate, endDate, targetClientId }: FetchAvailableSlotsParams
 ): Promise<AvailableSlot[]> {
     const queryParams = new URLSearchParams({
         service_id: serviceId,
         start_date: startDate,
         end_date: endDate,
     });
+
+    if (targetClientId !== undefined) {
+        queryParams.append('target_client_id', targetClientId.toString());
+    }
 
     const response = await fetch(`/api/available-slots?${queryParams.toString()}`);
 

@@ -87,11 +87,13 @@ The tabbed interface is built as a reusable component (`TabNavigation`) that can
 
 Current TODOS:
 
-- addresses/map view/multi-map view (staff/admin)
+- addresses/map view/multi-map view (staff/admin) - on user profile
 - add email template editing UI
+- add "upload image" via staff dashboard, tag a pet
 - remove all inline CSS for a design system (different file for button, nav, colors, etc)
 - Implement Email Preference Checks: We added email_allow_promotional and email_allow_informational flags to the profiles table, but we haven't added logic
-
+- notifications - start with "new image uploaded"
+- allow download of images from client dashboard
 
 
 // Codebase Improvement Todos

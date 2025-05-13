@@ -5,38 +5,48 @@ import { supabase } from '../../services/supabaseClient';
 import type { Booking, Service } from '@booking-and-accounts-monorepo/shared-types';
 import { fetchServices } from '@booking-and-accounts-monorepo/api-services/serviceService';
 import { fetchBookingsDirect } from '@booking-and-accounts-monorepo/api-services/bookingService';
-import { RouteProp, useNavigation, CompositeNavigationProp, NavigatorScreenParams } from '@react-navigation/native';
-import { StaffTabParamList, BookingStackParamList } from '../../navigation/StaffTabNavigator';
+import { RouteProp, useNavigation } from '@react-navigation/native';
+import { StaffTabParamList, ScheduleStackParamList } from '../../navigation/StaffTabNavigator';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 
 // Helper to format date to 'YYYY-MM-DD' string
 const dateToString = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
 
-// Define the structure for our agenda items
+// Define the structure for individual booking entries
 export interface MyAgendaEntry extends AgendaEntry {
   id: string; // Booking ID
-  name: string; // Service type or other identifier
+  name: string; // Service type (used within group for consistency or if displayed)
   details: string; // e.g., Client name, pets
   time: string;
   bookingData?: Booking; // Optional: store original booking data
+  // height is not strictly needed here as Agenda renders groups, but can be for internal styling
+}
+
+// Define the structure for agenda item groups (a session with its bookings)
+interface MyAgendaItemGroupEntry extends AgendaEntry {
+  id: string; // Unique ID for the group, e.g., date-sessionName
+  name: string; // Session Name for the group header (this is AgendaEntry.name)
+  day: string;  // Date string 'YYYY-MM-DD'
+  height: number; // Calculated total height for the entire group
+  sessionBookings: MyAgendaEntry[]; // Array of individual bookings for this session
 }
 
 // Type for the parameters of the SessionBookings screen (remains the same)
 type SessionBookingsParams = { userId: string; dateKey: string; session: string };
 
-// Navigation prop for the MyScheduleScreen
-// Correctly typed for navigating to a screen within a nested stack in another tab
-type MyScheduleNavigationProp = CompositeNavigationProp<
-  BottomTabNavigationProp<StaffTabParamList, 'MySchedule'>, // For navigating to the 'BookingManagement' tab
-  // This second type isn't strictly for navigating *within* BookingStack directly from MySchedule,
-  // but helps satisfy the composite structure. The primary action is on the BottomTabNavigator.
-  NativeStackNavigationProp<BookingStackParamList>
->;
+// Navigation prop for the MyScheduleScreen, now within its own stack
+// It navigates to SessionBookings within the ScheduleStack
+// The screen itself is 'MyScheduleHome' in the ScheduleStackParamList
 
-type MyScheduleScreenRouteProp = RouteProp<StaffTabParamList, 'MySchedule'>;
+type MyScheduleNavigationProp = NativeStackNavigationProp<ScheduleStackParamList, 'MyScheduleHome'>;
+
+// The route prop is for MyScheduleHome within ScheduleStackParamList, passed via StaffTabParamList
+// This needs careful review. MyScheduleScreen (now MyScheduleHome) gets its params when ScheduleStackNavigator is set up.
+// The `route` prop for MyScheduleScreen will be RouteProp<ScheduleStackParamList, 'MyScheduleHome'>.
+
+type MyScheduleScreenRouteProp = RouteProp<ScheduleStackParamList, 'MyScheduleHome'>;
 
 interface Props {
   route: MyScheduleScreenRouteProp;
@@ -95,42 +105,86 @@ const MyScheduleScreen: React.FC<Props> = ({ route }) => {
       const bookingsData = await fetchBookingsDirect(supabase, { assigned_staff_id: userId });
       console.log("[MyScheduleScreen] fetchAndProcessBookings: Fetched bookingsData. Count:", bookingsData?.length);
 
-      const newItems: AgendaSchedule = {};
+      const groupedByDate: { [date: string]: Booking[] } = {};
       bookingsData?.forEach((booking: Booking) => {
         const bookingDateStr = dateToString(new Date(booking.start_time));
-        if (!newItems[bookingDateStr]) {
-          newItems[bookingDateStr] = [];
+        if (!groupedByDate[bookingDateStr]) {
+          groupedByDate[bookingDateStr] = [];
         }
-        const startTime = new Date(booking.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-        const endTime = new Date(booking.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
-
-        let foundService: Service | undefined = undefined;
-        if (typeof booking.service_type === 'string' && allServices) {
-            foundService = allServices.find(s =>
-                s.name === booking.service_type ||
-                s.id.toString() === booking.service_type
-            );
-        }
-
-        const serviceName = foundService?.name || (typeof booking.service_type === 'string' ? booking.service_type : 'Booking');
-
-        const entry: MyAgendaEntry = {
-          id: booking.id.toString(),
-          name: serviceName,
-          details: booking.client_name || 'N/A',
-          height: 80,
-          day: bookingDateStr,
-          time: `${startTime} - ${endTime}`,
-          bookingData: booking,
-        };
-        (newItems[bookingDateStr] as MyAgendaEntry[]).push(entry);
+        groupedByDate[bookingDateStr].push(booking);
       });
 
-      console.log("[MyScheduleScreen] fetchAndProcessBookings: Preparing to call setItems with newItems. Date keys:", Object.keys(newItems));
-      // setTimeout(() => { // Removed the test delay
-      setItems(newItems);
+      const newAgendaSchedule: AgendaSchedule = {};
+
+      for (const dateKey in groupedByDate) {
+        const dailyBookings = groupedByDate[dateKey];
+        const bookingsBySession: { [sessionName: string]: Booking[] } = {};
+
+        dailyBookings.forEach(booking => {
+          let foundService: Service | undefined = undefined;
+          if (typeof booking.service_type === 'string' && allServices) {
+              foundService = allServices.find(s =>
+                  s.name === booking.service_type ||
+                  s.id.toString() === booking.service_type
+              );
+          }
+          const serviceName = foundService?.name || (typeof booking.service_type === 'string' ? booking.service_type : 'Booking');
+
+          if (!bookingsBySession[serviceName]) {
+            bookingsBySession[serviceName] = [];
+          }
+          bookingsBySession[serviceName].push(booking);
+        });
+
+        const sessionGroupsForDate: MyAgendaItemGroupEntry[] = [];
+        Object.keys(bookingsBySession).forEach(sessionName => {
+          const bookingsInSession = bookingsBySession[sessionName];
+          const sessionAgendaEntries: MyAgendaEntry[] = bookingsInSession.map(booking => {
+            const startTime = new Date(booking.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+            const endTime = new Date(booking.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: true });
+
+            return {
+              id: booking.id.toString(),
+              name: sessionName, // Individual booking entry's name is the session name
+              details: booking.client_name || 'N/A',
+              day: dateKey,
+              time: `${startTime} - ${endTime}`,
+              bookingData: booking,
+              height: 45, // Add a nominal height to satisfy MyAgendaEntry interface if it requires it
+            };
+          });
+
+          const SESSION_HEADER_HEIGHT = 30; // Approx height for session name text
+          const BOOKING_ITEM_IN_GROUP_HEIGHT = 45; // Approx height for time + details line
+          const PADDING_BELOW_HEADER = 5;
+          const PADDING_BOTTOM_GROUP = 10;
+          const groupHeight = SESSION_HEADER_HEIGHT + PADDING_BELOW_HEADER + (sessionAgendaEntries.length * BOOKING_ITEM_IN_GROUP_HEIGHT) + PADDING_BOTTOM_GROUP;
+
+          sessionGroupsForDate.push({
+            id: `${dateKey}-${sessionName.replace(/\s+/g, '_')}`, // Group unique ID
+            name: sessionName, // This is the AgendaEntry.name, which will be the session header
+            day: dateKey,
+            height: groupHeight,
+            sessionBookings: sessionAgendaEntries,
+          });
+        });
+
+        // Sort session groups by the start time of their first booking, then by name
+        sessionGroupsForDate.sort((a, b) => {
+          const firstBookingTimeA = a.sessionBookings.length > 0 ? new Date(a.sessionBookings[0].bookingData!.start_time).getTime() : Infinity;
+          const firstBookingTimeB = b.sessionBookings.length > 0 ? new Date(b.sessionBookings[0].bookingData!.start_time).getTime() : Infinity;
+
+          if (firstBookingTimeA !== firstBookingTimeB) {
+            return firstBookingTimeA - firstBookingTimeB;
+          }
+          return a.name.localeCompare(b.name);
+        });
+        newAgendaSchedule[dateKey] = sessionGroupsForDate;
+      }
+
+      console.log("[MyScheduleScreen] fetchAndProcessBookings: Preparing to call setItems with newAgendaSchedule. Date keys:", Object.keys(newAgendaSchedule));
+      setItems(newAgendaSchedule);
       console.log("[MyScheduleScreen] fetchAndProcessBookings: setItems has been called.");
-      // }, 100);
 
     } catch (e) {
       console.error('Failed to fetch or process schedule bookings directly from Supabase:', e);
@@ -151,37 +205,33 @@ const MyScheduleScreen: React.FC<Props> = ({ route }) => {
     }
   }, [isLoadingServices, servicesError, allServices, fetchAndProcessBookings, userId]);
 
-  const renderItem = useCallback((reservation: MyAgendaEntry, isFirst: boolean) => {
+  const renderItem = useCallback((group: MyAgendaItemGroupEntry, isFirst: boolean) => {
+    // The 'group' parameter is an instance of MyAgendaItemGroupEntry
     return (
-      <TouchableOpacity
-        style={[styles.item, { height: reservation.height }]}
-        onPress={() => {
-          console.log('Item pressed:', reservation.id, reservation.bookingData);
-          if (reservation.bookingData) {
-            const booking = reservation.bookingData;
-            const dateKey = dateToString(new Date(booking.start_time));
-            const session = booking.service_type || 'Session';
-            navigation.navigate('BookingManagement', {
-              userId: userId,
-              screen: 'SessionBookings',
-              params: {
-                userId: userId,
-                dateKey: dateKey,
-                session: session,
-              },
-              initial: false,
-            });
-          } else {
-            console.warn('No bookingData found for this agenda item.');
-          }
-        }}
-      >
-        <Text style={styles.itemTextName}>{reservation.name}</Text>
-        <Text style={styles.itemTextTime}>{reservation.time}</Text>
-        <Text style={styles.itemTextDetails}>{reservation.details}</Text>
-      </TouchableOpacity>
+      <View style={[styles.groupItemContainer, { height: group.height }]}>
+        <Text style={styles.groupSessionName}>{group.name}</Text>
+        {group.sessionBookings.map((bookingEntry: MyAgendaEntry) => (
+          <TouchableOpacity
+            key={bookingEntry.id}
+            style={styles.bookingInGroupItem}
+            onPress={() => {
+              console.log('Booking item pressed (for Client Details):', bookingEntry.id, bookingEntry.bookingData);
+              if (bookingEntry.bookingData && typeof bookingEntry.bookingData.client_id === 'number') {
+                navigation.navigate('ClientDetails', {
+                  clientId: bookingEntry.bookingData.client_id.toString(),
+                });
+              } else {
+                console.warn('No bookingData or valid client_id found for this booking item.');
+              }
+            }}
+          >
+            <Text style={styles.bookingTimeText}>{bookingEntry.time}</Text>
+            <Text style={styles.bookingDetailsText}>{bookingEntry.details}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
     );
-  }, []);
+  }, [navigation, userId]);
 
   const renderEmptyDate = useCallback(() => {
     return (
@@ -278,6 +328,7 @@ const MyScheduleScreen: React.FC<Props> = ({ route }) => {
       // markedDatesObject[currentDate] = { selected: true, selectedColor: '#00adf5', activeOpacity: 0 };
   }
 
+  console.log("[MyScheduleScreen] Rendering Agenda. CurrentDate:", currentDate, "Items for selected day:", itemsForSelectedDayOnly[currentDate]?.length);
   return (
     <Agenda
       items={itemsForSelectedDayOnly}
@@ -349,6 +400,35 @@ const styles = StyleSheet.create({
     paddingTop: 10,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  groupItemContainer: {
+    backgroundColor: 'white',
+    borderRadius: 5,
+    padding: 10,
+    marginRight: 10,
+    marginTop: 17, // Matches original 'item' marginTop
+    flex: 1, // Important for Agenda item layout
+  },
+  groupSessionName: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 8,
+  },
+  bookingInGroupItem: {
+    paddingVertical: 6,
+    // If you need lines or specific spacing:
+    // borderBottomWidth: 1,
+    // borderBottomColor: '#eee',
+  },
+  bookingTimeText: {
+    fontSize: 14,
+    color: '#555',
+  },
+  bookingDetailsText: {
+    fontSize: 14,
+    color: '#777',
+    marginTop: 2,
   },
 });
 
