@@ -9,7 +9,7 @@ export async function fetchServices(supabase: SupabaseClient, options?: FetchSer
   let query = supabase.from('services').select('*');
 
   if (options?.active !== undefined) {
-    query = query.eq('active', options.active);
+    query = query.eq('is_active', options.active);
   }
 
   const { data, error } = await query;

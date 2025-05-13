@@ -197,7 +197,7 @@ export default function AdminDashboard(/* Removed props */) {
 		setIsLoadingServices(true);
 		setError(null);
 		try {
-			const data = await fetchServicesApi();
+			const data = await fetchServicesApi(supabase);
 			setServices(data);
 		} catch (e) {
 			setError(e instanceof Error ? e.message : 'Failed to load services');
@@ -205,7 +205,7 @@ export default function AdminDashboard(/* Removed props */) {
 		} finally {
 			setIsLoadingServices(false);
 		}
-	}, []);
+	}, [supabase]);
 
 	const fetchServiceAvailability = useCallback(async () => {
 		setIsLoadingServiceAvailability(true);

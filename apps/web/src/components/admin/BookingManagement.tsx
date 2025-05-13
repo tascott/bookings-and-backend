@@ -129,6 +129,24 @@ const isWeekend = (dateString: string): boolean => {
     }
 };
 
+// Helper function to format date as "Mon, 13 May 2025"
+const formatShortDateWithDay = (isoString: string | null | undefined): string => {
+    if (!isoString) return '';
+    try {
+        const date = new Date(isoString); // Parses as local time if no 'Z' at the end
+        if (isNaN(date.getTime())) return 'Invalid Date';
+        return date.toLocaleDateString('en-GB', { // Using en-GB for a common DD/MM/YYYY order preference and short names
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric'
+        });
+    } catch (e) {
+        console.error("Error formatting short date with day:", isoString, e);
+        return ''; // Return empty string on error
+    }
+};
+
 export default function BookingManagement({
     role,
     bookings,
@@ -691,31 +709,65 @@ export default function BookingManagement({
                  <div style={{ marginBottom: '1.5rem' }}>
                      <h4>Available Slots (Admin View)</h4>
                      <p className={styles.subtleText}>Select a slot to book. Availability status shown is for clients (you can override).</p>
-                     <div className={styles.slotSelectionContainer}>
+                     <div
+                        className={styles.slotSelectionContainer}
+                        style={{ display: 'flex', flexWrap: 'wrap', gap: '10px' }} // Added flex styling for the container
+                     >
                          {availableSlots.map((slot) => {
                              const slotKey = slot.start_time;
                              const isSelected = selectedSlots.has(slotKey);
-                            // ... (slot status logic)
                              const isUnavailable = slot.zero_capacity_reason === 'no_staff';
-                             const isFull = slot.zero_capacity_reason === 'staff_full' || slot.remaining_capacity === 0; // Consider 0 capacity as full too
+                             const isFull = slot.zero_capacity_reason === 'staff_full' || slot.remaining_capacity === 0;
                              const isAvailableClient = !isUnavailable && !isFull;
+
+                             // Card styles (can be moved to your CSS module if preferred)
+                             const cardStyle: React.CSSProperties = {
+                                border: '1px solid #555', // Darker border for dark theme
+                                padding: '12px',
+                                borderRadius: '8px',
+                                cursor: 'pointer',
+                                backgroundColor: '#333', // Dark card background
+                                color: '#eee', // Light text
+                                minWidth: '280px', // Ensure cards have some width
+                                flexGrow: 1,
+                             };
+                             const selectedCardStyle: React.CSSProperties = {
+                                ...cardStyle,
+                                borderColor: '#00aaff', // Highlight for selected
+                                boxShadow: '0 0 8px #00aaff',
+                             };
+                             const unavailableCardStyle: React.CSSProperties = {
+                                ...cardStyle,
+                                backgroundColor: '#444',
+                                borderColor: '#666',
+                                opacity: 0.7,
+                             };
 
                              return (
                                  <div
                                      key={slotKey}
-                                     className={`${styles.slotCard} ${isSelected ? styles.slotCardSelected : ''} ${!isAvailableClient ? styles.slotCardUnavailable : ''}`}
+                                     className={`${styles.slotCard || ''} ${isSelected ? (styles.slotCardSelected || '') : ''} ${!isAvailableClient ? (styles.slotCardUnavailable || '') : ''}`.trim()} // Use existing styles if they provide more, fallback to empty string
+                                     style={isSelected ? selectedCardStyle : (!isAvailableClient ? unavailableCardStyle : cardStyle)}
                                      onClick={() => handleSlotSelectionToggleForAdmin(slotKey)}
                                  >
-                                     <p><strong>Time:</strong> {formatDateTimeLocal(slot.start_time)} {formatTime(slot.start_time)} - {formatTime(slot.end_time)}</p>
-                                     <p><strong>Client Status:</strong>
-                                         {isAvailableClient ? <span style={{ color: 'lightgreen' }}> Available ({slot.capacity_display ?? slot.remaining_capacity ?? 'Unlimited'})</span>
-                                         : isFull ? <span style={{ color: 'orange' }}> Fully Booked</span>
-                                         : isUnavailable ? <span style={{ color: '#aaa' }}> No Staff/Unavailable</span>
+                                     <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                                         {formatShortDateWithDay(slot.start_time) || 'Date N/A'}
+                                     </div>
+                                     <div style={{ marginBottom: '8px' }}>
+                                         {formatTime(slot.start_time) || 'Time N/A'} - {formatTime(slot.end_time) || 'N/A'}
+                                     </div>
+                                     <div style={{ marginBottom: '8px' }}>
+                                         <strong>Client Status:</strong>
+                                         {isAvailableClient ? <span style={{ color: '#77dd77', fontWeight: 'bold' }}> Available ({slot.capacity_display ?? slot.remaining_capacity ?? 'Unlimited'})</span>
+                                         : isFull ? <span style={{ color: '#ffb347', fontWeight: 'bold' }}> Fully Booked</span>
+                                         : isUnavailable ? <span style={{ color: '#aaa', fontWeight: 'bold' }}> No Staff/Unavailable</span>
                                          : ' Unknown'}
-                                     </p>
-                                     <p className={styles.subtleText}>Fields: {slot.field_ids?.join(', ') || 'N/A'}</p>
-                                     {isSelected && <p style={{ color: '#00aaff', fontWeight: 'bold' }}>SELECTED</p>}
-                             </div>
+                                     </div>
+                                     <div style={{ fontSize: '0.9em', color: '#bbb', marginBottom: '5px' }}>
+                                         Fields: {slot.field_ids?.join(', ') || 'N/A'}
+                                     </div>
+                                     {isSelected && <div style={{ marginTop: '8px', color: '#00aaff', fontWeight: 'bold', textAlign: 'center' }}>✓ SELECTED</div>}
+                                 </div>
                              );
                          })}
                              </div>

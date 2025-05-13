@@ -11,6 +11,7 @@ import { GeocoderAutocomplete } from '@geoapify/geocoder-autocomplete';
 import '@geoapify/geocoder-autocomplete/styles/minimal-dark.css';
 import { fetchUserProfile, updateUserProfile } from '@booking-and-accounts-monorepo/api-services';
 import { fetchServices } from '@booking-and-accounts-monorepo/api-services';
+import { createClient } from '@booking-and-accounts-monorepo/utils';
 
 interface ClientDashboardProps {
   // user: User; // Removing user prop as profile state should contain necessary user info
@@ -79,16 +80,18 @@ export default function ClientDashboard({
     loadProfile();
   }, []);
 
+  const supabase = createClient(); // Create Supabase client
+
   const loadServices = useCallback(async () => {
     try {
-      const data = await fetchServices({ active: true });
+      const data = await fetchServices(supabase, { active: true });
       setServices(data);
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : 'Failed to load services';
       console.error("Error fetching services:", errorMessage);
       setServices([]);
     }
-  }, []);
+  }, [supabase]);
 
   useEffect(() => {
     loadServices();
