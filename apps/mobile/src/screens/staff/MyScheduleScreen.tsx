@@ -5,8 +5,10 @@ import { supabase } from '../../services/supabaseClient';
 import type { Booking, Service } from '@booking-and-accounts-monorepo/shared-types';
 import { fetchServices } from '@booking-and-accounts-monorepo/api-services/serviceService';
 import { fetchBookingsDirect } from '@booking-and-accounts-monorepo/api-services/bookingService';
-import { RouteProp } from '@react-navigation/native';
-import { StaffTabParamList } from '../../navigation/StaffTabNavigator';
+import { RouteProp, useNavigation, CompositeNavigationProp, NavigatorScreenParams } from '@react-navigation/native';
+import { StaffTabParamList, BookingStackParamList } from '../../navigation/StaffTabNavigator';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 
 // Helper to format date to 'YYYY-MM-DD' string
 const dateToString = (date: Date): string => {
@@ -22,6 +24,18 @@ export interface MyAgendaEntry extends AgendaEntry {
   bookingData?: Booking; // Optional: store original booking data
 }
 
+// Type for the parameters of the SessionBookings screen (remains the same)
+type SessionBookingsParams = { userId: string; dateKey: string; session: string };
+
+// Navigation prop for the MyScheduleScreen
+// Correctly typed for navigating to a screen within a nested stack in another tab
+type MyScheduleNavigationProp = CompositeNavigationProp<
+  BottomTabNavigationProp<StaffTabParamList, 'MySchedule'>, // For navigating to the 'BookingManagement' tab
+  // This second type isn't strictly for navigating *within* BookingStack directly from MySchedule,
+  // but helps satisfy the composite structure. The primary action is on the BottomTabNavigator.
+  NativeStackNavigationProp<BookingStackParamList>
+>;
+
 type MyScheduleScreenRouteProp = RouteProp<StaffTabParamList, 'MySchedule'>;
 
 interface Props {
@@ -31,6 +45,7 @@ interface Props {
 const MyScheduleScreen: React.FC<Props> = ({ route }) => {
   console.log("[MyScheduleScreen] Component rendered/re-rendered");
   const { userId } = route.params;
+  const navigation = useNavigation<MyScheduleNavigationProp>();
   const [items, setItems] = useState<AgendaSchedule>({});
   const [allServices, setAllServices] = useState<Service[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -140,7 +155,26 @@ const MyScheduleScreen: React.FC<Props> = ({ route }) => {
     return (
       <TouchableOpacity
         style={[styles.item, { height: reservation.height }]}
-        onPress={() => console.log('Item pressed:', reservation.id, reservation.bookingData)}
+        onPress={() => {
+          console.log('Item pressed:', reservation.id, reservation.bookingData);
+          if (reservation.bookingData) {
+            const booking = reservation.bookingData;
+            const dateKey = dateToString(new Date(booking.start_time));
+            const session = booking.service_type || 'Session';
+            navigation.navigate('BookingManagement', {
+              userId: userId,
+              screen: 'SessionBookings',
+              params: {
+                userId: userId,
+                dateKey: dateKey,
+                session: session,
+              },
+              initial: false,
+            });
+          } else {
+            console.warn('No bookingData found for this agenda item.');
+          }
+        }}
       >
         <Text style={styles.itemTextName}>{reservation.name}</Text>
         <Text style={styles.itemTextTime}>{reservation.time}</Text>
