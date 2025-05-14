@@ -103,6 +103,22 @@ export type Pet = {
 	notes?: string | null;
 	is_active: boolean;
 	is_confirmed?: boolean; // Added confirmation status
+	images?: PetImage[]; // Optional array of pet images
+};
+
+// PetImage type
+export type PetImage = {
+	id: string; // uuid
+	pet_id: number; // Foreign key to Pet table
+	uploaded_by_staff_id: number; // Foreign key to Staff table (staff.id)
+	storage_object_path: string;
+	caption?: string | null;
+	file_name?: string | null;
+	mime_type?: string | null;
+	size_bytes?: number | null;
+	created_at: string; // ISO timestamp string
+	// Optional: To include a direct URL for the image if fetched (e.g., signed URL)
+	image_url?: string | null;
 };
 
 // Profile type

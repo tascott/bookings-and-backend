@@ -1,3 +1,4 @@
 {
-    "liveServer.settings.multiRootWorkspaceName": "booking-and-accounts"
+    "liveServer.settings.multiRootWorkspaceName": "booking-and-accounts",
+    "typescript.tsdk": "node_modules/typescript/lib"
 }

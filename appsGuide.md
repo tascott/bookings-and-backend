@@ -57,3 +57,38 @@ This document outlines key development steps and decisions made during the app b
 1.  **Header Display Fix for Nested Stacks:**
     *   Resolved an issue where screens within tabs that used nested StackNavigators (i.e., "MySchedule" and "BookingManagement" tabs) displayed duplicate header titles.
     *   The fix involved setting `headerShown: false` in the `options` for the respective `Tab.Screen` components in `StaffTabNavigator.tsx`. This allows the header of the nested StackNavigator to be the single source of truth for the screen's title, while the `title` option in the `Tab.Screen` continues to provide the label for the bottom tab bar.
+
+### Pet Image Management (Core Infrastructure)
+
+**Goal:** Establish the backend and shared infrastructure for allowing staff to upload images for pets, and for clients to view them.
+
+**Steps & File Paths:**
+*   Database: `pet_images` table (SQL migration `create_pet_images_table_v3`)
+*   Storage: Supabase bucket `pet-images` (created manually, private)
+*   Shared Types: `packages/shared-types/types.ts` (added `PetImage` type, updated `Pet` type)
+*   API Services: `packages/api-services/src/image-service.ts`
+
+1.  **Database Schema (`pet_images` table):**
+    *   Created a new table `pet_images` to store metadata for pet photos (ID, `pet_id`, `uploaded_by_staff_id`, `storage_object_path`, `caption`, `file_name`, `mime_type`, `size_bytes`, `created_at`).
+    *   Foreign keys link to `pets.id` (integer) and `staff.id` (integer).
+    *   `ON DELETE CASCADE` for `pet_id` ensures images are removed if a pet is deleted.
+    *   `ON DELETE SET NULL` for `uploaded_by_staff_id` preserves images if a staff member is deleted.
+2.  **Row Level Security (RLS) for `pet_images`:**
+    *   Implemented RLS policies (migration `create_pet_images_rls_policies`):
+        *   Staff can insert images (checking `staff.user_id` against `auth.uid()` and ensuring `uploaded_by_staff_id` matches their `staff.id`).
+        *   Staff can select all pet images (can be refined later).
+        *   Staff can update captions of images they uploaded.
+        *   Staff can delete images they uploaded.
+        *   Clients can select images for their own pets (joining through `pets` and `clients` tables to `auth.uid()`)
+3.  **Supabase Storage Bucket:**
+    *   Manually created a **private** storage bucket named `pet-images` to store the image files.
+4.  **Shared TypeScript Definitions (`packages/shared-types/types.ts`):**
+    *   Added a `PetImage` interface to define the structure for image metadata, including an optional `image_url` for fetched (signed) URLs.
+    *   Updated the `Pet` interface to include an optional `images?: PetImage[];` array.
+5.  **API Service (`packages/api-services/src/image-service.ts`):**
+    *   Created `image-service.ts` with initial functions:
+        *   `uploadPetImage`: Handles image uploads to the `pet-images` bucket and records metadata in the `pet_images` table. Includes basic handling for web (`File`) and mobile (`{uri: string}`) inputs, with a note that mobile URI-to-blob conversion needs robust implementation.
+        *   `getPetImages`: Fetches image metadata for a pet and enhances it by generating **signed URLs** (valid for 1 hour) for accessing images from the private bucket.
+        *   `deletePetImage`: Deletes an image from storage and its corresponding database record.
+        *   `getStaffPets`: A placeholder function to retrieve pets associated with a staff member (current implementation is a basic example linking via `clients.default_staff_id` and needs refinement based on business logic).
+    *   Ensured Supabase client calls are correctly typed after regenerating `packages/shared-types/types_db.ts` to include the `pet_images` table.

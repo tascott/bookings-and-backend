@@ -11,6 +11,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
+    "supabase": "^2.22.12",
     "turbo": "^2.5.3",
     "typescript": "^5"
   },
