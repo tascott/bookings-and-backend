@@ -66,13 +66,15 @@ export const uploadPetImage = async (
     throw new Error('Upload successful but no path returned from storage.');
   }
 
+  const confirmedStoragePath = data.path; // Explicitly use the confirmed path
+
   // Record metadata in the pet_images table
-  const { data: imageRecord, error: dbError } = await supabase
+  const { data: imageRecordData, error: dbError } = await supabase
     .from('pet_images')
     .insert({
       pet_id: petId,
       uploaded_by_staff_id: staffId,
-      storage_object_path: data.path,
+      storage_object_path: confirmedStoragePath, // Use confirmed path
       caption: caption,
       file_name: fileName,
       mime_type: file instanceof File ? file.type : (file.type || 'application/octet-stream'),
@@ -84,17 +86,46 @@ export const uploadPetImage = async (
   if (dbError) {
     console.error('Error saving image metadata to database:', dbError);
     // Attempt to delete the orphaned storage object if DB insert fails
-    await supabase.storage.from('pet-images').remove([data.path]);
+    await supabase.storage.from('pet-images').remove([confirmedStoragePath]); // Use confirmed path
     throw dbError;
   }
 
-  if (!imageRecord) {
+  if (!imageRecordData) {
     throw new Error('Image metadata not saved correctly.');
   }
 
-  // The imageRecord from Supabase might not exactly match PetImage type (e.g. no image_url)
-  // We cast it, assuming the structure is compatible based on our table and RLS.
-  return imageRecord as PetImage;
+  // Now, create a signed URL for the newly uploaded image
+  let signedUrl = null;
+  let attempt = 1;
+  const maxAttempts = 2;
+  const retryDelayMs = 1000; // 1 second
+
+  while (attempt <= maxAttempts) {
+    const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+      .from('pet-images')
+      .createSignedUrl(confirmedStoragePath, 60 * 60); // 1 hour validity
+
+    if (signedUrlError) {
+      console.error(`Error creating signed URL (attempt ${attempt}/${maxAttempts}):`, confirmedStoragePath, signedUrlError);
+      if (attempt < maxAttempts && signedUrlError.message && signedUrlError.message.includes('Object not found')) {
+        console.log(`Retrying signed URL creation in ${retryDelayMs}ms...`);
+        await new Promise(resolve => setTimeout(resolve, retryDelayMs));
+      } else {
+        // Non-retryable error or max attempts reached
+        break;
+      }
+    } else {
+      signedUrl = signedUrlData.signedUrl;
+      break; // Success
+    }
+    attempt++;
+  }
+
+  // Combine the database record with the signed URL
+  return {
+    ...imageRecordData,
+    image_url: signedUrl,
+  } as PetImage;
 };
 
 /**
