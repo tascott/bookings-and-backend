@@ -1,5 +1,5 @@
 import { SupabaseClient } from '@supabase/supabase-js';
-import { Pet, PetImage, Staff } from '@booking-and-accounts-monorepo/shared-types'; // Assuming shared-types path
+import { Pet, PetImage, Staff, PetWithDetails } from '@booking-and-accounts-monorepo/shared-types'; // Assuming shared-types path
 import { Database } from '@booking-and-accounts-monorepo/shared-types/types_db'; // Assuming types_db path
 
 // Type for the file input, can be File (web) or an object with uri (mobile)
@@ -195,30 +195,65 @@ export const deletePetImage = async (
   }
 };
 
+/**
+ * Fetches a list of all pets in the system, augmented with their client's name.
+ *
+ * @param supabase - The Supabase client instance.
+ * @returns An array of PetWithDetails objects.
+ */
+export const getAllPetsWithClientNames = async (
+  supabase: SupabaseClient<Database>
+): Promise<PetWithDetails[]> => {
+  const { data: petsWithClientInfo, error: petsError } = await supabase
+    .from('pets')
+    .select(`
+      *,
+      clients (
+        id,
+        user_id,
+        profiles (
+          first_name,
+          last_name
+        )
+      )
+    `);
+
+  if (petsError) {
+    console.error('Error fetching all pets with client names:', petsError);
+    throw petsError;
+  }
+
+  if (!petsWithClientInfo) {
+    return [];
+  }
+
+  return petsWithClientInfo.map(pet => {
+    const clientProfile = pet.clients?.profiles;
+    const clientName = clientProfile ? `${clientProfile.first_name || ''} ${clientProfile.last_name || ''}`.trim() : 'Unknown Client';
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { clients, ...petData } = pet; // Exclude the nested clients relation
+
+    return {
+      ...petData,
+      client_id: pet.client_id, // client_id is directly on petData
+      client_name: clientName,
+    } as PetWithDetails;
+  });
+};
 
 /**
- * Fetches a list of pets that a given staff member is associated with.
- * This is a placeholder and needs a proper definition based on your business logic
- * (e.g., pets from bookings assigned to the staff, or pets of clients managed by the staff).
+ * Fetches a list of pets (with client names) that are part of bookings assigned
+ * to a given staff member for the current day.
  *
  * @param supabase - The Supabase client instance.
  * @param staffUserId - The auth.uid() of the staff member.
- * @returns An array of Pet objects.
+ * @returns An array of PetWithDetails objects.
  */
-export const getStaffPets = async (
+export const getTodaysPetsForStaff = async (
   supabase: SupabaseClient<Database>,
   staffUserId: string
-): Promise<Pet[]> => {
-  // Placeholder: This needs to be implemented based on how staff are linked to pets.
-  // Example: Fetch pets from clients who have this staff as default_staff_id
-  // Or pets from all bookings this staff member has been assigned to.
-  console.warn(
-    `getStaffPets is a placeholder and needs to be implemented with correct logic
-     to determine which pets a staff member (user_id: ${staffUserId}) can manage images for.`
-  );
-
-  // Example (very simplified, likely needs more complex join/logic):
-  // Get staff.id from staff.user_id
+): Promise<PetWithDetails[]> => {
   const { data: staffData, error: staffError } = await supabase
     .from('staff')
     .select('id')
@@ -231,32 +266,87 @@ export const getStaffPets = async (
   }
   const staffId = staffData.id;
 
-  // Find clients associated with this staff (e.g. default_staff_id)
-  const { data: clients, error: clientError } = await supabase
-    .from('clients')
-    .select('id')
-    .eq('default_staff_id', staffId); // This is just one way to link staff to clients
+  const today = new Date();
+  const startDate = new Date(today.setHours(0, 0, 0, 0)).toISOString();
+  const endDate = new Date(today.setHours(23, 59, 59, 999)).toISOString();
 
-  if (clientError) {
-    console.error('Error fetching clients for staff:', clientError);
+  // Step 1: Fetch today's bookings for the staff member
+  const { data: todaysBookings, error: bookingsError } = await supabase
+    .from('bookings')
+    .select('id') // We only need booking IDs to find associated pets
+    .eq('assigned_staff_id', staffUserId) // Corrected: Use staffUserId (string UUID)
+    .gte('start_time', startDate)
+    .lte('start_time', endDate);
+
+  if (bookingsError) {
+    console.error("Error fetching today's bookings for staff:", staffUserId, bookingsError); // Log staffUserId for clarity
     return [];
   }
-  if (!clients || clients.length === 0) {
+
+  if (!todaysBookings || todaysBookings.length === 0) {
+    return []; // No bookings for today for this staff
+  }
+
+  const bookingIds = todaysBookings.map(b => b.id);
+
+  // Step 2: Fetch pet_ids from booking_pets for these bookings
+  const { data: bookingPetsLinks, error: bpError } = await supabase
+    .from('booking_pets')
+    .select('pet_id')
+    .in('booking_id', bookingIds);
+
+  if (bpError) {
+    console.error('Error fetching booking_pets links:', bpError);
     return [];
   }
 
-  const clientIds = clients.map(c => c.id);
+  if (!bookingPetsLinks || bookingPetsLinks.length === 0) {
+    return []; // No pets linked to today's bookings
+  }
 
-  // Fetch pets for those clients
+  const uniquePetIds = [...new Set(bookingPetsLinks.map(bp => bp.pet_id))];
+
+  if (uniquePetIds.length === 0) {
+    return [];
+  }
+
+  // Step 3: Fetch details for these unique pets, including client names
   const { data: pets, error: petsError } = await supabase
     .from('pets')
-    .select('*') // Select all pet details
-    .in('client_id', clientIds);
+    .select(`
+      *,
+      clients (
+        id,
+        profiles (
+          first_name,
+          last_name
+        )
+      )
+    `)
+    .in('id', uniquePetIds);
 
   if (petsError) {
-    console.error('Error fetching pets for clients:', petsError);
+    console.error('Error fetching pet details for today:', petsError);
     throw petsError;
   }
 
-  return pets || [];
+  if (!pets) {
+    return [];
+  }
+
+  return pets.map(petFromDb => {
+    // The structure from Supabase with nested selects needs careful handling
+    // Ensure 'clients' is correctly accessed (it might be an object or null)
+    const clientProfile = petFromDb.clients?.profiles;
+    const clientName = clientProfile ? `${clientProfile.first_name || ''} ${clientProfile.last_name || ''}`.trim() : 'Unknown Client';
+
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const { clients, ...petData } = petFromDb; // Exclude the nested clients object from the final pet data
+
+    return {
+      ...petData,
+      client_id: petFromDb.client_id, // ensure client_id is correctly passed from petFromDb
+      client_name: clientName,
+    } as PetWithDetails; // Cast, assuming petData matches the rest of Pet type
+  });
 };

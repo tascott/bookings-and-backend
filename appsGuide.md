@@ -86,9 +86,11 @@ This document outlines key development steps and decisions made during the app b
     *   Added a `PetImage` interface to define the structure for image metadata, including an optional `image_url` for fetched (signed) URLs.
     *   Updated the `Pet` interface to include an optional `images?: PetImage[];` array.
 5.  **API Service (`packages/api-services/src/image-service.ts`):**
-    *   Created `image-service.ts` with initial functions:
+    *   Created `image-service.ts` with functions for image and pet-list retrieval:
         *   `uploadPetImage`: Handles image uploads to the `pet-images` bucket and records metadata in the `pet_images` table. Includes basic handling for web (`File`) and mobile (`{uri: string}`) inputs, with a note that mobile URI-to-blob conversion needs robust implementation.
         *   `getPetImages`: Fetches image metadata for a pet and enhances it by generating **signed URLs** (valid for 1 hour) for accessing images from the private bucket.
         *   `deletePetImage`: Deletes an image from storage and its corresponding database record.
-        *   `getStaffPets`: A placeholder function to retrieve pets associated with a staff member (current implementation is a basic example linking via `clients.default_staff_id` and needs refinement based on business logic).
-    *   Ensured Supabase client calls are correctly typed after regenerating `packages/shared-types/types_db.ts` to include the `pet_images` table.
+        *   `getAllPetsWithClientNames`: Fetches a list of all pets in the system (`PetWithDetails[]`, including client names by joining with `clients` and `profiles`). Returns `PetWithDetails[]`.
+        *   `getTodaysPetsForStaff`: Fetches a list of pets (`PetWithDetails[]`, including client names) that are part of bookings assigned to the staff member for the current day. This involves checking `bookings.assigned_staff_id` (which is a staff `user_id` UUID) and joining through `booking_pets` to `pets`, then to `clients` and `profiles`. Returns `PetWithDetails[]`.
+    *   Added `PetWithDetails` type to `packages/shared-types/types.ts` (extends `Pet` with `client_name`). Updated `Pet` type to make `name` and `is_confirmed` nullable to match database schema.
+    *   Ensured Supabase client calls are correctly typed after regenerating `packages/shared-types/types_db.ts` to include the `pet_images` table and reflect correct column types.

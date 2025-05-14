@@ -96,13 +96,13 @@ export type UserWithRole = {
 export type Pet = {
 	id: number;
 	client_id: number;
-	name: string;
+	name?: string | null;
 	breed?: string | null;
 	size?: string | null;
 	age?: number | null;
 	notes?: string | null;
 	is_active: boolean;
-	is_confirmed?: boolean; // Added confirmation status
+	is_confirmed?: boolean | null; // Allow null to match DB
 	images?: PetImage[]; // Optional array of pet images
 };
 
@@ -119,6 +119,12 @@ export type PetImage = {
 	created_at: string; // ISO timestamp string
 	// Optional: To include a direct URL for the image if fetched (e.g., signed URL)
 	image_url?: string | null;
+};
+
+// PetWithDetails type (Pet type augmented with client name)
+export type PetWithDetails = Pet & {
+	client_name?: string; // e.g., "John Doe"
+	// client_id is already part of the Pet type
 };
 
 // Profile type
