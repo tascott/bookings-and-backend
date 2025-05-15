@@ -7,6 +7,7 @@ This document outlines key development steps and decisions made during the app b
 ### My Schedule Screen (`MyScheduleScreen.tsx`)
 
 **Goal:** Display staff member's schedule using `react-native-calendars` `Agenda` component.
+**Environment:** React Native (Expo)
 
 **Steps & File Path:** `apps/mobile/src/screens/staff/MyScheduleScreen.tsx`
 
@@ -94,3 +95,81 @@ This document outlines key development steps and decisions made during the app b
         *   `getTodaysPetsForStaff`: Fetches a list of pets (`PetWithDetails[]`, including client names) that are part of bookings assigned to the staff member for the current day. This involves checking `bookings.assigned_staff_id` (which is a staff `user_id` UUID) and joining through `booking_pets` to `pets`, then to `clients` and `profiles`. Returns `PetWithDetails[]`.
     *   Added `PetWithDetails` type to `packages/shared-types/types.ts` (extends `Pet` with `client_name`). Updated `Pet` type to make `name` and `is_confirmed` nullable to match database schema.
     *   Ensured Supabase client calls are correctly typed after regenerating `packages/shared-types/types_db.ts` to include the `pet_images` table and reflect correct column types.
+
+### Phase 2: Web App Implementation (`apps/web`)
+
+**Goal:** Provide staff users with a web interface to select pets and manage their images (view, upload, delete).
+**Environment:** Next.js (React)
+
+**File Paths & Key Components:**
+*   `apps/web/src/components/staff/media/PetMediaSelector.tsx`: Component for selecting a pet. Fetches "Today's Pets" and "All Pets" for staff. Navigates to the individual pet's image gallery page.
+*   `apps/web/src/app/dashboard/staff/media/page.tsx`: Route page that renders the `PetMediaSelector`.
+*   `apps/web/src/app/dashboard/staff/media/[petId]/page.tsx`: Dynamic route page for displaying and managing images for a specific pet.
+
+**Key Features & Implementation Details for `[petId]/page.tsx`:**
+1.  **Pet ID Handling:** Extracts `petId` from dynamic route parameters. Resolved Next.js warning regarding `params` access by using `React.use(paramsPromise)`.
+2.  **Image Display:** Fetches and displays existing images for the selected pet using `getPetImages` from `image-service.ts`. Signed URLs are generated for viewing images from the private `pet-images` bucket.
+3.  **Image Upload:**
+    *   Provides a file input (`<input type="file" accept="image/*">`) and an optional caption field.
+    *   Uses the `uploadPetImage` service function to handle file upload to Supabase Storage and record metadata in the `pet_images` database table.
+    *   The `useUser` hook (placeholder for actual auth logic) is used to retrieve the `staffId` required for associating the upload with the correct staff member.
+4.  **Image Deletion:**
+    *   Adds a "Delete" button to each image card.
+    *   Prompts the user with a confirmation dialog (`window.confirm`) before proceeding.
+    *   Uses the `deletePetImage` service function to remove the image from Supabase Storage and its corresponding record from the `pet_images` database table.
+5.  **Signed URL Handling & UI Robustness:**
+    *   To handle potential delays in Supabase Storage replication (where a newly uploaded file might not be immediately available for signed URL generation), the following approach is used:
+        *   The `uploadPetImage` service attempts to generate a signed URL immediately after upload (with a brief internal retry for "Object not found" errors).
+        *   If this fails, the image is still added to the UI optimistically (possibly showing "Image URL not available").
+        *   The gallery page then triggers a delayed re-fetch of all images for the pet a few seconds after an upload completes. This second fetch is more likely to successfully generate the signed URL.
+6.  **State Management:** Manages loading states for fetching images, uploading, and deleting, as well as error states for these operations, providing feedback to the user.
+7.  **Required Storage RLS Policies for `pet-images` bucket (for authenticated staff):**
+    *   **INSERT:** To allow uploading new image files.
+        *   `EXISTS (SELECT 1 FROM staff WHERE staff.user_id = auth.uid())`
+    *   **SELECT:** To allow reading image files (necessary for generating signed URLs).
+        *   `EXISTS (SELECT 1 FROM staff WHERE staff.user_id = auth.uid())`
+    *   **DELETE:** To allow deleting image files, ensuring staff can only delete images they uploaded.
+        *   `EXISTS (SELECT 1 FROM public.staff s JOIN public.pet_images pi ON s.id = pi.uploaded_by_staff_id WHERE s.user_id = auth.uid() AND pi.storage_object_path = name)`
+
+### Phase 3: Mobile App Implementation (`apps/mobile`)
+
+**Goal:** Provide staff users with a mobile interface to select pets and manage their images (view, upload, delete), leveraging existing API services.
+**Environment:** React Native (Expo)
+
+**Key Components & Navigation Structure:**
+1.  **Navigation Setup (`apps/mobile/src/navigation/`):**
+    *   `PetMediaStackNavigator.tsx`: A new stack navigator created to manage screens for pet image functionality. Includes routes for `PetSelectorScreen` and `PetImageGalleryScreen`.
+    *   `StaffTabNavigator.tsx`: Updated to include a new "Pet Media" tab, which uses the `PetMediaStackNavigator` as its component. The tab navigator's header is hidden for this tab to allow the stack navigator to control its own header.
+2.  **Pet Selection Screen (`apps/mobile/src/screens/staff/PetSelectorScreen.tsx`):
+    *   Fetches and displays two lists of pets: "Today's Pets" (using `getTodaysPetsForStaff`) and "All Pets" (using `getAllPetsWithClientNames`) from the shared `image-service.ts`.
+    *   Requires integration with mobile authentication to get `staffUserId` for fetching "Today's Pets".
+    *   Uses `FlatList` to display pet items, which navigate to `PetImageGalleryScreen` on press, passing `petId` and `petName`.
+    *   Includes basic loading and error handling states.
+3.  **Pet Image Gallery Screen (`apps/mobile/src/screens/staff/PetImageGalleryScreen.tsx`):
+    *   (Placeholder created) Will be responsible for fetching, displaying, uploading, and deleting images for a given `petId`.
+    *   Will use `expo-image-picker` for selecting images from the device or taking new photos.
+    *   Will utilize the `uploadPetImage`, `getPetImages`, and `deletePetImage` functions from the shared `image-service.ts`.
+
+**Current Status:** Navigation and the pet selector screen structure are in place. Next steps involve implementing the detailed functionality of `PetSelectorScreen` (auth integration) and then building out `PetImageGalleryScreen`.
+
+**Actual Implementation for Pet Image Management:**
+*   **Screens:** `PetSelectorScreen.tsx` allows staff to choose a pet, and `PetImageGalleryScreen.tsx` handles viewing, uploading, and deleting images and videos for the selected pet. These are part of a dedicated `PetMediaStackNavigator` integrated into the `StaffTabNavigator`.
+*   **Media Picker (`expo-image-picker`):**
+    *   Configured with `mediaTypes: ImagePicker.MediaTypeOptions.All` to allow selection of both images and videos.
+    *   `base64: false` is used, as the URI is the primary piece of information for uploads.
+*   **Media Display (Mobile - `PetImageGalleryScreen.tsx`):**
+    *   Conditionally renders an `<Image>` component for images or an `expo-av <Video>` component for videos based on the `mime_type` of the media item.
+    *   The `expo-av` package was installed for video playback capabilities.
+    *   A simple text label (e.g., "[Video]" or "[Image]") is displayed on each media item for easy identification.
+*   **Upload Mechanism:** The shared `image-service.ts`'s `uploadPetImage` function handles both image and video files for mobile.
+    *   Initial attempts to upload base64-decoded `ArrayBuffer`s resulted in 0-byte files.
+    *   **Solution:** The service now uses `FormData` for mobile uploads. An object containing the `uri` (from `expo-image-picker`), `name` (generated), and `type` (from `asset.mimeType` or inferred) is appended to `FormData`. This resolved the 0-byte file issues and works for both images and videos.
+*   **Supabase Client:** Ensured consistent use of the Supabase client from `packages/utils/supabase/client.ts` (configured with `AsyncStorage` for React Native) across the mobile app.
+*   **Developer/LLM Notes for Future Extensions (Mobile):**
+    *   **Advanced Video Player:** For a more customized UX, replace `expo-av`'s default controls with a custom video player interface.
+    *   **Video Thumbnails:** Consider generating and displaying thumbnails for videos in the gallery (e.g., using a Supabase Function to extract a frame) for a better preview experience before loading/playing the full video.
+    *   **Background Uploads:** For larger video files, implement background upload functionality to improve UX.
+    *   **Video Editing/Trimming:** `expo-image-picker`'s `allowsEditing` might have limited support for videos; more advanced video editing/trimming would require dedicated libraries.
+    *   **Optimized Video Loading:** For performance, explore techniques like progressive loading or adaptive bitrate streaming if video playback becomes a bottleneck.
+
+2.  **GPS Access (`expo-location`):**

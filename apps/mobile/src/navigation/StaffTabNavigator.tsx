@@ -8,6 +8,7 @@ import BookingManagementScreen from '../screens/staff/BookingManagementScreen';
 import SessionBookingsScreen from '../screens/staff/SessionBookingsScreen';
 import ClientDetailsScreen from '../screens/staff/ClientDetailsScreen';
 import MyProfileScreen from '../screens/staff/MyProfileScreen';
+import PetMediaStackNavigator, { PetMediaStackParamList } from './PetMediaStackNavigator';
 
 export type BookingStackParamList = {
   BookingManagement: { userId: string };
@@ -26,6 +27,7 @@ export type StaffTabParamList = {
   MySchedule: NavigatorScreenParams<ScheduleStackParamList> & { userId: string };
   MyClients: { userId: string };
   BookingManagement: NavigatorScreenParams<BookingStackParamList> & { userId: string };
+  PetMedia: NavigatorScreenParams<PetMediaStackParamList>;
   MyProfile: { userId: string };
 };
 
@@ -115,6 +117,14 @@ const StaffTabNavigator: React.FC<StaffTabNavigatorProps> = ({ userId }) => {
         component={MyProfileScreen}
         initialParams={{ userId: userId }}
         options={{ title: 'Profile' }}
+      />
+      <Tab.Screen
+        name="PetMedia"
+        component={PetMediaStackNavigator}
+        options={{
+          title: 'Pet Media',
+          headerShown: false,
+        }}
       />
     </Tab.Navigator>
   );

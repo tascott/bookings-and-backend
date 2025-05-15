@@ -37,6 +37,9 @@ importers:
       '@booking-and-accounts-monorepo/utils':
         specifier: workspace:*
         version: link:../../packages/utils
+      '@react-native-async-storage/async-storage':
+        specifier: 2.1.2
+        version: 2.1.2(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))
       '@react-navigation/bottom-tabs':
         specifier: ^7.3.13
         version: 7.3.13(@react-navigation/native@7.1.9(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))(react-native-safe-area-context@5.4.0(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))(react-native-screens@4.10.0(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)
@@ -52,6 +55,9 @@ importers:
       assert:
         specifier: ^2.0.0
         version: 2.1.0
+      base64-arraybuffer:
+        specifier: ^1.0.2
+        version: 1.0.2
       buffer:
         specifier: ^6.0.3
         version: 6.0.3
@@ -64,6 +70,12 @@ importers:
       expo:
         specifier: ~53.0.9
         version: 53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)
+      expo-av:
+        specifier: ~15.1.4
+        version: 15.1.4(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)
+      expo-image-picker:
+        specifier: ~16.1.4
+        version: 16.1.4(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))
       expo-secure-store:
         specifier: ~14.2.3
         version: 14.2.3(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))
@@ -1502,6 +1514,11 @@ packages:
     peerDependencies:
       react: ^18.0 || ^19.0 || ^19.0.0-rc
 
+  '@react-native-async-storage/async-storage@2.1.2':
+    resolution: {integrity: sha512-dvlNq4AlGWC+ehtH12p65+17V0Dx7IecOWl6WanF2ja38O1Dcjjvn7jVzkUHJ5oWkQBlyASurTPlTHgKXyYiow==}
+    peerDependencies:
+      react-native: ^0.0.0-0 || >=0.65 <1.0
+
   '@react-native/assets-registry@0.79.2':
     resolution: {integrity: sha512-5h2Z7/+/HL/0h88s0JHOdRCW4CXMCJoROxqzHqxdrjGL6EBD1DdaB4ZqkCOEVSW4Vjhir5Qb97C8i/MPWEYPtg==}
     engines: {node: '>=18'}
@@ -2139,6 +2156,10 @@ packages:
 
   base-64@0.1.0:
     resolution: {integrity: sha512-Y5gU45svrR5tI2Vt/X9GPd3L0HNIKzGu202EjxrXMpuc2V2CiKgemAbUUsqYmZJvPtCXoUKjNZwBJzsNScUbXA==}
+
+  base64-arraybuffer@1.0.2:
+    resolution: {integrity: sha512-I3yl4r9QB5ZRY3XuJVEPfc2XhZO6YweFPI+UovAzn+8/hb3oJ6lnysaFcjVpkCPfVWFUDvoZ8kmVDP7WyRtYtQ==}
+    engines: {node: '>= 0.6.0'}
 
   base64-js@0.0.8:
     resolution: {integrity: sha512-3XSA2cR/h/73EzlXXdU6YNycmYI7+kicTxks4eJg2g39biHR84slg2+des+p7iHYhbRg/udIS4TD53WabcOUkw==}
@@ -2927,6 +2948,17 @@ packages:
       react: '*'
       react-native: '*'
 
+  expo-av@15.1.4:
+    resolution: {integrity: sha512-p+U5Hl89i8QQN7uATcUX2Fc9wT5FQcQkvuv43Qwbpi6hUSSjLgVWkXxThDMolqOFDOOsKWM/UM6pmex4XP+uSw==}
+    peerDependencies:
+      expo: '*'
+      react: '*'
+      react-native: '*'
+      react-native-web: '*'
+    peerDependenciesMeta:
+      react-native-web:
+        optional: true
+
   expo-constants@17.1.6:
     resolution: {integrity: sha512-q5mLvJiLtPcaZ7t2diSOlQ2AyxIO8YMVEJsEfI/ExkGj15JrflNQ7CALEW6IF/uNae/76qI/XcjEuuAyjdaCNw==}
     peerDependencies:
@@ -2944,6 +2976,16 @@ packages:
     peerDependencies:
       expo: '*'
       react: '*'
+
+  expo-image-loader@5.1.0:
+    resolution: {integrity: sha512-sEBx3zDQIODWbB5JwzE7ZL5FJD+DK3LVLWBVJy6VzsqIA6nDEnSFnsnWyCfCTSvbGigMATs1lgkC2nz3Jpve1Q==}
+    peerDependencies:
+      expo: '*'
+
+  expo-image-picker@16.1.4:
+    resolution: {integrity: sha512-bTmmxtw1AohUT+HxEBn2vYwdeOrj1CLpMXKjvi9FKSoSbpcarT4xxI0z7YyGwDGHbrJqyyic3I9TTdP2J2b4YA==}
+    peerDependencies:
+      expo: '*'
 
   expo-keep-awake@14.1.4:
     resolution: {integrity: sha512-wU9qOnosy4+U4z/o4h8W9PjPvcFMfZXrlUoKTMBW7F4pLqhkkP/5G4EviPZixv4XWFMjn1ExQ5rV6BX8GwJsWA==}
@@ -3458,6 +3500,10 @@ packages:
     resolution: {integrity: sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==}
     engines: {node: '>=0.12.0'}
 
+  is-plain-obj@2.1.0:
+    resolution: {integrity: sha512-YWnfyRwxL/+SsrWYfOpUtz5b3YD+nyfkHvjbcanzk8zgyO4ASD67uVMRt8k5bM4lLMDnXfriRhOpemw+NfT1eA==}
+    engines: {node: '>=8'}
+
   is-promise@4.0.0:
     resolution: {integrity: sha512-hvpoI6korhJMnej285dSg6nu1+e6uxs7zG3BYAm5byqDsgJNWwxzM6z6iZiAgQR4TJ30JmBTOwqZUw3WlyH3AQ==}
 
@@ -3833,6 +3879,10 @@ packages:
   merge-descriptors@2.0.0:
     resolution: {integrity: sha512-Snk314V5ayFLhp3fkUREub6WtjBfPdCPY1Ln8/8munuLuiYhsABgBVWsozAG+MWMbVEvcdcpbi9R7ww22l9Q3g==}
     engines: {node: '>=18'}
+
+  merge-options@3.0.4:
+    resolution: {integrity: sha512-2Sug1+knBjkaMsMgf1ctR1Ujx+Ayku4EdJN4Z+C2+JzoeF7A3OZ9KM2GY0CpQS51NR61LTurMJrRKPhSs3ZRTQ==}
+    engines: {node: '>=10'}
 
   merge-stream@2.0.0:
     resolution: {integrity: sha512-abv/qOcuPfk3URPfDzmZU1LKmuw8kT+0nIHvKrKgFrwifol/doWcdA4ZqsWQ8ENrFKkd67Mfpo/LovbIUsbt3w==}
@@ -6936,6 +6986,11 @@ snapshots:
     dependencies:
       react: 19.1.0
 
+  '@react-native-async-storage/async-storage@2.1.2(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))':
+    dependencies:
+      merge-options: 3.0.4
+      react-native: 0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0)
+
   '@react-native/assets-registry@0.79.2': {}
 
   '@react-native/babel-plugin-codegen@0.79.2(@babel/core@7.27.1)':
@@ -7752,6 +7807,8 @@ snapshots:
   balanced-match@1.0.2: {}
 
   base-64@0.1.0: {}
+
+  base64-arraybuffer@1.0.2: {}
 
   base64-js@0.0.8: {}
 
@@ -8717,6 +8774,12 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
+  expo-av@15.1.4(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0):
+    dependencies:
+      expo: 53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)
+      react: 19.0.0
+      react-native: 0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0)
+
   expo-constants@17.1.6(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0)):
     dependencies:
       '@expo/config': 11.0.10
@@ -8736,6 +8799,15 @@ snapshots:
       expo: 53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)
       fontfaceobserver: 2.3.0
       react: 19.0.0
+
+  expo-image-loader@5.1.0(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)):
+    dependencies:
+      expo: 53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)
+
+  expo-image-picker@16.1.4(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)):
+    dependencies:
+      expo: 53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0)
+      expo-image-loader: 5.1.0(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))
 
   expo-keep-awake@14.1.4(expo@53.0.9(@babel/core@7.27.1)(react-native@0.79.2(@babel/core@7.27.1)(@types/react@19.0.14)(react@19.0.0))(react@19.0.0))(react@19.0.0):
     dependencies:
@@ -9320,6 +9392,8 @@ snapshots:
 
   is-number@7.0.0: {}
 
+  is-plain-obj@2.1.0: {}
+
   is-promise@4.0.0: {}
 
   is-regex@1.2.1:
@@ -9695,6 +9769,10 @@ snapshots:
   memoize-one@6.0.0: {}
 
   merge-descriptors@2.0.0: {}
+
+  merge-options@3.0.4:
+    dependencies:
+      is-plain-obj: 2.1.0
 
   merge-stream@2.0.0: {}
 

@@ -261,6 +261,13 @@ This guide focuses on the mobile application development within the monorepo con
         // const { data: { publicUrl } } = supabase.storage.from('your-bucket-name').getPublicUrl(filePath);
         // Save publicUrl to your database.
         ```
+    *   **Actual Implementation for Pet Image Management:**
+        *   **Screens:** `PetSelectorScreen.tsx` allows staff to choose a pet, and `PetImageGalleryScreen.tsx` handles viewing, uploading, and deleting images for the selected pet. These are part of a dedicated `PetMediaStackNavigator` integrated into the `StaffTabNavigator`.
+        *   **Image Picker:** `expo-image-picker` is used with `base64: false`, as the URI is the primary piece of information needed for uploads.
+        *   **Upload Mechanism:** The shared `image-service.ts`'s `uploadPetImage` function was updated for mobile.
+            *   Initially, attempts to upload base64-decoded `ArrayBuffer`s resulted in 0-byte files.
+            *   **Solution:** The service now uses `FormData` for mobile uploads. An object containing the `uri` (from `expo-image-picker`), `name` (generated), and `type` (from `asset.mimeType`) is appended to `FormData`. This resolved the 0-byte file issues.
+        *   **Supabase Client:** Ensured consistent use of the Supabase client from `packages/utils/supabase/client.ts` (configured with `AsyncStorage` for React Native) across the mobile app to resolve authentication and session persistence issues that affected data fetching and uploads.
 
 2.  **GPS Access (`expo-location`):**
     *   `expo install expo-location`

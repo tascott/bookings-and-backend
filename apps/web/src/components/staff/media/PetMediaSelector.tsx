@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { useRouter } from 'next/navigation'; // For navigation
+// import { useRouter } from 'next/navigation'; // REMOVE: No longer navigating from here
 import { PetWithDetails } from '@booking-and-accounts-monorepo/shared-types';
 import {
   getAllPetsWithClientNames,
@@ -12,7 +12,7 @@ import { createClient } from '@booking-and-accounts-monorepo/utils/supabase/clie
 // Placeholder for user session logic - replace with your actual auth solution
 const useUser = () => {
   const [userId, setUserId] = useState<string | null>(null);
-  const supabase = createClient(); // Assuming createClient doesn't need to be in useMemo here as useUser is a hook itself.
+  const supabase = createClient();
   useEffect(() => {
     const fetchUser = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -23,10 +23,12 @@ const useUser = () => {
   return { userId };
 };
 
-// Renamed from PetMediaPage to PetMediaSelector
-export default function PetMediaSelector() {
-  const router = useRouter();
-  // supabase client is memoized to prevent re-creation on every render
+interface PetMediaSelectorProps {
+  onPetSelect: (petId: number) => void; // ADD: Callback prop
+}
+
+export default function PetMediaSelector({ onPetSelect }: PetMediaSelectorProps) { // UPDATE: Use prop
+  // const router = useRouter(); // REMOVE
   const supabase = useMemo(() => createClient(), []);
   const { userId: staffUserId } = useUser();
 
@@ -65,9 +67,12 @@ export default function PetMediaSelector() {
     }
   }, [supabase]);
 
-  const handlePetSelection = (petId: number | string) => {
-    if (petId) {
-      router.push(`/dashboard/staff/media/${petId}`);
+  const handleDropdownSelection = (petIdString: string) => {
+    if (petIdString) {
+      const petIdNumber = parseInt(petIdString, 10);
+      if (!isNaN(petIdNumber)) {
+        onPetSelect(petIdNumber); // UPDATE: Call prop instead of router.push
+      }
     }
   };
 
@@ -78,6 +83,7 @@ export default function PetMediaSelector() {
   return (
     <div style={{ padding: '20px' }}>
       <h1>Pet Image Management</h1>
+      <p style={{ fontSize: '0.9em', color: '#666', marginBottom: '20px' }}>Select a pet to view or manage their images.</p>
       {error && <p style={{ color: 'red' }}>Error: {error}</p>}
 
       <div style={{ marginBottom: '30px' }}>
@@ -88,10 +94,10 @@ export default function PetMediaSelector() {
           <select
             value={selectedTodaysPetId}
             onChange={(e) => {
-              const petId = e.target.value;
-              setSelectedTodaysPetId(petId);
-              setSelectedAllPetId('');
-              handlePetSelection(petId);
+              const petIdStr = e.target.value;
+              setSelectedTodaysPetId(petIdStr);
+              setSelectedAllPetId(''); // Clear other selection
+              handleDropdownSelection(petIdStr);
             }}
             style={{ padding: '8px', minWidth: '300px' }}
           >
@@ -115,10 +121,10 @@ export default function PetMediaSelector() {
           <select
             value={selectedAllPetId}
             onChange={(e) => {
-              const petId = e.target.value;
-              setSelectedAllPetId(petId);
-              setSelectedTodaysPetId('');
-              handlePetSelection(petId);
+              const petIdStr = e.target.value;
+              setSelectedAllPetId(petIdStr);
+              setSelectedTodaysPetId(''); // Clear other selection
+              handleDropdownSelection(petIdStr);
             }}
             style={{ padding: '8px', minWidth: '300px' }}
           >

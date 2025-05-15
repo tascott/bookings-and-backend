@@ -154,7 +154,7 @@ export type Client = {
 	last_name: string | null; // From profiles table
 	phone: string | null; // From profiles table
 	default_staff_id: number | null; // From clients table
-	default_staff_name: string | null; // Joined from staff/profiles
+	default_staff_name?: string | null; // Joined from staff/profiles - MADE OPTIONAL
 	pets: Pet[]; // Array of Pet objects
 	// Add new address fields (nullable)
 	address_line_1: string | null;
@@ -384,3 +384,6 @@ export interface UpdatePetPayload {
 	breed?: string;
 	size?: string;
 }
+
+// StaffAssignedClient type for staff dashboard
+export type StaffAssignedClient = Client; // Simplified to be an alias of Client

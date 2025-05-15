@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import SidebarNavigation from '@/components/SidebarNavigation';
 import BookingManagement from '@/components/admin/BookingManagement';
+import PetMediaTabContent from '@/components/staff/media/PetMediaTabContent';
 import type { Booking, Service, UserWithRole, Profile as ProfileType, StaffAssignedClient } from '@booking-and-accounts-monorepo/shared-types';
 import CalendarView, { CalendarEvent } from '@/components/shared/CalendarView';
 import Modal from '@/components/shared/Modal';
@@ -112,6 +113,8 @@ export default function StaffDashboard() {
       const mappedEventsOrNull: (CalendarEvent | null)[] = Array.from(groupedSlots.entries()).map(([slotKey, bookingsInSlot]) => {
           if (bookingsInSlot.length === 0) return null;
           const firstBooking = bookingsInSlot[0];
+          if (!firstBooking) return null;
+
           const startTime = new Date(firstBooking.start_time);
           const endTime = new Date(firstBooking.end_time);
           const timeDisplay = `${formatTime(firstBooking.start_time)} - ${formatTime(firstBooking.end_time)}`;
@@ -277,7 +280,7 @@ export default function StaffDashboard() {
                 <ul className="space-y-3">
                     {myClients.map(client => (
                         <li key={client.id} className="p-3 bg-white rounded shadow">
-                            <p className="font-semibold">{client.first_name} {client.last_name}</p>
+                            <p className="font-semibold">{client.first_name} {client.last_name} (ID: {client.id})</p>
                             <p className="text-sm text-gray-600">Email: {client.email || 'N/A'}</p>
                             <p className="text-sm text-gray-600">Phone: {client.phone || 'N/A'}</p>
                             {client.pets && client.pets.length > 0 && (
@@ -294,6 +297,11 @@ export default function StaffDashboard() {
             )}
         </div>
       ),
+    },
+    {
+        id: 'petMedia',
+        label: 'Pet Media',
+        content: <PetMediaTabContent />,
     },
     {
         id: 'booking-management',
@@ -404,8 +412,12 @@ const SlotDetailModal: React.FC<SlotDetailModalProps> = ({ isOpen, onClose, book
 const formatTime = (isoString: string): string => {
     if (!isoString || !isoString.includes('T')) return 'N/A';
     try {
-        const timePart = isoString.split('T')[1];
-        return timePart.substring(0, 5);
+        const parts = isoString.split('T');
+        const timePart = parts[1];
+        if (typeof timePart === 'string') {
+            return timePart.substring(0, 5);
+        }
+        return 'N/A';
     } catch (e) {
         console.error("Error extracting time:", isoString, e);
         return 'Invalid Time';
@@ -413,10 +425,12 @@ const formatTime = (isoString: string): string => {
 };
 
 const formatDate = (isoString: string): string => {
-    if (!isoString || !isoString.includes('T')) return 'Invalid Date';
+    if (!isoString) return 'Invalid Date';
     try {
-        return isoString.split('T')[0];
-    } catch {
+        const datePart = isoString.split('T')[0];
+        return datePart ?? 'Invalid Date';
+    } catch (e) {
+        console.error("Error extracting date:", isoString, e);
         return 'Invalid Date';
     }
 };

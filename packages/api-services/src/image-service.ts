@@ -1,9 +1,10 @@
 import { SupabaseClient } from '@supabase/supabase-js';
 import { Pet, PetImage, Staff, PetWithDetails } from '@booking-and-accounts-monorepo/shared-types'; // Assuming shared-types path
 import { Database } from '@booking-and-accounts-monorepo/shared-types/types_db'; // Assuming types_db path
+import { decode as decodeBase64 } from 'base64-arraybuffer'; // Added import
 
 // Type for the file input, can be File (web) or an object with uri (mobile)
-export type FileInput = File | { uri: string; name?: string; type?: string };
+export type FileInput = File | { uri: string; name?: string; type?: string; base64?: string };
 
 /**
  * Uploads an image for a pet to Supabase Storage and records its metadata.
@@ -27,34 +28,57 @@ export const uploadPetImage = async (
   }
 
   // Generate a unique path for the image in storage
-  const fileName = file instanceof File ? file.name : (file.name || `image-${Date.now()}`);
-  const fileExt = fileName.split('.').pop();
+  const fileInputName = file instanceof File ? file.name : (file.name || `image-${Date.now()}`);
+  const fileExt = fileInputName.split('.').pop() || 'jpg'; // Ensure fallback for extension
   const filePath = `pet_${petId}/${Date.now()}_${Math.random().toString(36).substring(2)}.${fileExt}`;
 
   let uploadError, data;
+  let resolvedContentType = file instanceof File ? file.type : (file.type || 'application/octet-stream');
 
   if (file instanceof File) {
     // Web upload
-    ({ error: uploadError, data } = await supabase.storage
-      .from('pet-images') // Ensure this matches your bucket name
-      .upload(filePath, file));
-  } else if (file.uri) {
-    // Mobile upload - requires a different approach.
-    // Supabase client JS library doesn't directly support uploading from a local file URI like `file://...` for mobile.
-    // This typically involves fetching the blob data from the URI first.
-    // For Expo, you can use FileSystem.readAsStringAsync or similar, then convert to Blob/ArrayBuffer.
-    // This part will need careful implementation for mobile.
-    // Placeholder for mobile upload logic:
-    console.warn('Mobile image upload needs specific implementation to convert URI to a file/blob for Supabase storage.');
-    // As a temporary measure, this will fail until implemented.
-    // Example using fetch to get blob (might need polyfills for fetch on older RN versions if not using Expo's fetch)
-    const response = await fetch(file.uri);
-    const blob = await response.blob();
+    console.log(`[uploadPetImage] Web upload initiated for ${file.name}, type: ${file.type}, size: ${file.size}`);
     ({ error: uploadError, data } = await supabase.storage
       .from('pet-images')
-      .upload(filePath, blob, { contentType: file.type || 'image/jpeg' })); // Adjust contentType as needed
+      .upload(filePath, file, { contentType: resolvedContentType }));
+  } else if (typeof file === 'object' && file.uri && typeof file.uri === 'string') {
+    // Mobile upload: Use FormData with URI
+    resolvedContentType = file.type || 'image/jpeg'; // Default to image/jpeg if not specified
+    const mobileFile = file as { uri: string; name?: string; type?: string; base64?: string }; // Type assertion
+    const fileNameForFormData = mobileFile.name || `image-${Date.now()}.${fileExt}`;
+
+    console.log(`[uploadPetImage] Mobile upload initiated using FormData. URI: ${mobileFile.uri}, Type: ${resolvedContentType}, Name: ${fileNameForFormData}`);
+
+    try {
+      const formData = new FormData();
+      // The 'file' field name is arbitrary but common.
+      // Supabase SDK expects the file data as the second argument, and FormData is a supported type.
+      // The third argument to append is the filename.
+      formData.append('file', {
+        uri: mobileFile.uri,
+        name: fileNameForFormData,
+        type: resolvedContentType,
+      } as any); // Type 'any' to match FormData append signature for files in RN
+
+      ({ error: uploadError, data } = await supabase.storage
+        .from('pet-images')
+        .upload(filePath, formData, {
+          // contentType is often inferred by Supabase when using FormData with correct file object,
+          // but specifying it doesn't hurt and can be required by some storage configurations.
+          // However, when uploading FormData directly, Supabase usually handles the Content-Type header for the multipart request itself.
+          // The `contentType` option here in .upload() might be for overriding or if the object isn't a standard File/Blob.
+          // For FormData, it's best to let Supabase SDK and the browser/fetch API handle multipart headers.
+          // Let's remove explicit contentType here if SDK handles it. Or keep it if required.
+          // For now, we'll rely on the type property in the object appended to FormData.
+          upsert: false,
+        }));
+
+    } catch (uploadProcessError) {
+        console.error('[uploadPetImage] Error during mobile FormData upload processing:', uploadProcessError);
+        throw uploadProcessError;
+    }
   } else {
-    throw new Error('Invalid file input type.');
+    throw new Error('Invalid file input type. Must be a File (web) or an object with uri, name, and type (mobile).');
   }
 
   if (uploadError) {
@@ -76,9 +100,9 @@ export const uploadPetImage = async (
       uploaded_by_staff_id: staffId,
       storage_object_path: confirmedStoragePath, // Use confirmed path
       caption: caption,
-      file_name: fileName,
-      mime_type: file instanceof File ? file.type : (file.type || 'application/octet-stream'),
-      // size_bytes: file instanceof File ? file.size : undefined, // Blob size is harder to get synchronously here
+      file_name: fileInputName,
+      mime_type: resolvedContentType, // Use the resolved content type for DB record
+      // size_bytes: file instanceof File ? file.size : undefined, // Blob size is harder to get synchronously here for DB record
     })
     .select()
     .single();

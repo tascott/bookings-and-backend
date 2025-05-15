@@ -94,6 +94,10 @@ Project Summary for AI Assistant (booking-and-accounts)
     - Shifted from attempting to call Next.js API routes to direct Supabase calls from `api-services`. This avoids needing the Next.js dev server for mobile development and simplifies mobile data logic. Shared service functions were refactored to accept a Supabase client instance.
 5.  **Expo Configuration:**
     - Renamed `app.json` to `app.config.js` for dynamic configuration (e.g., `extra.apiBaseUrl` if calling external APIs, though less relevant now for core data).
+6.  **Mobile Image Uploads to Supabase Storage:**
+    *   Initial attempts using base64 encoding and `ArrayBuffer` (via `base64-arraybuffer`) for mobile image uploads resulted in 0-byte files in Supabase Storage.
+    *   Successfully implemented reliable image uploads by refactoring the shared `image-service.ts` to use `FormData`. For the mobile platform, an object containing the `uri` (from `expo-image-picker`), `name`, and `type` is appended to the `FormData`, which Supabase client libraries handle correctly.
+    *   This `FormData` approach also supports video file uploads.
 
 **IV. Mobile App Roadmap (Updated):**
 
@@ -112,7 +116,13 @@ Project Summary for AI Assistant (booking-and-accounts)
     *   [ ] Client Dashboard: "My Pets" Tab (View pets, potentially add/edit if straightforward)
 
 *   **Phase 3: Native Feature Integration (as prioritized)**
-    *   [ ] Camera Access (e.g., for pet images by staff) - `expo-image-picker`
+    *   [x] **Camera & Media Access (e.g., for pet images and videos by staff) - `expo-image-picker`, `expo-av`:**
+        *   Core functionality for staff to select pets (`PetSelectorScreen`) and upload/view images and videos (`PetImageGalleryScreen`) is implemented in the mobile app.
+        *   Navigation is set up via `PetMediaStackNavigator` within the staff tabs.
+        *   Media uploads (images & videos) are functional, leveraging `FormData` with the media URI via the shared `image-service.ts`.
+        *   `expo-av` is used for video playback in the gallery.
+        *   Media items are labeled with type indicators (e.g., "[Video]", "[Image]").
+        *   Dependencies like Supabase client (`packages/utils/supabase/client.ts` with `AsyncStorage`) standardized for mobile.
     *   [ ] Push Notifications (e.g., booking confirmations/reminders) - `expo-notifications`
     *   [ ] GPS/Location (if specific use cases are defined) - `expo-location`
 
@@ -121,6 +131,17 @@ Project Summary for AI Assistant (booking-and-accounts)
     *   Performance optimization.
     *   Thorough testing on devices.
     *   EAS Build and submission preparation.
+
+**Developer/LLM Notes for Extending Pet Media Features (Web & Mobile):**
+*   **Refactoring Naming:** The database table `pet_images` and type `PetImage` could be renamed to `pet_media`/`PetMedia` to better reflect support for videos, though not functionally critical.
+*   **Advanced Video Handling:**
+    *   **Thumbnails:** Implement server-side thumbnail generation (e.g., via Supabase Functions) for video previews to improve gallery load times and UX. Store thumbnail URLs alongside media metadata.
+    *   **Custom Player Controls:** Develop custom video player controls for a more consistent and branded look and feel, especially on the web.
+    *   **Video Processing/Optimization:** For user-uploaded videos, consider server-side processing to standardize formats or optimize for streaming.
+*   **MIME Type & File Validation:** Enhance validation for uploaded file types and sizes, both client-side and server-side (e.g., via Supabase Storage policies or Functions).
+*   **Large File Management:** For very large files (especially videos), explore chunked uploads or more robust background upload mechanisms, particularly for mobile reliability.
+*   **Accessibility:** For videos, plan for future support for captions/subtitles to improve accessibility.
+*   **UI/UX for Mixed Media:** Continuously refine the UI for displaying mixed image and video content, considering aspect ratios and loading states.
 
 **V. Monorepo Structure (Conceptual):**
   \`\`\`
